@@ -4,6 +4,7 @@ import { useState } from "react";
 
 export default function Home() {
   const [isGraphOpen, setIsGraphOpen] = useState(false);
+  const [isGraphMaximized, setIsGraphMaximized] = useState(false);
 
   return (
     <main className="relative min-h-screen bg-white text-black">
@@ -57,18 +58,33 @@ export default function Home() {
 
       {/* Graph drawer */}
       <aside
-        className={`fixed right-0 top-0 z-40 h-full w-[460px] transform border-l border-gray-200 bg-white shadow-2xl transition-transform duration-300 ${
-          isGraphOpen ? "translate-x-0" : "translate-x-full"
-        }`}
+        className={`fixed right-0 top-0 z-40 h-full transform border-l border-gray-200 bg-white shadow-2xl transition-all duration-300 ${
+          isGraphOpen
+            ? "translate-x-0"
+            : "translate-x-full"
+        } ${isGraphMaximized ? "w-full" : "w-[460px]"}`}
       >
         <div className="flex h-16 items-center justify-between border-b border-gray-200 px-5">
           <h2 className="font-semibold">Context Graph</h2>
-          <button
-            onClick={() => setIsGraphOpen(false)}
-            className="rounded-md px-3 py-1 text-sm hover:bg-gray-100"
-          >
-            Close
-          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsGraphMaximized(!isGraphMaximized)}
+              className="rounded-md px-3 py-1 text-sm hover:bg-gray-100"
+            >
+              {isGraphMaximized ? "Exit full screen" : "Maximize"}
+            </button>
+
+            <button
+              onClick={() => {
+                setIsGraphOpen(false);
+                setIsGraphMaximized(false);
+              }}
+              className="rounded-md px-3 py-1 text-sm hover:bg-gray-100"
+            >
+              Close
+            </button>
+          </div>
         </div>
 
         <div className="flex h-[calc(100%-4rem)] items-center justify-center bg-gray-50">
