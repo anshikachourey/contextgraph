@@ -55,6 +55,29 @@ This is the data layer boundary, even at prototype stage.
 
 ---
 
+## ADR-005: React Flow canvas is isolated in GraphCanvas.tsx
+
+**Date:** 2025  
+**Status:** Accepted
+
+**Context:**  
+We needed to replace the node card list in the graph drawer with an interactive React Flow canvas.
+
+**Decision:**  
+React Flow logic lives exclusively in `src/components/graph/GraphCanvas.tsx`.
+`GraphDrawer.tsx` doesn't import anything from `@xyflow/react` — it just renders `<GraphCanvas />`.
+
+**Reason:**  
+React Flow is a complex third-party library with its own state model (`useNodesState`, `useEdgesState`).
+Keeping it isolated means `GraphDrawer` can stay a simple layout component.
+If we ever swap React Flow for a different graph library, only `GraphCanvas.tsx` and `ContextNodeCard.tsx` change.
+
+**Node layout:**  
+For MVP, nodes are positioned in a simple vertical column (`y = index * 180`).
+A proper auto-layout (dagre or ELK) will be added in a later milestone when edge relationships matter more.
+
+---
+
 ## ADR-004: Types live in src/types, not co-located with components
 
 **Date:** 2025  

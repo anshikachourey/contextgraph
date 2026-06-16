@@ -1,6 +1,6 @@
 import type { ContextNode } from "@/src/types/node";
 import GraphToolbar from "./GraphToolbar";
-import NodeCard from "./NodeCard";
+import GraphCanvas from "./GraphCanvas";
 
 type GraphDrawerProps = {
   isOpen: boolean;
@@ -21,10 +21,7 @@ export default function GraphDrawer({
     <>
       {/* Backdrop */}
       {isOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/20"
-          onClick={onClose}
-        />
+        <div className="fixed inset-0 z-30 bg-black/20" onClick={onClose} />
       )}
 
       {/* Drawer */}
@@ -39,9 +36,10 @@ export default function GraphDrawer({
           onClose={onClose}
         />
 
-        <div className="h-[calc(100%-4rem)] bg-gray-50 p-6">
+        {/* Canvas area — takes all remaining height below toolbar */}
+        <div className="h-[calc(100%-4rem)]">
           {nodes.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-center text-gray-500">
+            <div className="flex h-full items-center justify-center bg-gray-50 text-center text-gray-500">
               <div>
                 <div className="mb-3 text-4xl">●──●</div>
                 <p className="font-medium">No nodes yet</p>
@@ -51,11 +49,7 @@ export default function GraphDrawer({
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
-              {nodes.map((node) => (
-                <NodeCard key={node.id} node={node} />
-              ))}
-            </div>
+            <GraphCanvas contextNodes={nodes} />
           )}
         </div>
       </aside>
