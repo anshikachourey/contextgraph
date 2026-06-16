@@ -4,6 +4,7 @@ import { useState } from "react";
 import Header from "@/src/components/layout/Header";
 import ChatPanel from "@/src/components/chat/ChatPanel";
 import GraphDrawer from "@/src/components/graph/GraphDrawer";
+import CreateNodeModal from "@/src/components/nodes/CreateNodeModal";
 import { mockMessages } from "@/src/data/mockMessages";
 import type { ContextNode } from "@/src/types/node";
 
@@ -12,8 +13,8 @@ export default function Home() {
   const [isGraphMaximized, setIsGraphMaximized] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [nodes, setNodes] = useState<ContextNode[]>([]);
-  // Which graph node is currently active (clicked) — null means none
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Derive the active node object and its linked messages from activeNodeId
   const activeNode = nodes.find((n) => n.id === activeNodeId) ?? null;
@@ -21,8 +22,13 @@ export default function Home() {
     ? mockMessages.filter((m) => activeNode.messageIds.includes(m.id))
     : [];
 
-  // Derive the highlighted message ids from the active node
+  // Derive highlighted message ids from the active node
   const highlightedMessageIds = activeNode?.messageIds ?? [];
+
+  // Derive the full message objects for the modal preview
+  const selectedMessages = mockMessages.filter((m) =>
+    selectedMessageIds.includes(m.id),
+  );
 
   function toggleMessageSelection(messageId: string) {
     setSelectedMessageIds((current) =>
@@ -32,20 +38,30 @@ export default function Home() {
     );
   }
 
-  function createNodeFromSelection() {
+  // "Create node" button — opens the modal instead of immediately creating
+  function handleOpenModal() {
     if (selectedMessageIds.length === 0) return;
+    setIsModalOpen(true);
+  }
 
+  // User confirmed in the modal — create the node with their typed values
+  function handleModalConfirm(title: string, summary: string) {
     const newNode: ContextNode = {
       id: crypto.randomUUID(),
-      title: "Core Problem",
-      summary:
-        "Discussion about long AI chats becoming hard to navigate and losing context.",
+      title,
+      summary,
       messageIds: selectedMessageIds,
     };
 
     setNodes((current) => [...current, newNode]);
     setSelectedMessageIds([]);
+    setIsModalOpen(false);
     setIsGraphOpen(true);
+  }
+
+  // User cancelled — close modal, keep selection so they don't lose it
+  function handleModalCancel() {
+    setIsModalOpen(false);
   }
 
   function handleCloseGraph() {
@@ -55,7 +71,6 @@ export default function Home() {
   }
 
   function handleNodeClick(nodeId: string) {
-    // Toggle: clicking the same node again clears the highlight
     setActiveNodeId((current) => (current === nodeId ? null : nodeId));
   }
 
@@ -68,7 +83,7 @@ export default function Home() {
         selectedMessageIds={selectedMessageIds}
         highlightedMessageIds={highlightedMessageIds}
         onToggleMessage={toggleMessageSelection}
-        onCreateNode={createNodeFromSelection}
+        onCreateNode={handleOpenModal}
       />
 
       <GraphDrawer
@@ -82,6 +97,14 @@ export default function Home() {
         onNodeClick={handleNodeClick}
         onClearActiveNode={() => setActiveNodeId(null)}
       />
+
+      {isModalOpen && (
+        <CreateNodeModal
+          selectedMessages={selectedMessages}
+          onConfirm={handleModalConfirm}
+          onCancel={handleModalCancel}
+        />
+      )}
     </main>
   );
 }
