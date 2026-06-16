@@ -2,12 +2,17 @@
 
 import { useState, useEffect } from "react";
 import type { ChatMessage } from "@/src/types/message";
+import type {
+  GenerateNodeSuggestionRequest,
+  GenerateNodeSuggestionResponse,
+  GenerateNodeSuggestionError,
+} from "@/src/types/ai";
 
 type CreateNodeModalProps = {
   selectedMessages: ChatMessage[];
-  // Pre-fill values — empty strings today, AI-generated strings later.
-  // Using initialTitle/initialSummary (not title/summary) keeps the modal
-  // in control of its own form state; the parent doesn't need to mirror it.
+  // Pre-fill values — empty strings today, callers may pass AI-generated
+  // strings in future. `initialTitle`/`initialSummary` are intentionally
+  // separate from `title`/`summary` so the modal owns its own form state.
   initialTitle?: string;
   initialSummary?: string;
   onConfirm: (title: string, summary: string) => void;
@@ -23,19 +28,14 @@ export default function CreateNodeModal({
 }: CreateNodeModalProps) {
   const [title, setTitle] = useState(initialTitle);
   const [summary, setSummary] = useState(initialSummary);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
-  // If the parent updates the initial values (e.g. AI response arrives),
-  // sync them into local state. This is the correct pattern for
-  // "controlled initialisation" without making the parent own form state.
-  useEffect(() => {
-    setTitle(initialTitle);
-  }, [initialTitle]);
+  // Sync if the parent updates initial values (e.g. future async prefill)
+  useEffect(() => { setTitle(initialTitle); }, [initialTitle]);
+  useEffect(() => { setSummary(initialSummary); }, [initialSummary]);
 
-  useEffect(() => {
-    setSummary(initialSummary);
-  }, [initialSummary]);
-
-  // Escape key cancels, same as clicking Cancel or the backdrop
+  // Escape key cancels
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") onCancel();
@@ -45,19 +45,58 @@ export default function CreateNodeModal({
   }, [onCancel]);
 
   const canConfirm = title.trim().length > 0;
+  const canGenerate = selectedMessages.length > 0 && !isGenerating;
+
+  async function handleGenerate() {
+    if (!canGenerate) return;
+
+    setIsGenerating(true);
+    setGenerateError(null);
+
+    const requestBody: GenerateNodeSuggestionRequest = {
+      messages: selectedMessages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      })),
+    };
+
+    try {
+      const response = await fetch("/api/generate-node-suggestion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+
+      const data = (await response.json()) as
+        | GenerateNodeSuggestionResponse
+        | GenerateNodeSuggestionError;
+
+      if (!response.ok) {
+        const errorData = data as GenerateNodeSuggestionError;
+        setGenerateError(errorData.error ?? "Generation failed. Please try again.");
+        return;
+      }
+
+      const suggestion = data as GenerateNodeSuggestionResponse;
+      // Populate the fields — user can edit before confirming
+      setTitle(suggestion.title);
+      setSummary(suggestion.summary);
+    } catch {
+      setGenerateError("Network error. Please check your connection and try again.");
+    } finally {
+      setIsGenerating(false);
+    }
+  }
 
   function handleConfirm() {
     if (!canConfirm) return;
     onConfirm(title.trim(), summary.trim());
   }
 
-  // Enter in the title field confirms (if valid)
   function handleTitleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") handleConfirm();
   }
 
-  // Close on backdrop click — only when the click lands on the backdrop
-  // itself, not on the modal card
   function handleBackdropClick(e: React.MouseEvent<HTMLDivElement>) {
     if (e.target === e.currentTarget) onCancel();
   }
@@ -86,6 +125,30 @@ export default function CreateNodeModal({
         </div>
 
         <div className="space-y-5 px-6 py-5">
+          {/* AI generation */}
+          <div>
+            <button
+              onClick={handleGenerate}
+              disabled={!canGenerate}
+              className="flex items-center gap-2 rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isGenerating ? (
+                <>
+                  <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
+                  Generating…
+                </>
+              ) : (
+                <>✦ Generate suggestion</>
+              )}
+            </button>
+
+            {generateError && (
+              <p className="mt-2 text-xs text-red-600" role="alert">
+                {generateError}
+              </p>
+            )}
+          </div>
+
           {/* Title */}
           <div>
             <label
@@ -113,9 +176,7 @@ export default function CreateNodeModal({
               className="mb-1.5 block text-sm font-medium text-gray-700"
             >
               Summary
-              <span className="ml-1 font-normal text-gray-400">
-                (optional)
-              </span>
+              <span className="ml-1 font-normal text-gray-400">(optional)</span>
             </label>
             <textarea
               id="node-summary"
