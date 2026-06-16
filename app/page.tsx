@@ -15,11 +15,14 @@ export default function Home() {
   // Which graph node is currently active (clicked) — null means none
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
 
+  // Derive the active node object and its linked messages from activeNodeId
+  const activeNode = nodes.find((n) => n.id === activeNodeId) ?? null;
+  const activeNodeMessages = activeNode
+    ? mockMessages.filter((m) => activeNode.messageIds.includes(m.id))
+    : [];
+
   // Derive the highlighted message ids from the active node
-  const highlightedMessageIds =
-    activeNodeId != null
-      ? (nodes.find((n) => n.id === activeNodeId)?.messageIds ?? [])
-      : [];
+  const highlightedMessageIds = activeNode?.messageIds ?? [];
 
   function toggleMessageSelection(messageId: string) {
     setSelectedMessageIds((current) =>
@@ -72,9 +75,12 @@ export default function Home() {
         isOpen={isGraphOpen}
         isMaximized={isGraphMaximized}
         nodes={nodes}
+        activeNode={activeNode}
+        activeNodeMessages={activeNodeMessages}
         onToggleMaximize={() => setIsGraphMaximized((prev) => !prev)}
         onClose={handleCloseGraph}
         onNodeClick={handleNodeClick}
+        onClearActiveNode={() => setActiveNodeId(null)}
       />
     </main>
   );

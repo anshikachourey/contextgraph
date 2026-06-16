@@ -55,6 +55,32 @@ This is the data layer boundary, even at prototype stage.
 
 ---
 
+## ADR-006: Node detail panel splits layout based on drawer vs maximized mode
+
+**Date:** 2025  
+**Status:** Accepted
+
+**Context:**  
+When a node is selected, the detail panel needs to coexist with the graph canvas.
+We have two drawer states: normal (460px wide) and maximized (full screen).
+
+**Decision:**  
+- Normal drawer: canvas takes 55% of height, detail panel takes 45% below it (vertical split).
+- Maximized: canvas takes remaining width, detail panel is a fixed 320px right column (horizontal split).
+
+**Reason:**  
+In the narrow drawer, a side-by-side layout would make the canvas too small to be usable.
+A vertical split preserves enough canvas area for navigation while showing the detail panel.
+In maximized mode there's enough horizontal space to use both panes properly — the same
+pattern used by tools like Linear (detail panels) and Figma (right sidebar).
+
+**State ownership:**  
+`activeNodeId` lives in `page.tsx`. `activeNode` and `activeNodeMessages` are derived values
+(no extra state). `GraphDrawer` receives them as props — it doesn't fetch or compute them.
+This keeps the drawer purely presentational.
+
+---
+
 ## ADR-005: React Flow canvas is isolated in GraphCanvas.tsx
 
 **Date:** 2025  

@@ -1,24 +1,34 @@
 import type { ContextNode } from "@/src/types/node";
+import type { ChatMessage } from "@/src/types/message";
 import GraphToolbar from "./GraphToolbar";
 import GraphCanvas from "./GraphCanvas";
+import NodeDetailPanel from "./NodeDetailPanel";
 
 type GraphDrawerProps = {
   isOpen: boolean;
   isMaximized: boolean;
   nodes: ContextNode[];
+  activeNode: ContextNode | null;
+  activeNodeMessages: ChatMessage[];
   onToggleMaximize: () => void;
   onClose: () => void;
   onNodeClick: (nodeId: string) => void;
+  onClearActiveNode: () => void;
 };
 
 export default function GraphDrawer({
   isOpen,
   isMaximized,
   nodes,
+  activeNode,
+  activeNodeMessages,
   onToggleMaximize,
   onClose,
   onNodeClick,
+  onClearActiveNode,
 }: GraphDrawerProps) {
+  const isEmpty = nodes.length === 0;
+
   return (
     <>
       {/* Backdrop */}
@@ -38,9 +48,10 @@ export default function GraphDrawer({
           onClose={onClose}
         />
 
-        {/* Canvas area — takes all remaining height below toolbar */}
+        {/* Body — everything below the toolbar */}
         <div className="h-[calc(100%-4rem)]">
-          {nodes.length === 0 ? (
+          {isEmpty ? (
+            // Empty state
             <div className="flex h-full items-center justify-center bg-gray-50 text-center text-gray-500">
               <div>
                 <div className="mb-3 text-4xl">●──●</div>
@@ -50,8 +61,37 @@ export default function GraphDrawer({
                 </p>
               </div>
             </div>
+          ) : isMaximized && activeNode ? (
+            // Maximized + node selected: canvas left, detail panel right
+            <div className="flex h-full">
+              <div className="flex-1">
+                <GraphCanvas contextNodes={nodes} onNodeClick={onNodeClick} />
+              </div>
+              <div className="w-80 shrink-0 border-l border-gray-200">
+                <NodeDetailPanel
+                  node={activeNode}
+                  linkedMessages={activeNodeMessages}
+                  onClose={onClearActiveNode}
+                />
+              </div>
+            </div>
           ) : (
-            <GraphCanvas contextNodes={nodes} onNodeClick={onNodeClick} />
+            // Drawer mode (or maximized with no node selected):
+            // canvas on top, detail panel slides in below
+            <div className="flex h-full flex-col">
+              <div className={activeNode ? "h-[55%]" : "h-full"}>
+                <GraphCanvas contextNodes={nodes} onNodeClick={onNodeClick} />
+              </div>
+              {activeNode && (
+                <div className="h-[45%]">
+                  <NodeDetailPanel
+                    node={activeNode}
+                    linkedMessages={activeNodeMessages}
+                    onClose={onClearActiveNode}
+                  />
+                </div>
+              )}
+            </div>
           )}
         </div>
       </aside>
