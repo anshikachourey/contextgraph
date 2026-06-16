@@ -8,6 +8,7 @@ type GraphDrawerProps = {
   nodes: ContextNode[];
   onToggleMaximize: () => void;
   onClose: () => void;
+  onNodeClick: (nodeId: string) => void;
 };
 
 export default function GraphDrawer({
@@ -16,6 +17,7 @@ export default function GraphDrawer({
   nodes,
   onToggleMaximize,
   onClose,
+  onNodeClick,
 }: GraphDrawerProps) {
   return (
     <>
@@ -49,7 +51,7 @@ export default function GraphDrawer({
               </div>
             </div>
           ) : (
-            <GraphCanvas contextNodes={nodes} />
+            <GraphCanvas contextNodes={nodes} onNodeClick={onNodeClick} />
           )}
         </div>
       </aside>

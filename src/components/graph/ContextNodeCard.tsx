@@ -1,20 +1,22 @@
 "use client";
 
-import { Handle, Position } from "@xyflow/react";
-import type { NodeProps } from "@xyflow/react";
+import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 
-// The data shape stored on each React Flow node
+// The data payload stored on each React Flow node
 export type ContextNodeData = {
   title: string;
   summary: string;
   messageCount: number;
 };
 
+// Full React Flow node type — data shape + type discriminator
+export type ContextFlowNode = Node<ContextNodeData, "contextNode">;
+
 // React Flow calls this component to render each node on the canvas
 export default function ContextNodeCard({
   data,
   selected,
-}: NodeProps<ContextNodeData>) {
+}: NodeProps<ContextFlowNode>) {
   return (
     <>
       {/* Target handle — where edges arrive (top) */}

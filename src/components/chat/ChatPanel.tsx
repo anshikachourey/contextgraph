@@ -5,6 +5,7 @@ import ChatInput from "./ChatInput";
 type ChatPanelProps = {
   messages: ChatMessageType[];
   selectedMessageIds: string[];
+  highlightedMessageIds: string[];
   onToggleMessage: (id: string) => void;
   onCreateNode: () => void;
 };
@@ -12,6 +13,7 @@ type ChatPanelProps = {
 export default function ChatPanel({
   messages,
   selectedMessageIds,
+  highlightedMessageIds,
   onToggleMessage,
   onCreateNode,
 }: ChatPanelProps) {
@@ -40,6 +42,7 @@ export default function ChatPanel({
             key={message.id}
             message={message}
             isSelected={selectedMessageIds.includes(message.id)}
+            isHighlighted={highlightedMessageIds.includes(message.id)}
             onToggle={onToggleMessage}
           />
         ))}

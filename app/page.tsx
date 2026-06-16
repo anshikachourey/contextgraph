@@ -12,6 +12,14 @@ export default function Home() {
   const [isGraphMaximized, setIsGraphMaximized] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [nodes, setNodes] = useState<ContextNode[]>([]);
+  // Which graph node is currently active (clicked) — null means none
+  const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
+
+  // Derive the highlighted message ids from the active node
+  const highlightedMessageIds =
+    activeNodeId != null
+      ? (nodes.find((n) => n.id === activeNodeId)?.messageIds ?? [])
+      : [];
 
   function toggleMessageSelection(messageId: string) {
     setSelectedMessageIds((current) =>
@@ -40,6 +48,12 @@ export default function Home() {
   function handleCloseGraph() {
     setIsGraphOpen(false);
     setIsGraphMaximized(false);
+    setActiveNodeId(null);
+  }
+
+  function handleNodeClick(nodeId: string) {
+    // Toggle: clicking the same node again clears the highlight
+    setActiveNodeId((current) => (current === nodeId ? null : nodeId));
   }
 
   return (
@@ -49,6 +63,7 @@ export default function Home() {
       <ChatPanel
         messages={mockMessages}
         selectedMessageIds={selectedMessageIds}
+        highlightedMessageIds={highlightedMessageIds}
         onToggleMessage={toggleMessageSelection}
         onCreateNode={createNodeFromSelection}
       />
@@ -59,6 +74,7 @@ export default function Home() {
         nodes={nodes}
         onToggleMaximize={() => setIsGraphMaximized((prev) => !prev)}
         onClose={handleCloseGraph}
+        onNodeClick={handleNodeClick}
       />
     </main>
   );
