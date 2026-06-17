@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { ChatMessage } from "@/src/types/message";
+import type { ContextNode } from "@/src/types/node";
 import type {
   GenerateNodeSuggestionRequest,
   GenerateNodeSuggestionResponse,
@@ -10,9 +11,9 @@ import type {
 
 type CreateNodeModalProps = {
   selectedMessages: ChatMessage[];
-  // Pre-fill values — empty strings today, callers may pass AI-generated
-  // strings in future. `initialTitle`/`initialSummary` are intentionally
-  // separate from `title`/`summary` so the modal owns its own form state.
+  // Nodes that share some (but not all) messages with the current selection.
+  // Non-empty means the user should be warned before creating.
+  overlappingNodes?: ContextNode[];
   initialTitle?: string;
   initialSummary?: string;
   onConfirm: (title: string, summary: string) => void;
@@ -21,6 +22,7 @@ type CreateNodeModalProps = {
 
 export default function CreateNodeModal({
   selectedMessages,
+  overlappingNodes = [],
   initialTitle = "",
   initialSummary = "",
   onConfirm,
@@ -125,6 +127,31 @@ export default function CreateNodeModal({
         </div>
 
         <div className="space-y-5 px-6 py-5">
+          {/* Overlap warning — shown when selected messages already belong to other nodes.
+              This is NOT a blocker. Messages may legitimately belong to multiple nodes. */}
+          {overlappingNodes.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-sm font-medium text-amber-800">
+                Some selected messages already belong to{" "}
+                {overlappingNodes.length === 1
+                  ? "another node"
+                  : `${overlappingNodes.length} other nodes`}
+                :
+              </p>
+              <ul className="mt-1.5 space-y-0.5">
+                {overlappingNodes.map((n) => (
+                  <li key={n.id} className="text-sm text-amber-700">
+                    · {n.title}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-amber-600">
+                You can still create this node. Shared messages will be linked
+                to both topics.
+              </p>
+            </div>
+          )}
+
           {/* AI generation */}
           <div>
             <button

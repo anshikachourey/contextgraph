@@ -6,16 +6,20 @@ type ChatPanelProps = {
   messages: ChatMessageType[];
   selectedMessageIds: string[];
   highlightedMessageIds: string[];
+  isAssistantResponding: boolean;
   onToggleMessage: (id: string) => void;
   onCreateNode: () => void;
+  onSendMessage: (content: string) => void;
 };
 
 export default function ChatPanel({
   messages,
   selectedMessageIds,
   highlightedMessageIds,
+  isAssistantResponding,
   onToggleMessage,
   onCreateNode,
+  onSendMessage,
 }: ChatPanelProps) {
   return (
     <section className="mx-auto flex min-h-screen max-w-3xl flex-col justify-end px-6 pb-10 pt-24">
@@ -36,7 +40,7 @@ export default function ChatPanel({
       </div>
 
       {/* Message list */}
-      <div className="mb-8 space-y-5">
+      <div className="mb-4 space-y-5">
         {messages.map((message) => (
           <ChatMessage
             key={message.id}
@@ -46,10 +50,31 @@ export default function ChatPanel({
             onToggle={onToggleMessage}
           />
         ))}
+
+        {/* Typing indicator — shown while assistant is responding */}
+        {isAssistantResponding && (
+          <div className="flex items-center gap-2 rounded-2xl bg-blue-50 px-4 py-3">
+            <span className="text-sm font-semibold text-gray-600">Assistant</span>
+            <span className="flex gap-1">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-gray-400"
+                  style={{ animationDelay: `${i * 150}ms` }}
+                />
+              ))}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Input */}
-      <ChatInput />
+      <div className="mb-4">
+        <ChatInput
+          onSendMessage={onSendMessage}
+          disabled={isAssistantResponding}
+        />
+      </div>
     </section>
   );
 }

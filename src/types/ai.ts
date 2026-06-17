@@ -1,4 +1,4 @@
-// Types shared between the API route and the frontend fetch call.
+// Types shared between API routes and the frontend fetch calls.
 // Keeping them in src/types ensures both sides use the same contract.
 
 export type GenerateNodeSuggestionRequest = {
@@ -14,5 +14,21 @@ export type GenerateNodeSuggestionResponse = {
 };
 
 export type GenerateNodeSuggestionError = {
+  error: string;
+};
+
+// /api/chat
+export type ChatRequest = {
+  messages: Array<{
+    role: "user" | "assistant";
+    content: string;
+  }>;
+};
+
+export type ChatResponse = {
+  content: string;
+};
+
+export type ChatErrorResponse = {
   error: string;
 };
