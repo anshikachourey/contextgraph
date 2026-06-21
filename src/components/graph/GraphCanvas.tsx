@@ -78,12 +78,14 @@ type GraphCanvasProps = {
   contextNodes: ContextNode[];
   semanticEdges: SemanticEdge[];
   onNodeClick: (nodeId: string) => void;
+  onEdgeClick: (edgeId: string) => void;
 };
 
 export default function GraphCanvas({
   contextNodes,
   semanticEdges,
   onNodeClick,
+  onEdgeClick,
 }: GraphCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<ContextFlowNode>(
     buildFlowNodes(contextNodes, semanticEdges),
@@ -115,6 +117,7 @@ export default function GraphCanvas({
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
       onNodeClick={(_event, node) => onNodeClick(node.id)}
+      onEdgeClick={(_event, edge) => onEdgeClick(edge.id)}
       nodeTypes={nodeTypes}
       fitView
       fitViewOptions={{ padding: 0.3 }}

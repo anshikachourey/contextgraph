@@ -27,6 +27,7 @@ export default function Home() {
   const [isGraphMaximized, setIsGraphMaximized] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
+  const [activeEdgeId, setActiveEdgeId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   // Nodes that partially overlap the current selection — passed to the modal as a warning
   const [overlappingNodes, setOverlappingNodes] = useState<ContextNode[]>([]);
@@ -55,6 +56,7 @@ export default function Home() {
 
   // Derived values
   const activeNode = nodes.find((n) => n.id === activeNodeId) ?? null;
+  const activeEdge = semanticEdges.find((e) => e.id === activeEdgeId) ?? null;
   const activeNodeMessages = activeNode
     ? messages.filter((m) => activeNode.messageIds.includes(m.id))
     : [];
@@ -150,8 +152,7 @@ export default function Home() {
     );
 
     if (exactDuplicate) {
-      // Don't open the modal — the user is recreating an existing topic exactly.
-      // Open the graph and focus the duplicate node so they can see it.
+      setActiveEdgeId(null);
       setActiveNodeId(exactDuplicate.id);
       setIsGraphOpen(true);
       return;
@@ -203,10 +204,25 @@ export default function Home() {
     setIsGraphOpen(false);
     setIsGraphMaximized(false);
     setActiveNodeId(null);
+    setActiveEdgeId(null);
   }
 
+  // Clicking a node clears edge selection, toggle for same node
   function handleNodeClick(nodeId: string) {
+    setActiveEdgeId(null);
     setActiveNodeId((current) => (current === nodeId ? null : nodeId));
+  }
+
+  // Clicking an edge clears node selection, toggle for same edge
+  function handleEdgeClick(edgeId: string) {
+    setActiveNodeId(null);
+    setActiveEdgeId((current) => (current === edgeId ? null : edgeId));
+  }
+
+  // Close any detail panel
+  function handleClearSelection() {
+    setActiveNodeId(null);
+    setActiveEdgeId(null);
   }
 
   return (
@@ -230,10 +246,12 @@ export default function Home() {
         semanticEdges={semanticEdges}
         activeNode={activeNode}
         activeNodeMessages={activeNodeMessages}
+        activeEdge={activeEdge}
         onToggleMaximize={() => setIsGraphMaximized((prev) => !prev)}
         onClose={handleCloseGraph}
         onNodeClick={handleNodeClick}
-        onClearActiveNode={() => setActiveNodeId(null)}
+        onEdgeClick={handleEdgeClick}
+        onClearSelection={handleClearSelection}
       />
 
       {isModalOpen && (

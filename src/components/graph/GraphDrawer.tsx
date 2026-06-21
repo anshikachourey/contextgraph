@@ -4,6 +4,7 @@ import type { SemanticEdge } from "@/src/types/edge";
 import GraphToolbar from "./GraphToolbar";
 import GraphCanvas from "./GraphCanvas";
 import NodeDetailPanel from "./NodeDetailPanel";
+import EdgeDetailPanel from "./EdgeDetailPanel";
 
 type GraphDrawerProps = {
   isOpen: boolean;
@@ -12,10 +13,12 @@ type GraphDrawerProps = {
   semanticEdges: SemanticEdge[];
   activeNode: ContextNode | null;
   activeNodeMessages: ChatMessage[];
+  activeEdge: SemanticEdge | null;
   onToggleMaximize: () => void;
   onClose: () => void;
   onNodeClick: (nodeId: string) => void;
-  onClearActiveNode: () => void;
+  onEdgeClick: (edgeId: string) => void;
+  onClearSelection: () => void;
 };
 
 export default function GraphDrawer({
@@ -25,12 +28,47 @@ export default function GraphDrawer({
   semanticEdges,
   activeNode,
   activeNodeMessages,
+  activeEdge,
   onToggleMaximize,
   onClose,
   onNodeClick,
-  onClearActiveNode,
+  onEdgeClick,
+  onClearSelection,
 }: GraphDrawerProps) {
   const isEmpty = nodes.length === 0;
+  const hasDetailPanel = activeNode !== null || activeEdge !== null;
+
+  // Resolve edge node titles
+  const edgeSourceTitle = activeEdge
+    ? (nodes.find((n) => n.id === activeEdge.sourceNodeId)?.title ?? "Unknown")
+    : "";
+  const edgeTargetTitle = activeEdge
+    ? (nodes.find((n) => n.id === activeEdge.targetNodeId)?.title ?? "Unknown")
+    : "";
+
+  // Which detail panel to render
+  function renderDetailPanel() {
+    if (activeNode) {
+      return (
+        <NodeDetailPanel
+          node={activeNode}
+          linkedMessages={activeNodeMessages}
+          onClose={onClearSelection}
+        />
+      );
+    }
+    if (activeEdge) {
+      return (
+        <EdgeDetailPanel
+          edge={activeEdge}
+          sourceTitle={edgeSourceTitle}
+          targetTitle={edgeTargetTitle}
+          onClose={onClearSelection}
+        />
+      );
+    }
+    return null;
+  }
 
   return (
     <>
@@ -51,10 +89,9 @@ export default function GraphDrawer({
           onClose={onClose}
         />
 
-        {/* Body — everything below the toolbar */}
+        {/* Body */}
         <div className="h-[calc(100%-4rem)]">
           {isEmpty ? (
-            // Empty state
             <div className="flex h-full items-center justify-center bg-gray-50 text-center text-gray-500">
               <div>
                 <div className="mb-3 text-4xl">●──●</div>
@@ -64,35 +101,32 @@ export default function GraphDrawer({
                 </p>
               </div>
             </div>
-          ) : isMaximized && activeNode ? (
-            // Maximized + node selected: canvas left, detail panel right
+          ) : isMaximized && hasDetailPanel ? (
             <div className="flex h-full">
               <div className="flex-1">
-                <GraphCanvas contextNodes={nodes} semanticEdges={semanticEdges} onNodeClick={onNodeClick} />
+                <GraphCanvas
+                  contextNodes={nodes}
+                  semanticEdges={semanticEdges}
+                  onNodeClick={onNodeClick}
+                  onEdgeClick={onEdgeClick}
+                />
               </div>
               <div className="w-80 shrink-0 border-l border-gray-200">
-                <NodeDetailPanel
-                  node={activeNode}
-                  linkedMessages={activeNodeMessages}
-                  onClose={onClearActiveNode}
-                />
+                {renderDetailPanel()}
               </div>
             </div>
           ) : (
-            // Drawer mode (or maximized with no node selected):
-            // canvas on top, detail panel slides in below
             <div className="flex h-full flex-col">
-              <div className={activeNode ? "h-[55%]" : "h-full"}>
-                <GraphCanvas contextNodes={nodes} semanticEdges={semanticEdges} onNodeClick={onNodeClick} />
+              <div className={hasDetailPanel ? "h-[55%]" : "h-full"}>
+                <GraphCanvas
+                  contextNodes={nodes}
+                  semanticEdges={semanticEdges}
+                  onNodeClick={onNodeClick}
+                  onEdgeClick={onEdgeClick}
+                />
               </div>
-              {activeNode && (
-                <div className="h-[45%]">
-                  <NodeDetailPanel
-                    node={activeNode}
-                    linkedMessages={activeNodeMessages}
-                    onClose={onClearActiveNode}
-                  />
-                </div>
+              {hasDetailPanel && (
+                <div className="h-[45%]">{renderDetailPanel()}</div>
               )}
             </div>
           )}
