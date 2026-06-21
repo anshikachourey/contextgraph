@@ -181,6 +181,8 @@ export default function Home() {
         body: JSON.stringify({
           conversationId,
           node: newNode,
+          // Pass the actual message objects so the API can generate evidence summary
+          linkedMessages: selectedMessages,
           metadata: { createdBy: "user" },
         }),
       }).catch(() => {

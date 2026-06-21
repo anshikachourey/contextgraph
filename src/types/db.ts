@@ -20,7 +20,12 @@ export type DbNode = {
   conversation_id: string;
   title: string;
   summary: string;
+  // AI-generated bullet-point summary of the linked conversation evidence.
+  // Null for nodes created before this column was added.
+  evidence_summary: string | null;
   metadata: NodeMetadata;
+  // Stored as jsonb (number[]). Null for nodes without embeddings.
+  embedding: number[] | null;
   created_at: string;
 };
 

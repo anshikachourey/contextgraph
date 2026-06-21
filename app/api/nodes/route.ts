@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { persistNode } from "@/src/lib/db/nodes";
 import type { ContextNode } from "@/src/types/node";
+import type { ChatMessage } from "@/src/types/message";
 import type { NodeMetadata } from "@/src/types/db";
 
 type NodesRequest = {
   conversationId: string;
   node: ContextNode;
+  linkedMessages: ChatMessage[];
   metadata?: NodeMetadata;
 };
 
@@ -26,9 +28,14 @@ export async function POST(
 
   const b = body as Record<string, unknown>;
 
-  if (typeof b.conversationId !== "string" || typeof b.node !== "object" || !b.node) {
+  if (
+    typeof b.conversationId !== "string" ||
+    typeof b.node !== "object" ||
+    !b.node ||
+    !Array.isArray(b.linkedMessages)
+  ) {
     return NextResponse.json(
-      { error: "Request must include conversationId and node." },
+      { error: "Request must include conversationId, node, and linkedMessages." },
       { status: 400 },
     );
   }
@@ -37,6 +44,7 @@ export async function POST(
     await persistNode(
       b.conversationId,
       b.node as ContextNode,
+      b.linkedMessages as ChatMessage[],
       (b.metadata as NodeMetadata) ?? {},
     );
     return NextResponse.json({}, { status: 200 });
