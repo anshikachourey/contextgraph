@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect } from "react";
 import {
   ReactFlow,
   Background,
@@ -14,6 +14,7 @@ import {
 } from "@xyflow/react";
 import type { ContextNode } from "@/src/types/node";
 import type { SemanticEdge } from "@/src/types/edge";
+import { layoutGraph } from "@/src/lib/graphLayout";
 import ContextNodeCard, {
   type ContextFlowNode,
 } from "./ContextNodeCard";
@@ -21,19 +22,37 @@ import ContextNodeCard, {
 // Tell React Flow which component to use for our custom node type
 const nodeTypes = { contextNode: ContextNodeCard };
 
-// Arrange nodes in a simple top-to-bottom column layout.
-// Later this can be replaced with a force-directed or dagre layout.
-function buildFlowNodes(contextNodes: ContextNode[]): ContextFlowNode[] {
-  return contextNodes.map((node, index) => ({
-    id: node.id,
-    type: "contextNode" as const,
-    position: { x: 100, y: index * 180 },
-    data: {
-      title: node.title,
-      summary: node.summary,
-      messageCount: node.messageIds.length,
-    },
+// Build React Flow nodes with dagre-computed positions.
+// Connected nodes are positioned near each other; isolated nodes
+// are stacked in a column at the end.
+function buildFlowNodes(
+  contextNodes: ContextNode[],
+  semanticEdges: SemanticEdge[],
+): ContextFlowNode[] {
+  // Compute layout using semantic edges as graph structure
+  const edges = semanticEdges.map((se) => ({
+    source: se.sourceNodeId,
+    target: se.targetNodeId,
   }));
+
+  const positions = layoutGraph(
+    contextNodes.map((n) => n.id),
+    edges,
+  );
+
+  return contextNodes.map((node) => {
+    const pos = positions.get(node.id) ?? { x: 100, y: 0 };
+    return {
+      id: node.id,
+      type: "contextNode" as const,
+      position: pos,
+      data: {
+        title: node.title,
+        summary: node.summary,
+        messageCount: node.messageIds.length,
+      },
+    };
+  });
 }
 
 // Convert persisted semantic edges into React Flow edge objects.
@@ -67,18 +86,17 @@ export default function GraphCanvas({
   onNodeClick,
 }: GraphCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<ContextFlowNode>(
-    buildFlowNodes(contextNodes),
+    buildFlowNodes(contextNodes, semanticEdges),
   );
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(
     buildFlowEdges(semanticEdges),
   );
 
-  // Keep the canvas in sync when context nodes change
+  // Recompute layout when nodes or edges change
   useEffect(() => {
-    setNodes(buildFlowNodes(contextNodes));
-  }, [contextNodes, setNodes]);
+    setNodes(buildFlowNodes(contextNodes, semanticEdges));
+  }, [contextNodes, semanticEdges, setNodes]);
 
-  // Keep edges in sync when semantic edges change
   useEffect(() => {
     setEdges(buildFlowEdges(semanticEdges));
   }, [semanticEdges, setEdges]);
