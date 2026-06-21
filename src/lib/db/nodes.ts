@@ -85,6 +85,7 @@ export async function loadNodesWithEmbeddings(
   Array<{
     id: string;
     title: string;
+    summary: string;
     evidenceSummary: string | null;
     embedding: number[] | null;
   }>
@@ -93,7 +94,7 @@ export async function loadNodesWithEmbeddings(
 
   const { data, error } = await db
     .from("nodes")
-    .select("id, title, evidence_summary, embedding")
+    .select("id, title, summary, evidence_summary, embedding")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
 
@@ -103,11 +104,13 @@ export async function loadNodesWithEmbeddings(
     (row: {
       id: string;
       title: string;
+      summary: string;
       evidence_summary: unknown;
       embedding: unknown;
     }) => ({
       id: row.id,
       title: row.title,
+      summary: row.summary,
       evidenceSummary:
         typeof row.evidence_summary === "string" ? row.evidence_summary : null,
       embedding: Array.isArray(row.embedding) ? (row.embedding as number[]) : null,

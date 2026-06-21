@@ -8,6 +8,7 @@ import CreateNodeModal from "@/src/components/nodes/CreateNodeModal";
 import { mockMessages } from "@/src/data/mockMessages";
 import type { ContextNode } from "@/src/types/node";
 import type { ChatMessage } from "@/src/types/message";
+import type { SemanticEdge } from "@/src/types/edge";
 import type { ChatRequest, ChatResponse, ChatErrorResponse } from "@/src/types/ai";
 import type { ConversationRouteResponse } from "@/app/api/conversation/route";
 import { checkNodeOverlap } from "@/src/lib/nodeOverlap";
@@ -18,6 +19,7 @@ export default function Home() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(mockMessages);
   const [nodes, setNodes] = useState<ContextNode[]>([]);
+  const [semanticEdges, setSemanticEdges] = useState<SemanticEdge[]>([]);
   const [isLoadingConversation, setIsLoadingConversation] = useState(true);
 
   const [isAssistantResponding, setIsAssistantResponding] = useState(false);
@@ -40,6 +42,7 @@ export default function Home() {
         setConversationId(data.conversationId);
         setMessages(data.messages);
         setNodes(data.nodes);
+        setSemanticEdges(data.edges);
       } catch {
         // Network failure — keep the mock data so the UI remains usable
       } finally {
@@ -224,6 +227,7 @@ export default function Home() {
         isOpen={isGraphOpen}
         isMaximized={isGraphMaximized}
         nodes={nodes}
+        semanticEdges={semanticEdges}
         activeNode={activeNode}
         activeNodeMessages={activeNodeMessages}
         onToggleMaximize={() => setIsGraphMaximized((prev) => !prev)}

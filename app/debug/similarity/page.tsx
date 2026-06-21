@@ -9,6 +9,7 @@ import {
   STRONGLY_RELATED_THRESHOLD,
   POSSIBLY_RELATED_THRESHOLD,
 } from "@/src/lib/similarityThresholds";
+import SuggestedEdgesPanel from "@/src/components/debug/SuggestedEdgesPanel";
 
 function scoreColor(score: number): string {
   if (score >= STRONGLY_RELATED_THRESHOLD) return "text-green-700";
@@ -248,6 +249,9 @@ export default async function SimilarityDebugPage() {
               </>
             )}
           </section>
+
+          {/* ── Suggested Edges (on-demand, client component) ───────────── */}
+          {!needsMoreNodes && <SuggestedEdgesPanel />}
         </>
       )}
     </main>

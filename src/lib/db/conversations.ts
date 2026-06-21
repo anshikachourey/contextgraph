@@ -2,11 +2,14 @@ import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import type { DbConversation, DbMessage, DbNode, DbNodeMessage } from "@/src/types/db";
 import type { ChatMessage } from "@/src/types/message";
 import type { ContextNode } from "@/src/types/node";
+import type { SemanticEdge } from "@/src/types/edge";
+import { loadEdges } from "./edges";
 
 export type ConversationData = {
   conversation: DbConversation;
   messages: ChatMessage[];
   nodes: ContextNode[];
+  edges: SemanticEdge[];
 };
 
 // Load the most recent conversation with all its messages and nodes.
@@ -73,7 +76,10 @@ export async function loadLatestConversation(): Promise<ConversationData | null>
       .map((nm) => nm.message_id),
   }));
 
-  return { conversation, messages, nodes };
+  // Load persisted semantic edges
+  const edges = await loadEdges(conversation.id);
+
+  return { conversation, messages, nodes, edges };
 }
 
 // Create a new conversation and seed it with initial messages.
@@ -111,5 +117,6 @@ export async function createConversation(
     conversation,
     messages: seedMessages,
     nodes: [],
+    edges: [],
   };
 }

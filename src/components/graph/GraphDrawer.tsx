@@ -1,5 +1,6 @@
 import type { ContextNode } from "@/src/types/node";
 import type { ChatMessage } from "@/src/types/message";
+import type { SemanticEdge } from "@/src/types/edge";
 import GraphToolbar from "./GraphToolbar";
 import GraphCanvas from "./GraphCanvas";
 import NodeDetailPanel from "./NodeDetailPanel";
@@ -8,6 +9,7 @@ type GraphDrawerProps = {
   isOpen: boolean;
   isMaximized: boolean;
   nodes: ContextNode[];
+  semanticEdges: SemanticEdge[];
   activeNode: ContextNode | null;
   activeNodeMessages: ChatMessage[];
   onToggleMaximize: () => void;
@@ -20,6 +22,7 @@ export default function GraphDrawer({
   isOpen,
   isMaximized,
   nodes,
+  semanticEdges,
   activeNode,
   activeNodeMessages,
   onToggleMaximize,
@@ -65,7 +68,7 @@ export default function GraphDrawer({
             // Maximized + node selected: canvas left, detail panel right
             <div className="flex h-full">
               <div className="flex-1">
-                <GraphCanvas contextNodes={nodes} onNodeClick={onNodeClick} />
+                <GraphCanvas contextNodes={nodes} semanticEdges={semanticEdges} onNodeClick={onNodeClick} />
               </div>
               <div className="w-80 shrink-0 border-l border-gray-200">
                 <NodeDetailPanel
@@ -80,7 +83,7 @@ export default function GraphDrawer({
             // canvas on top, detail panel slides in below
             <div className="flex h-full flex-col">
               <div className={activeNode ? "h-[55%]" : "h-full"}>
-                <GraphCanvas contextNodes={nodes} onNodeClick={onNodeClick} />
+                <GraphCanvas contextNodes={nodes} semanticEdges={semanticEdges} onNodeClick={onNodeClick} />
               </div>
               {activeNode && (
                 <div className="h-[45%]">

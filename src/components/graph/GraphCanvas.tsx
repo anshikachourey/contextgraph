@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import {
   ReactFlow,
   Background,
@@ -13,6 +13,7 @@ import {
   type OnConnect,
 } from "@xyflow/react";
 import type { ContextNode } from "@/src/types/node";
+import type { SemanticEdge } from "@/src/types/edge";
 import ContextNodeCard, {
   type ContextFlowNode,
 } from "./ContextNodeCard";
@@ -35,23 +36,54 @@ function buildFlowNodes(contextNodes: ContextNode[]): ContextFlowNode[] {
   }));
 }
 
+// Convert persisted semantic edges into React Flow edge objects.
+// Suggested edges render as dashed + faint.
+function buildFlowEdges(semanticEdges: SemanticEdge[]): Edge[] {
+  return semanticEdges.map((se) => ({
+    id: se.id,
+    source: se.sourceNodeId,
+    target: se.targetNodeId,
+    type: "default",
+    animated: false,
+    style: {
+      strokeDasharray: "5 5",
+      stroke: "#94a3b8", // slate-400
+      strokeWidth: 1.5,
+      opacity: 0.7,
+    },
+    label: "",
+  }));
+}
+
 type GraphCanvasProps = {
   contextNodes: ContextNode[];
+  semanticEdges: SemanticEdge[];
   onNodeClick: (nodeId: string) => void;
 };
 
-export default function GraphCanvas({ contextNodes, onNodeClick }: GraphCanvasProps) {
+export default function GraphCanvas({
+  contextNodes,
+  semanticEdges,
+  onNodeClick,
+}: GraphCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<ContextFlowNode>(
     buildFlowNodes(contextNodes),
   );
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(
+    buildFlowEdges(semanticEdges),
+  );
 
-  // Keep the canvas in sync when new context nodes are created
+  // Keep the canvas in sync when context nodes change
   useEffect(() => {
     setNodes(buildFlowNodes(contextNodes));
   }, [contextNodes, setNodes]);
 
-  // Allow users to draw edges between nodes manually
+  // Keep edges in sync when semantic edges change
+  useEffect(() => {
+    setEdges(buildFlowEdges(semanticEdges));
+  }, [semanticEdges, setEdges]);
+
+  // Allow users to draw edges between nodes manually (kept for future use)
   const onConnect: OnConnect = useCallback(
     (connection) => setEdges((current) => addEdge(connection, current)),
     [setEdges],

@@ -6,11 +6,13 @@ import {
 import { mockMessages } from "@/src/data/mockMessages";
 import type { ChatMessage } from "@/src/types/message";
 import type { ContextNode } from "@/src/types/node";
+import type { SemanticEdge } from "@/src/types/edge";
 
 export type ConversationRouteResponse = {
   conversationId: string;
   messages: ChatMessage[];
   nodes: ContextNode[];
+  edges: SemanticEdge[];
 };
 
 type ErrorResponse = { error: string };
@@ -31,6 +33,7 @@ export async function GET(): Promise<
       conversationId: data.conversation.id,
       messages: data.messages,
       nodes: data.nodes,
+      edges: data.edges,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

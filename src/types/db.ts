@@ -42,3 +42,15 @@ export type NodeMetadata = {
   editedSummary?: boolean;
   acceptedWithoutChanges?: boolean;
 };
+
+export type DbEdge = {
+  id: string;
+  conversation_id: string;
+  source_node_id: string;
+  target_node_id: string;
+  relationship_type: string;
+  status: string;
+  similarity_score: number;
+  explanation: string;
+  created_at: string;
+};
