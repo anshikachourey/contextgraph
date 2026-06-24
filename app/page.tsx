@@ -9,9 +9,12 @@ import { mockMessages } from "@/src/data/mockMessages";
 import type { ContextNode } from "@/src/types/node";
 import type { ChatMessage } from "@/src/types/message";
 import type { SemanticEdge } from "@/src/types/edge";
+import type { AiDraft } from "@/src/types/draft";
 import type { ChatRequest, ChatResponse, ChatErrorResponse } from "@/src/types/ai";
 import type { ConversationRouteResponse } from "@/app/api/conversation/route";
 import { checkNodeOverlap } from "@/src/lib/nodeOverlap";
+import { AI_DRAFT_CHECK_INTERVAL, AI_DRAFT_CANDIDATE_WINDOW } from "@/src/lib/aiDraftConfig";
+import AiDraftNotification from "@/src/components/nodes/AiDraftNotification";
 
 export default function Home() {
   // Conversation is loaded from the DB on mount.
@@ -31,6 +34,12 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   // Nodes that partially overlap the current selection — passed to the modal as a warning
   const [overlappingNodes, setOverlappingNodes] = useState<ContextNode[]>([]);
+
+  // AI Draft state
+  const [aiDraft, setAiDraft] = useState<AiDraft | null>(null);
+  const [assistantResponseCount, setAssistantResponseCount] = useState(0);
+  // When reviewing a draft, open modal with draft values pre-filled
+  const [isDraftReview, setIsDraftReview] = useState(false);
 
   // Load conversation from the database on mount
   useEffect(() => {
@@ -128,6 +137,17 @@ export default function Home() {
 
     setMessages((current) => [...current, assistantMessage!]);
 
+    // Track assistant response count for AI draft cadence
+    const newCount = assistantResponseCount + 1;
+    setAssistantResponseCount(newCount);
+
+    // Check if we should generate a draft
+    if (newCount % AI_DRAFT_CHECK_INTERVAL === 0) {
+      // Fire and forget — don't block the chat UX
+      const allMessages = [...updatedMessages, assistantMessage!];
+      generateAiDraft(allMessages);
+    }
+
     // Persist both messages — fire and forget
     if (conversationId) {
       fetch("/api/messages", {
@@ -142,6 +162,55 @@ export default function Home() {
       });
     }
   }
+
+  // ─── AI Draft generation ──────────────────────────────────────────────────
+
+  async function generateAiDraft(allMessages: ChatMessage[]) {
+    if (!conversationId) return;
+
+    // Take the last N messages as the candidate window
+    const candidateMessages = allMessages.slice(-AI_DRAFT_CANDIDATE_WINDOW);
+
+    try {
+      const response = await fetch("/api/draft-node", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId,
+          messages: candidateMessages.map((m) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+          })),
+        }),
+      });
+
+      if (!response.ok) return; // Silently ignore failures
+
+      const data = await response.json();
+      if (data.suppressed) return; // Topic already covered by existing node
+
+      setAiDraft({
+        title: data.title,
+        summary: data.summary,
+        candidateMessages,
+      });
+    } catch {
+      // Silently ignore — draft generation is non-critical
+    }
+  }
+
+  function handleDraftReview() {
+    if (!aiDraft) return;
+    setIsDraftReview(true);
+    setIsModalOpen(true);
+  }
+
+  function handleDraftDismiss() {
+    setAiDraft(null);
+  }
+
+  // ─── Manual node creation ───────────────────────────────────────────────────
 
   function handleOpenModal() {
     if (selectedMessageIds.length === 0) return;
@@ -163,11 +232,20 @@ export default function Home() {
   }
 
   function handleModalConfirm(title: string, summary: string) {
+    // Determine which messages to link — from draft or from manual selection
+    const linkedMessageIds = isDraftReview && aiDraft
+      ? aiDraft.candidateMessages.map((m) => m.id)
+      : selectedMessageIds;
+
+    const linkedMsgs = isDraftReview && aiDraft
+      ? aiDraft.candidateMessages
+      : selectedMessages;
+
     const newNode: ContextNode = {
       id: crypto.randomUUID(),
       title,
       summary,
-      messageIds: selectedMessageIds,
+      messageIds: linkedMessageIds,
     };
 
     // Optimistic update
@@ -176,8 +254,10 @@ export default function Home() {
     setOverlappingNodes([]);
     setIsModalOpen(false);
     setIsGraphOpen(true);
+    setAiDraft(null);
+    setIsDraftReview(false);
 
-    // Persist node — fire and forget
+    // Persist node + auto-compute edges — then refresh state to pick up new edges
     if (conversationId) {
       fetch("/api/nodes", {
         method: "POST",
@@ -185,19 +265,37 @@ export default function Home() {
         body: JSON.stringify({
           conversationId,
           node: newNode,
-          // Pass the actual message objects so the API can generate evidence summary
-          linkedMessages: selectedMessages,
-          metadata: { createdBy: "user" },
+          linkedMessages: linkedMsgs,
+          metadata: { createdBy: isDraftReview ? "ai" : "user" },
         }),
-      }).catch(() => {
-        // Silently ignore persist failures
-      });
+      })
+        .then((res) => {
+          if (res.ok) {
+            // Refetch conversation to get updated edges
+            return fetch("/api/conversation");
+          }
+        })
+        .then((res) => {
+          if (res && res.ok) return res.json();
+        })
+        .then((data) => {
+          if (data) {
+            const conv = data as ConversationRouteResponse;
+            setNodes(conv.nodes);
+            setSemanticEdges(conv.edges);
+          }
+        })
+        .catch(() => {
+          // Silently ignore — node was already added optimistically
+        });
     }
   }
 
   function handleModalCancel() {
     setIsModalOpen(false);
     setOverlappingNodes([]);
+    setIsDraftReview(false);
+    // Don't clear aiDraft on cancel — the notification stays visible
   }
 
   function handleCloseGraph() {
@@ -239,6 +337,16 @@ export default function Home() {
         onSendMessage={handleSendMessage}
       />
 
+      {/* AI Draft notification pill */}
+      {aiDraft && !isModalOpen && (
+        <div className="fixed bottom-24 left-1/2 z-20 -translate-x-1/2">
+          <AiDraftNotification
+            onReview={handleDraftReview}
+            onDismiss={handleDraftDismiss}
+          />
+        </div>
+      )}
+
       <GraphDrawer
         isOpen={isGraphOpen}
         isMaximized={isGraphMaximized}
@@ -256,8 +364,12 @@ export default function Home() {
 
       {isModalOpen && (
         <CreateNodeModal
-          selectedMessages={selectedMessages}
-          overlappingNodes={overlappingNodes}
+          selectedMessages={
+            isDraftReview && aiDraft ? aiDraft.candidateMessages : selectedMessages
+          }
+          overlappingNodes={isDraftReview ? [] : overlappingNodes}
+          initialTitle={isDraftReview && aiDraft ? aiDraft.title : ""}
+          initialSummary={isDraftReview && aiDraft ? aiDraft.summary : ""}
           onConfirm={handleModalConfirm}
           onCancel={handleModalCancel}
         />

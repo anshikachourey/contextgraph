@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { persistNode } from "@/src/lib/db/nodes";
+import { persistNode, loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
+import { persistEdges } from "@/src/lib/db/edges";
+import { computeSuggestedEdges } from "@/src/lib/edgeSuggestions";
+import { STRONGLY_RELATED_THRESHOLD } from "@/src/lib/similarityThresholds";
 import type { ContextNode } from "@/src/types/node";
 import type { ChatMessage } from "@/src/types/message";
 import type { NodeMetadata } from "@/src/types/db";
-
-type NodesRequest = {
-  conversationId: string;
-  node: ContextNode;
-  linkedMessages: ChatMessage[];
-  metadata?: NodeMetadata;
-};
 
 type ErrorResponse = { error: string };
 
@@ -40,14 +36,16 @@ export async function POST(
     );
   }
 
+  const conversationId = b.conversationId as string;
+
+  // ─── Step 1: Persist the node (with evidence summary + embedding) ───────
   try {
     await persistNode(
-      b.conversationId,
+      conversationId,
       b.node as ContextNode,
       b.linkedMessages as ChatMessage[],
       (b.metadata as NodeMetadata) ?? {},
     );
-    return NextResponse.json({}, { status: 200 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(
@@ -55,4 +53,27 @@ export async function POST(
       { status: 500 },
     );
   }
+
+  // ─── Step 2: Recompute semantic edges for the conversation (soft-fail) ──
+  // Uses the delete-then-insert cache pattern:
+  //   1. Delete all status='suggested' edges for this conversation
+  //   2. Compute fresh suggestions from all nodes (including the new one)
+  //   3. Insert only strongly related edges
+  // If this fails, the node is still saved — edges are additive enrichment.
+  try {
+    const allNodes = await loadNodesWithEmbeddings(conversationId);
+    const suggestions = await computeSuggestedEdges(allNodes);
+    const strongEdges = suggestions.filter(
+      (s) => s.similarity >= STRONGLY_RELATED_THRESHOLD,
+    );
+    const persisted = await persistEdges(conversationId, strongEdges);
+    console.log(
+      `[nodes/route] Auto-computed edges: ${persisted} persisted (${strongEdges.length} strongly related, ${suggestions.length} total candidates)`,
+    );
+  } catch (err) {
+    // Log but don't fail the request — the node was already saved successfully
+    console.error("[nodes/route] Edge recomputation failed (non-fatal):", err);
+  }
+
+  return NextResponse.json({}, { status: 200 });
 }
