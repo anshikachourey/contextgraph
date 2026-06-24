@@ -23,11 +23,11 @@ export default function ContextNodeCard({
       <Handle type="target" position={Position.Top} />
 
       <div
-        className={`w-56 rounded-2xl border bg-white p-4 shadow-sm transition ${
+        className={`w-64 rounded-2xl border bg-white p-5 shadow-sm transition ${
           selected ? "border-black ring-2 ring-black" : "border-gray-200"
         }`}
       >
-        <p className="font-semibold leading-snug">{data.title}</p>
+        <p className="text-base font-semibold leading-snug">{data.title}</p>
         <p className="mt-2 text-sm text-gray-600 line-clamp-3">{data.summary}</p>
         <p className="mt-3 text-xs text-gray-400">
           {data.messageCount} linked message

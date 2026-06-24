@@ -41,6 +41,11 @@ export default function Home() {
   // When reviewing a draft, open modal with draft values pre-filled
   const [isDraftReview, setIsDraftReview] = useState(false);
 
+  // Graph summary state
+  const [graphSummary, setGraphSummary] = useState<string | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+
   // Load conversation from the database on mount
   useEffect(() => {
     async function loadConversation() {
@@ -303,17 +308,23 @@ export default function Home() {
     setIsGraphMaximized(false);
     setActiveNodeId(null);
     setActiveEdgeId(null);
+    setGraphSummary(null);
+    setSummaryError(null);
   }
 
-  // Clicking a node clears edge selection, toggle for same node
+  // Clicking a node clears edge selection and summary, toggle for same node
   function handleNodeClick(nodeId: string) {
     setActiveEdgeId(null);
+    setGraphSummary(null);
+    setSummaryError(null);
     setActiveNodeId((current) => (current === nodeId ? null : nodeId));
   }
 
-  // Clicking an edge clears node selection, toggle for same edge
+  // Clicking an edge clears node selection and summary, toggle for same edge
   function handleEdgeClick(edgeId: string) {
     setActiveNodeId(null);
+    setGraphSummary(null);
+    setSummaryError(null);
     setActiveEdgeId((current) => (current === edgeId ? null : edgeId));
   }
 
@@ -321,6 +332,51 @@ export default function Home() {
   function handleClearSelection() {
     setActiveNodeId(null);
     setActiveEdgeId(null);
+  }
+
+  // ─── Graph summary ──────────────────────────────────────────────────────────
+
+  async function handleSummarize() {
+    setIsSummarizing(true);
+    setSummaryError(null);
+    // Clear node/edge selection so the summary panel takes focus
+    setActiveNodeId(null);
+    setActiveEdgeId(null);
+
+    try {
+      const edgesWithTitles = semanticEdges.map((e) => ({
+        sourceTitle: nodes.find((n) => n.id === e.sourceNodeId)?.title ?? "Unknown",
+        targetTitle: nodes.find((n) => n.id === e.targetNodeId)?.title ?? "Unknown",
+        explanation: e.explanation,
+      }));
+
+      const response = await fetch("/api/graph-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nodes: nodes.map((n) => ({ title: n.title, summary: n.summary })),
+          edges: edgesWithTitles,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setSummaryError(data.error ?? "Summary generation failed.");
+        return;
+      }
+
+      setGraphSummary(data.summary);
+    } catch {
+      setSummaryError("Network error. Check your connection and try again.");
+    } finally {
+      setIsSummarizing(false);
+    }
+  }
+
+  function handleClearSummary() {
+    setGraphSummary(null);
+    setSummaryError(null);
   }
 
   return (
@@ -355,6 +411,11 @@ export default function Home() {
         activeNode={activeNode}
         activeNodeMessages={activeNodeMessages}
         activeEdge={activeEdge}
+        graphSummary={graphSummary}
+        isSummarizing={isSummarizing}
+        summaryError={summaryError}
+        onSummarize={handleSummarize}
+        onClearSummary={handleClearSummary}
         onToggleMaximize={() => setIsGraphMaximized((prev) => !prev)}
         onClose={handleCloseGraph}
         onNodeClick={handleNodeClick}

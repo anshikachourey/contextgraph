@@ -1,92 +1,271 @@
 import Dagre from "@dagrejs/dagre";
 
-type LayoutNode = {
-  id: string;
-  width: number;
-  height: number;
-};
-
 type LayoutEdge = {
   source: string;
   target: string;
 };
 
-type PositionedNode = {
-  id: string;
-  x: number;
-  y: number;
-};
+type Position = { x: number; y: number };
 
-// Estimated node dimensions — matches the w-56 (224px) card + padding.
-// Height is approximate; dagre uses it for spacing, not pixel-perfect rendering.
-const DEFAULT_NODE_WIDTH = 240;
-const DEFAULT_NODE_HEIGHT = 120;
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYOUT CONFIG — Tune these values to adjust graph density and readability.
+// fitView scales the graph to fill the viewport, so the bounding box size
+// directly determines perceived node scale. Smaller total layout = nodes
+// appear larger. Balance: enough spacing for cluster visibility, not so much
+// that fitView zooms out and makes everything tiny.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Estimated node card width (must match CSS: w-64 = 256px + padding). */
+const NODE_WIDTH = 260;
+
+/** Estimated node card height (title + summary + handles). */
+const NODE_HEIGHT = 130;
 
 /**
- * Compute dagre layout positions for a set of nodes and edges.
- *
- * Direction: top-to-bottom (TB) — conversation flows downward,
- * connected nodes spread horizontally so edges are clearly visible.
- *
- * Returns a map of node ID → { x, y } centre positions.
- * React Flow expects top-left coordinates, so the caller must subtract
- * half the node dimensions when applying positions.
+ * Horizontal spacing between sibling nodes WITHIN a cluster.
+ * Keep tight — the edge line between them already signals the connection.
  */
-export function computeLayout(
-  nodes: LayoutNode[],
+const CLUSTER_NODESEP = 60;
+
+/**
+ * Depth (rank) spacing between connected nodes WITHIN a cluster.
+ * Controls layer separation in the LR flow direction.
+ */
+const CLUSTER_RANKSEP = 90;
+
+/**
+ * Horizontal gap between blocks (clusters or isolates) in the grid.
+ * Must be visibly larger than CLUSTER_NODESEP so clusters read as distinct groups.
+ */
+const BLOCK_GAP_X = 100;
+
+/**
+ * Vertical gap between rows of blocks.
+ */
+const BLOCK_GAP_Y = 100;
+
+/**
+ * Target row width multiplier for grid packing.
+ * Applied to sqrt(totalArea). Lower = more rows, squarer canvas.
+ * 1.6 balances landscape aspect ratio with compact bounding box.
+ */
+const TARGET_WIDTH_MULTIPLIER = 1.6;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Connected Components ───────────────────────────────────────────────────
+
+function findConnectedComponents(
+  nodeIds: string[],
   edges: LayoutEdge[],
-): PositionedNode[] {
+): string[][] {
+  const adj = new Map<string, Set<string>>();
+  for (const id of nodeIds) {
+    adj.set(id, new Set());
+  }
+  for (const edge of edges) {
+    adj.get(edge.source)?.add(edge.target);
+    adj.get(edge.target)?.add(edge.source);
+  }
+
+  const visited = new Set<string>();
+  const components: string[][] = [];
+
+  for (const id of nodeIds) {
+    if (visited.has(id)) continue;
+    const component: string[] = [];
+    const queue = [id];
+    visited.add(id);
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      component.push(current);
+      for (const neighbor of adj.get(current) ?? []) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          queue.push(neighbor);
+        }
+      }
+    }
+    components.push(component);
+  }
+
+  return components;
+}
+
+// ─── Dagre Layout for a Single Cluster ──────────────────────────────────────
+
+type Block = {
+  nodePositions: Map<string, Position>;
+  width: number;
+  height: number;
+};
+
+function layoutCluster(nodeIds: string[], edges: LayoutEdge[]): Block {
   const g = new Dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({
-    rankdir: "TB",
-    nodesep: 60, // horizontal spacing between siblings
-    ranksep: 100, // vertical spacing between ranks
-    marginx: 40,
-    marginy: 40,
+    rankdir: "LR",
+    nodesep: CLUSTER_NODESEP,
+    ranksep: CLUSTER_RANKSEP,
+    marginx: 0,
+    marginy: 0,
   });
 
-  for (const node of nodes) {
-    g.setNode(node.id, { width: node.width, height: node.height });
+  for (const id of nodeIds) {
+    g.setNode(id, { width: NODE_WIDTH, height: NODE_HEIGHT });
   }
 
   for (const edge of edges) {
-    g.setEdge(edge.source, edge.target);
+    if (nodeIds.includes(edge.source) && nodeIds.includes(edge.target)) {
+      g.setEdge(edge.source, edge.target);
+    }
   }
 
   Dagre.layout(g);
 
-  return nodes.map((node) => {
-    const pos = g.node(node.id);
-    // Dagre returns centre coordinates.
-    // Subtract half dimensions to get top-left (React Flow's coordinate system).
-    return {
-      id: node.id,
-      x: pos.x - node.width / 2,
-      y: pos.y - node.height / 2,
-    };
-  });
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  const rawPositions = new Map<string, Position>();
+  for (const id of nodeIds) {
+    const pos = g.node(id);
+    const x = pos.x - NODE_WIDTH / 2;
+    const y = pos.y - NODE_HEIGHT / 2;
+    rawPositions.set(id, { x, y });
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + NODE_WIDTH);
+    maxY = Math.max(maxY, y + NODE_HEIGHT);
+  }
+
+  const nodePositions = new Map<string, Position>();
+  for (const [id, pos] of rawPositions) {
+    nodePositions.set(id, { x: pos.x - minX, y: pos.y - minY });
+  }
+
+  return {
+    nodePositions,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
 }
 
+function makeIsolatedBlock(nodeId: string): Block {
+  const nodePositions = new Map<string, Position>();
+  nodePositions.set(nodeId, { x: 0, y: 0 });
+  return {
+    nodePositions,
+    width: NODE_WIDTH,
+    height: NODE_HEIGHT,
+  };
+}
+
+// ─── Grid Packing ───────────────────────────────────────────────────────────
+
+function packBlocks(blocks: Block[]): Map<string, Position> {
+  if (blocks.length === 0) return new Map();
+
+  const totalArea = blocks.reduce((sum, b) => sum + b.width * b.height, 0);
+  const targetWidth = Math.max(
+    Math.sqrt(totalArea) * TARGET_WIDTH_MULTIPLIER,
+    blocks.reduce((max, b) => Math.max(max, b.width), 0),
+  );
+
+  type Row = { blocks: Block[]; offsets: number[]; width: number; height: number };
+  const rows: Row[] = [];
+  let currentRow: Row = { blocks: [], offsets: [], width: 0, height: 0 };
+
+  for (const block of blocks) {
+    const gap = currentRow.blocks.length > 0 ? BLOCK_GAP_X : 0;
+    const wouldBeWidth = currentRow.width + gap + block.width;
+
+    if (currentRow.blocks.length > 0 && wouldBeWidth > targetWidth) {
+      rows.push(currentRow);
+      currentRow = { blocks: [], offsets: [], width: 0, height: 0 };
+    }
+
+    const xOffset = currentRow.width + (currentRow.blocks.length > 0 ? BLOCK_GAP_X : 0);
+    currentRow.offsets.push(xOffset);
+    currentRow.blocks.push(block);
+    currentRow.width = xOffset + block.width;
+    currentRow.height = Math.max(currentRow.height, block.height);
+  }
+  if (currentRow.blocks.length > 0) rows.push(currentRow);
+
+  const positions = new Map<string, Position>();
+  let currentY = 0;
+  const totalWidth = Math.max(...rows.map((r) => r.width));
+
+  for (const row of rows) {
+    const rowOffsetX = (totalWidth - row.width) / 2;
+
+    for (let i = 0; i < row.blocks.length; i++) {
+      const block = row.blocks[i];
+      const blockX = rowOffsetX + row.offsets[i];
+      const blockY = currentY + (row.height - block.height) / 2;
+
+      for (const [id, pos] of block.nodePositions) {
+        positions.set(id, {
+          x: blockX + pos.x,
+          y: blockY + pos.y,
+        });
+      }
+    }
+
+    currentY += row.height + BLOCK_GAP_Y;
+  }
+
+  // Centre around (0, 0) so fitView places it perfectly in viewport
+  const totalHeight = currentY - BLOCK_GAP_Y;
+  const centerOffsetX = -totalWidth / 2;
+  const centerOffsetY = -totalHeight / 2;
+
+  for (const [id, pos] of positions) {
+    positions.set(id, {
+      x: pos.x + centerOffsetX,
+      y: pos.y + centerOffsetY,
+    });
+  }
+
+  return positions;
+}
+
+// ─── Main Layout Function ───────────────────────────────────────────────────
+
 /**
- * Convenience wrapper that builds layout inputs from raw node/edge arrays.
- * Returns a position map: node ID → { x, y }.
+ * Presentation-quality knowledge map layout.
+ *
+ * Optimized for fullscreen/demo readability:
+ * - Connected nodes form loose, readable clusters (dagre LR)
+ * - Generous whitespace between all elements
+ * - Grid packing fills the canvas in a balanced 2D arrangement
+ * - Centred around origin for perfect fitView behaviour
+ *
+ * Tune the LAYOUT CONFIG constants at the top of this file
+ * to adjust spacing without changing the algorithm.
  */
 export function layoutGraph(
   nodeIds: string[],
   edges: Array<{ source: string; target: string }>,
-): Map<string, { x: number; y: number }> {
-  const layoutNodes: LayoutNode[] = nodeIds.map((id) => ({
-    id,
-    width: DEFAULT_NODE_WIDTH,
-    height: DEFAULT_NODE_HEIGHT,
-  }));
+): Map<string, Position> {
+  if (nodeIds.length === 0) return new Map();
 
-  const positioned = computeLayout(layoutNodes, edges);
+  const components = findConnectedComponents(nodeIds, edges);
 
-  const positionMap = new Map<string, { x: number; y: number }>();
-  for (const p of positioned) {
-    positionMap.set(p.id, { x: p.x, y: p.y });
+  const blocks: Block[] = [];
+  for (const component of components) {
+    if (component.length >= 2) {
+      blocks.push(layoutCluster(component, edges));
+    } else {
+      blocks.push(makeIsolatedBlock(component[0]));
+    }
   }
-  return positionMap;
+
+  // Largest blocks first for visual hierarchy stability
+  blocks.sort((a, b) => b.width * b.height - a.width * a.height);
+
+  return packBlocks(blocks);
 }

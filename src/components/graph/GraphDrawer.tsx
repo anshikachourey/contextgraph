@@ -5,6 +5,7 @@ import GraphToolbar from "./GraphToolbar";
 import GraphCanvas from "./GraphCanvas";
 import NodeDetailPanel from "./NodeDetailPanel";
 import EdgeDetailPanel from "./EdgeDetailPanel";
+import GraphSummaryPanel from "./GraphSummaryPanel";
 
 type GraphDrawerProps = {
   isOpen: boolean;
@@ -14,6 +15,13 @@ type GraphDrawerProps = {
   activeNode: ContextNode | null;
   activeNodeMessages: ChatMessage[];
   activeEdge: SemanticEdge | null;
+  // Graph summary
+  graphSummary: string | null;
+  isSummarizing: boolean;
+  summaryError: string | null;
+  onSummarize: () => void;
+  onClearSummary: () => void;
+  // Actions
   onToggleMaximize: () => void;
   onClose: () => void;
   onNodeClick: (nodeId: string) => void;
@@ -29,6 +37,11 @@ export default function GraphDrawer({
   activeNode,
   activeNodeMessages,
   activeEdge,
+  graphSummary,
+  isSummarizing,
+  summaryError,
+  onSummarize,
+  onClearSummary,
   onToggleMaximize,
   onClose,
   onNodeClick,
@@ -36,7 +49,12 @@ export default function GraphDrawer({
   onClearSelection,
 }: GraphDrawerProps) {
   const isEmpty = nodes.length === 0;
-  const hasDetailPanel = activeNode !== null || activeEdge !== null;
+
+  // Summary panel is shown when summary is being generated or has content
+  const showSummary = isSummarizing || graphSummary !== null || summaryError !== null;
+
+  // A side/bottom panel is shown when any of node detail, edge detail, or summary is active
+  const hasPanel = activeNode !== null || activeEdge !== null || showSummary;
 
   // Resolve edge node titles
   const edgeSourceTitle = activeEdge
@@ -46,8 +64,17 @@ export default function GraphDrawer({
     ? (nodes.find((n) => n.id === activeEdge.targetNodeId)?.title ?? "Unknown")
     : "";
 
-  // Which detail panel to render
-  function renderDetailPanel() {
+  function renderPanel() {
+    if (showSummary) {
+      return (
+        <GraphSummaryPanel
+          summary={graphSummary}
+          isLoading={isSummarizing}
+          error={summaryError}
+          onClose={onClearSummary}
+        />
+      );
+    }
     if (activeNode) {
       return (
         <NodeDetailPanel
@@ -85,6 +112,9 @@ export default function GraphDrawer({
       >
         <GraphToolbar
           isMaximized={isMaximized}
+          hasNodes={!isEmpty}
+          isSummarizing={isSummarizing}
+          onSummarize={onSummarize}
           onToggleMaximize={onToggleMaximize}
           onClose={onClose}
         />
@@ -101,7 +131,7 @@ export default function GraphDrawer({
                 </p>
               </div>
             </div>
-          ) : isMaximized && hasDetailPanel ? (
+          ) : isMaximized && hasPanel ? (
             <div className="flex h-full">
               <div className="flex-1">
                 <GraphCanvas
@@ -112,12 +142,12 @@ export default function GraphDrawer({
                 />
               </div>
               <div className="w-80 shrink-0 border-l border-gray-200">
-                {renderDetailPanel()}
+                {renderPanel()}
               </div>
             </div>
           ) : (
             <div className="flex h-full flex-col">
-              <div className={hasDetailPanel ? "h-[55%]" : "h-full"}>
+              <div className={hasPanel ? "h-[55%]" : "h-full"}>
                 <GraphCanvas
                   contextNodes={nodes}
                   semanticEdges={semanticEdges}
@@ -125,8 +155,8 @@ export default function GraphDrawer({
                   onEdgeClick={onEdgeClick}
                 />
               </div>
-              {hasDetailPanel && (
-                <div className="h-[45%]">{renderDetailPanel()}</div>
+              {hasPanel && (
+                <div className="h-[45%]">{renderPanel()}</div>
               )}
             </div>
           )}

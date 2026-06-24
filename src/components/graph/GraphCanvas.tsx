@@ -120,7 +120,9 @@ export default function GraphCanvas({
       onEdgeClick={(_event, edge) => onEdgeClick(edge.id)}
       nodeTypes={nodeTypes}
       fitView
-      fitViewOptions={{ padding: 0.3 }}
+      fitViewOptions={{ padding: 0.05, maxZoom: 1 }}
+      minZoom={0.3}
+      maxZoom={2}
       proOptions={{ hideAttribution: true }}
       className="h-full w-full"
     >
