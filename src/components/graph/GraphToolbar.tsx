@@ -1,8 +1,11 @@
 type GraphToolbarProps = {
   isMaximized: boolean;
   hasNodes: boolean;
+  hasMessages: boolean;
   isSummarizing: boolean;
+  isStructuring: boolean;
   onSummarize: () => void;
+  onStructure: () => void;
   onToggleMaximize: () => void;
   onClose: () => void;
 };
@@ -10,8 +13,11 @@ type GraphToolbarProps = {
 export default function GraphToolbar({
   isMaximized,
   hasNodes,
+  hasMessages,
   isSummarizing,
+  isStructuring,
   onSummarize,
+  onStructure,
   onToggleMaximize,
   onClose,
 }: GraphToolbarProps) {
@@ -20,10 +26,27 @@ export default function GraphToolbar({
       <h2 className="font-semibold">Context Graph</h2>
 
       <div className="flex items-center gap-2">
+        {hasMessages && (
+          <button
+            onClick={onStructure}
+            disabled={isStructuring || isSummarizing}
+            className="flex items-center gap-1.5 rounded-md px-3 py-1 text-sm hover:bg-gray-100 disabled:opacity-40"
+          >
+            {isStructuring ? (
+              <>
+                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
+                Structuring…
+              </>
+            ) : (
+              <>⚡ Structure</>
+            )}
+          </button>
+        )}
+
         {hasNodes && (
           <button
             onClick={onSummarize}
-            disabled={isSummarizing}
+            disabled={isSummarizing || isStructuring}
             className="flex items-center gap-1.5 rounded-md px-3 py-1 text-sm hover:bg-gray-100 disabled:opacity-40"
           >
             {isSummarizing ? (

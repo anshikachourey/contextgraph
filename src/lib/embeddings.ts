@@ -81,3 +81,54 @@ export function buildNodeEmbeddingText(
 
   return parts.join("\n\n");
 }
+
+// ─── Bounded embedding text for clusters ──────────────────────────────────────
+
+/**
+ * Maximum character length for text passed to the embedding model.
+ * OpenAI text-embedding-3-small has an 8192 token limit.
+ * At ~4 chars/token, 7000 chars is a safe ceiling (~1750 tokens).
+ */
+const MAX_EMBEDDING_CHARS = 7000;
+
+/** Number of messages to take from the start and end of a cluster. */
+const HEAD_MESSAGES = 3;
+const TAIL_MESSAGES = 3;
+
+/**
+ * Build bounded representative text from a cluster of messages.
+ *
+ * Strategy for long clusters:
+ * - Include the first HEAD_MESSAGES (opening context)
+ * - Include the last TAIL_MESSAGES (most recent development)
+ * - Skip middle messages if the cluster is too large
+ * - Truncate to MAX_EMBEDDING_CHARS
+ *
+ * This captures the semantic "bookends" of a topic — what it started
+ * with and where it ended up — which is what similarity comparison needs.
+ */
+export function buildClusterEmbeddingText(messages: ChatMessage[]): string {
+  const formatMsg = (m: ChatMessage) =>
+    `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`;
+
+  let selectedMessages: ChatMessage[];
+
+  if (messages.length <= HEAD_MESSAGES + TAIL_MESSAGES) {
+    // Short cluster — use all messages
+    selectedMessages = messages;
+  } else {
+    // Long cluster — take head + tail
+    const head = messages.slice(0, HEAD_MESSAGES);
+    const tail = messages.slice(-TAIL_MESSAGES);
+    selectedMessages = [...head, ...tail];
+  }
+
+  let text = selectedMessages.map(formatMsg).join("\n");
+
+  // Hard truncate if still over limit
+  if (text.length > MAX_EMBEDDING_CHARS) {
+    text = text.slice(0, MAX_EMBEDDING_CHARS);
+  }
+
+  return text;
+}

@@ -12,6 +12,7 @@ type GraphDrawerProps = {
   isMaximized: boolean;
   nodes: ContextNode[];
   semanticEdges: SemanticEdge[];
+  hasMessages: boolean;
   activeNode: ContextNode | null;
   activeNodeMessages: ChatMessage[];
   activeEdge: SemanticEdge | null;
@@ -21,6 +22,9 @@ type GraphDrawerProps = {
   summaryError: string | null;
   onSummarize: () => void;
   onClearSummary: () => void;
+  // Structure conversation
+  isStructuring: boolean;
+  onStructure: () => void;
   // Actions
   onToggleMaximize: () => void;
   onClose: () => void;
@@ -34,6 +38,7 @@ export default function GraphDrawer({
   isMaximized,
   nodes,
   semanticEdges,
+  hasMessages,
   activeNode,
   activeNodeMessages,
   activeEdge,
@@ -42,6 +47,8 @@ export default function GraphDrawer({
   summaryError,
   onSummarize,
   onClearSummary,
+  isStructuring,
+  onStructure,
   onToggleMaximize,
   onClose,
   onNodeClick,
@@ -113,8 +120,11 @@ export default function GraphDrawer({
         <GraphToolbar
           isMaximized={isMaximized}
           hasNodes={!isEmpty}
+          hasMessages={hasMessages}
           isSummarizing={isSummarizing}
+          isStructuring={isStructuring}
           onSummarize={onSummarize}
+          onStructure={onStructure}
           onToggleMaximize={onToggleMaximize}
           onClose={onClose}
         />

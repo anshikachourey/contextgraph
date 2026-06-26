@@ -46,6 +46,9 @@ export default function Home() {
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
+  // Structure conversation state
+  const [isStructuring, setIsStructuring] = useState(false);
+
   // Load conversation from the database on mount
   useEffect(() => {
     async function loadConversation() {
@@ -379,6 +382,50 @@ export default function Home() {
     setSummaryError(null);
   }
 
+  // ─── Structure conversation ─────────────────────────────────────────────────
+
+  async function handleStructure() {
+    if (!conversationId) return;
+    setIsStructuring(true);
+
+    try {
+      const response = await fetch("/api/structure-conversation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.error ?? "Structuring failed.");
+        return;
+      }
+
+      const result = data as {
+        nodesCreated: number;
+        clustersSkipped: number;
+        edgesCreated: number;
+      };
+
+      console.log(
+        `[structure] Created ${result.nodesCreated} nodes, ${result.edgesCreated} edges, skipped ${result.clustersSkipped} clusters`,
+      );
+
+      // Refresh conversation to pick up new nodes and edges
+      const convResponse = await fetch("/api/conversation");
+      if (convResponse.ok) {
+        const convData = (await convResponse.json()) as ConversationRouteResponse;
+        setNodes(convData.nodes);
+        setSemanticEdges(convData.edges);
+      }
+    } catch {
+      alert("Failed to structure conversation. Check if the ML service is running.");
+    } finally {
+      setIsStructuring(false);
+    }
+  }
+
   return (
     <main className="relative min-h-screen bg-white text-black">
       <Header onShowGraph={() => setIsGraphOpen(true)} />
@@ -408,6 +455,7 @@ export default function Home() {
         isMaximized={isGraphMaximized}
         nodes={nodes}
         semanticEdges={semanticEdges}
+        hasMessages={messages.length > 0}
         activeNode={activeNode}
         activeNodeMessages={activeNodeMessages}
         activeEdge={activeEdge}
@@ -416,6 +464,8 @@ export default function Home() {
         summaryError={summaryError}
         onSummarize={handleSummarize}
         onClearSummary={handleClearSummary}
+        isStructuring={isStructuring}
+        onStructure={handleStructure}
         onToggleMaximize={() => setIsGraphMaximized((prev) => !prev)}
         onClose={handleCloseGraph}
         onNodeClick={handleNodeClick}
