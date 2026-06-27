@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { parseJsonFromLLM } from "@/src/lib/llmJson";
+import { parseJsonFromLLM, isTitleSummaryResponse } from "@/src/lib/llmJson";
 import type {
   GenerateNodeSuggestionRequest,
   GenerateNodeSuggestionResponse,
@@ -106,12 +106,7 @@ export async function POST(
     );
   }
 
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    typeof (parsed as Record<string, unknown>).title !== "string" ||
-    typeof (parsed as Record<string, unknown>).summary !== "string"
-  ) {
+  if (!isTitleSummaryResponse(parsed)) {
     return NextResponse.json(
       { error: "Model response is missing required title or summary fields." },
       { status: 500 },

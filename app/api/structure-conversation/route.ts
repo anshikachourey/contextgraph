@@ -8,7 +8,7 @@ import { cosineSimilarity } from "@/src/lib/cosineSimilarity";
 import { computeSuggestedEdges } from "@/src/lib/edgeSuggestions";
 import { STRONGLY_RELATED_THRESHOLD } from "@/src/lib/similarityThresholds";
 import { DRAFT_SUPPRESS_THRESHOLD } from "@/src/lib/aiDraftConfig";
-import { parseJsonFromLLM } from "@/src/lib/llmJson";
+import { parseJsonFromLLM, isTitleSummaryResponse } from "@/src/lib/llmJson";
 import type { ChatMessage } from "@/src/types/message";
 import type { ContextNode } from "@/src/types/node";
 import type { DbMessage } from "@/src/types/db";
@@ -250,8 +250,11 @@ Respond with raw JSON only.`,
       if (!raw) throw new Error("Empty response");
 
       const parsed = parseJsonFromLLM(raw);
-      title = parsed.title ?? "Untitled Cluster";
-      summary = parsed.summary ?? "";
+      if (!isTitleSummaryResponse(parsed)) {
+        throw new Error("Model response missing title or summary fields");
+      }
+      title = parsed.title;
+      summary = parsed.summary;
     } catch (err) {
       console.error(`[structure] Title generation failed for ${cluster.cluster_id}:`, err);
       // Skip this cluster rather than creating a bad node

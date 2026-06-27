@@ -24,3 +24,20 @@ export function parseJsonFromLLM(raw: string): unknown {
 
   return JSON.parse(cleaned);
 }
+
+/**
+ * Type guard for LLM responses that should contain { title: string, summary: string }.
+ * Use after parseJsonFromLLM to safely access title/summary fields.
+ */
+export type TitleSummaryResponse = { title: string; summary: string };
+
+export function isTitleSummaryResponse(
+  value: unknown,
+): value is TitleSummaryResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).title === "string" &&
+    typeof (value as Record<string, unknown>).summary === "string"
+  );
+}

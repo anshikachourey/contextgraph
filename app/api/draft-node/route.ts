@@ -4,7 +4,7 @@ import { generateEmbedding } from "@/src/lib/embeddings";
 import { cosineSimilarity } from "@/src/lib/cosineSimilarity";
 import { DRAFT_SUPPRESS_THRESHOLD } from "@/src/lib/aiDraftConfig";
 import { loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
-import { parseJsonFromLLM } from "@/src/lib/llmJson";
+import { parseJsonFromLLM, isTitleSummaryResponse } from "@/src/lib/llmJson";
 import type { ChatMessage } from "@/src/types/message";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -203,7 +203,7 @@ Respond with raw JSON only — no markdown, no code fences, no explanation.`,
     }
 
     const parsed = parseJsonFromLLM(raw);
-    if (typeof parsed.title !== "string" || typeof parsed.summary !== "string") {
+    if (!isTitleSummaryResponse(parsed)) {
       return NextResponse.json(
         { error: "Model response missing title or summary." },
         { status: 500 },
