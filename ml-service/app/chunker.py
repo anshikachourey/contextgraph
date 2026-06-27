@@ -16,7 +16,7 @@ from app.models import Message
 
 # Configurable
 CHUNK_SIZE = 4  # messages per chunk
-CHUNK_OVERLAP = 2  # 50% overlap (stride = CHUNK_SIZE - CHUNK_OVERLAP)
+CHUNK_OVERLAP = 1  # 25% overlap (stride = CHUNK_SIZE - CHUNK_OVERLAP = 3)
 
 
 class Chunk:
@@ -75,27 +75,27 @@ def map_chunk_labels_to_messages(
     Map chunk-level cluster labels back to individual message IDs.
 
     When a message appears in multiple chunks (due to overlap), it may get
-    different labels. Resolution: majority vote. If tied, use the label from
-    the later chunk (more context = better assignment).
+    different labels. Resolution: last-chunk-wins tie-breaking.
+
+    Rationale: Later chunks contain more forward context (what the conversation
+    is moving toward). At topic transitions, the later chunk captures the new
+    topic while the earlier chunk captures the old one. The message at the
+    boundary belongs to the new topic — so the later chunk's label wins.
 
     Returns: {message_id: cluster_label}
     """
-    from collections import Counter
-
-    # Collect all labels per message ID
-    message_votes: dict[str, list[int]] = {}
+    # For each message, track labels from each chunk it appears in (in order)
+    message_chunk_labels: dict[str, list[int]] = {}
 
     for chunk, label in zip(chunks, labels):
         for msg_id in chunk.message_ids:
-            if msg_id not in message_votes:
-                message_votes[msg_id] = []
-            message_votes[msg_id].append(label)
+            if msg_id not in message_chunk_labels:
+                message_chunk_labels[msg_id] = []
+            message_chunk_labels[msg_id].append(label)
 
-    # Resolve: most common label wins. Ties broken by last occurrence.
+    # Resolve: use the LAST chunk's label (most forward context wins)
     result: dict[str, int] = {}
-    for msg_id, votes in message_votes.items():
-        counter = Counter(votes)
-        # most_common returns [(label, count), ...] — take the first
-        result[msg_id] = counter.most_common(1)[0][0]
+    for msg_id, chunk_labels in message_chunk_labels.items():
+        result[msg_id] = chunk_labels[-1]  # last chunk wins
 
     return result

@@ -1,133 +1,182 @@
-"""FastAPI ML service for conversation topic clustering.
+"""FastAPI ML service for conversation topic structuring.
 
-Pipeline (BERTopic-style):
-1. Chunk consecutive messages into overlapping semantic windows
-2. Embed each chunk using sentence-transformers (local, no API calls)
-3. Reduce dimensions with UMAP (384d → 5d)
-4. Cluster chunks using HDBSCAN
-5. Map chunk labels back to individual message IDs
-6. Return structured cluster assignments
-
-It does NOT:
-- Write to any database
-- Call OpenAI or any external LLM API
-- Create nodes or edges
-- Render any UI
+Architecture (segmentation-first):
+1. SEGMENTATION: Detect contiguous topic episodes via sliding-window
+   cosine similarity drops. Each segment = a future graph node.
+2. SEMANTIC GROUPING: Compute pairwise cosine similarity between segment
+   centroids. Build a similarity graph. Connected components = groups.
+   Groups identify related segments (e.g. early startup + late startup).
 """
 
+import math
 from fastapi import FastAPI, HTTPException
 import numpy as np
 
-from app.models import Message, ClusterRequest, ClusterResponse, Cluster
+from app.models import (
+    Message,
+    ClusterRequest,
+    ClusterResponse,
+    Segment,
+    SemanticGroup,
+    SegmentSimilarity,
+)
 from app.embedder import embed_messages, MODEL_NAME
-from app.clusterer import cluster_embeddings, UMAP_ENABLED
-import app.clusterer as clusterer_module
-from app.chunker import create_chunks, map_chunk_labels_to_messages
+from app.segmenter import segment_conversation
+from app.grouper import group_segments_by_similarity, SEGMENT_GROUP_THRESHOLD
 
 app = FastAPI(
     title="ContextGraph ML Service",
-    description="Semantic clustering for conversation messages (BERTopic-style pipeline)",
-    version="0.2.0",
+    description="Conversation structuring: segmentation + similarity-graph grouping",
+    version="1.1.0",
 )
 
 
+# ─── Safety helpers ──────────────────────────────────────────────────────────
+
+def safe_centroid(vectors: np.ndarray, dim: int) -> list[float]:
+    if vectors.size == 0:
+        return [0.0] * dim
+    centroid = np.mean(vectors, axis=0)
+    norm = np.linalg.norm(centroid)
+    if norm == 0 or math.isnan(norm):
+        return [0.0] * dim
+    return sanitize_floats((centroid / norm).tolist())
+
+
+def sanitize_floats(values: list[float]) -> list[float]:
+    return [0.0 if (math.isnan(v) or math.isinf(v)) else v for v in values]
+
+
+# ─── Endpoints ───────────────────────────────────────────────────────────────
+
 @app.get("/health")
 def health_check():
-    """Simple health check endpoint."""
-    return {"status": "ok", "model": MODEL_NAME, "umap_enabled": UMAP_ENABLED}
+    return {
+        "status": "ok",
+        "model": MODEL_NAME,
+        "grouping_threshold": SEGMENT_GROUP_THRESHOLD,
+    }
 
 
 @app.post("/cluster-conversation", response_model=ClusterResponse)
 def cluster_conversation(request: ClusterRequest):
     """
-    Cluster conversation messages by semantic similarity.
+    Two-stage conversation structuring:
 
-    Pipeline:
-    1. Create overlapping semantic chunks (4 messages, 50% overlap)
-    2. Embed each chunk using sentence-transformers
-    3. Reduce to 5 dimensions with UMAP (configurable)
-    4. Run HDBSCAN to find density-based clusters
-    5. Map chunk-level labels back to individual messages (majority vote)
-    6. Compute cluster centroids and representative texts
-    7. Return structured cluster assignments
+    Stage 1 — SEGMENTATION:
+      Sliding-window cosine similarity with adaptive threshold.
+      Each contiguous block = one segment = one future graph node.
 
-    Messages assigned to noise (label -1) are returned separately
-    in noise_message_ids — these are transition messages, small talk,
-    or isolated remarks that don't belong to any topic cluster.
+    Stage 2 — SEMANTIC GROUPING:
+      Pairwise cosine similarity between segment centroids.
+      Connected components over the similarity graph = semantic groups.
+      Related segments share a group_id.
     """
     if len(request.messages) < 3:
         raise HTTPException(
             status_code=400,
-            detail="At least 3 messages are required for clustering.",
+            detail="At least 3 messages are required.",
         )
 
-    # Step 1: Create semantic chunks
-    chunks = create_chunks(request.messages)
+    # ─── Stage 1: Segmentation ────────────────────────────────────────────
 
-    if len(chunks) < 2:
-        # Not enough chunks to cluster meaningfully
-        # Return all messages as noise
-        return ClusterResponse(
-            clusters=[],
-            noise_message_ids=[m.id for m in request.messages],
-            total_messages=len(request.messages),
-            model_used=MODEL_NAME,
+    raw_segments = segment_conversation(request.messages)
+
+    # Embed all messages for centroid computation
+    msg_texts = [
+        f"{'User' if m.role == 'user' else 'Assistant'}: {m.content}"
+        for m in request.messages
+    ]
+    all_embeddings = embed_messages(msg_texts)
+    embedding_dim = all_embeddings.shape[1]
+
+    id_to_idx = {m.id: i for i, m in enumerate(request.messages)}
+
+    # Build Segment objects with centroids
+    segments: list[Segment] = []
+    centroid_list: list[np.ndarray] = []
+
+    for order, seg_ids in enumerate(raw_segments):
+        member_indices = [id_to_idx[mid] for mid in seg_ids if mid in id_to_idx]
+        if member_indices:
+            seg_vectors = all_embeddings[member_indices]
+            centroid = safe_centroid(seg_vectors, embedding_dim)
+            centroid_array = np.array(centroid)
+        else:
+            centroid = [0.0] * embedding_dim
+            centroid_array = np.zeros(embedding_dim)
+
+        centroid_list.append(centroid_array)
+
+        rep_ids = seg_ids[:2]
+        rep_text = "\n".join(
+            msg_texts[id_to_idx[mid]] for mid in rep_ids if mid in id_to_idx
         )
 
-    # Step 2: Embed chunks
-    chunk_texts = [chunk.text for chunk in chunks]
-    embeddings = embed_messages(chunk_texts)
-
-    # Step 3 + 4: UMAP reduction + HDBSCAN clustering
-    labels = cluster_embeddings(embeddings)
-
-    # Step 5: Map chunk labels back to message IDs
-    message_labels = map_chunk_labels_to_messages(chunks, labels.tolist())
-
-    # Step 6: Build response — group messages by cluster label
-    unique_labels = set(message_labels.values())
-    unique_labels.discard(-1)
-
-    # Build a message lookup for texts
-    message_lookup = {m.id: m for m in request.messages}
-
-    clusters: list[Cluster] = []
-
-    for label in sorted(unique_labels):
-        # Find all message IDs with this label
-        cluster_msg_ids = [
-            msg_id for msg_id, lbl in message_labels.items() if lbl == label
-        ]
-
-        # Compute centroid from the chunk embeddings that belong to this cluster
-        chunk_indices = [i for i, lbl in enumerate(labels) if lbl == label]
-        cluster_embeddings_subset = embeddings[chunk_indices]
-        centroid = np.mean(cluster_embeddings_subset, axis=0)
-        centroid = centroid / (np.linalg.norm(centroid) + 1e-10)
-
-        # Representative texts: chunks closest to centroid
-        distances = np.dot(cluster_embeddings_subset, centroid)
-        top_chunk_indices = np.argsort(distances)[-3:][::-1]
-        representative_texts = [chunk_texts[chunk_indices[i]] for i in top_chunk_indices]
-
-        clusters.append(
-            Cluster(
-                cluster_id=f"cluster_{label}",
-                message_ids=cluster_msg_ids,
-                centroid_embedding=centroid.tolist(),
-                representative_texts=representative_texts,
+        segments.append(
+            Segment(
+                segment_id=f"segment_{order}",
+                message_ids=seg_ids,
+                temporal_order=order,
+                centroid_embedding=centroid,
+                representative_text=rep_text,
+                semantic_group_id=None,
             )
         )
 
-    # Noise messages
-    noise_msg_ids = [
-        msg_id for msg_id, lbl in message_labels.items() if lbl == -1
-    ]
+    # ─── Stage 2: Semantic Grouping (similarity graph) ────────────────────
+
+    semantic_groups: list[SemanticGroup] = []
+    segment_similarities: list[SegmentSimilarity] = []
+
+    if len(segments) >= 2:
+        centroid_matrix = np.array(centroid_list)
+        result = group_segments_by_similarity(centroid_matrix)
+
+        # Build similarity response (all pairs, for tuning visibility)
+        for edge in result.all_pairs:
+            segment_similarities.append(
+                SegmentSimilarity(
+                    segment_a=segments[edge.seg_a].segment_id,
+                    segment_b=segments[edge.seg_b].segment_id,
+                    score=round(edge.score, 4),
+                    above_threshold=edge.score >= SEGMENT_GROUP_THRESHOLD,
+                )
+            )
+
+        # Assign group IDs
+        for group_idx, group_members in enumerate(result.groups):
+            group_id = f"group_{group_idx}"
+            group_segment_ids = [segments[i].segment_id for i in group_members]
+
+            for i in group_members:
+                segments[i].semantic_group_id = group_id
+
+            # Group centroid
+            group_vectors = centroid_matrix[group_members]
+            group_centroid = safe_centroid(group_vectors, embedding_dim)
+
+            semantic_groups.append(
+                SemanticGroup(
+                    group_id=group_id,
+                    segment_ids=group_segment_ids,
+                    centroid_embedding=group_centroid,
+                )
+            )
+
+    # Noise (defensive — segmenter should assign all messages)
+    all_seg_ids = set()
+    for seg in segments:
+        all_seg_ids.update(seg.message_ids)
+    noise_ids = [m.id for m in request.messages if m.id not in all_seg_ids]
 
     return ClusterResponse(
-        clusters=clusters,
-        noise_message_ids=noise_msg_ids,
+        segments=segments,
+        semantic_groups=semantic_groups,
+        segment_similarities=segment_similarities,
+        noise_message_ids=noise_ids,
         total_messages=len(request.messages),
         model_used=MODEL_NAME,
-        clustering_method=clusterer_module.last_method_used,
+        grouping_threshold=SEGMENT_GROUP_THRESHOLD,
+        clusters=segments,
     )

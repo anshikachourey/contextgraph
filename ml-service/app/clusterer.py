@@ -30,8 +30,10 @@ MIN_SAMPLES = int(os.environ.get("MIN_SAMPLES", "2"))
 # Cosine distance threshold for agglomerative fallback.
 # Lower = more aggressive merging (fewer, larger clusters).
 # Higher = more clusters (more sensitive to differences).
-# 0.5 cosine distance ≈ 0.5 cosine similarity — reasonable boundary.
-FALLBACK_DISTANCE_THRESHOLD = float(os.environ.get("FALLBACK_THRESHOLD", "0.5"))
+# 0.35 keeps genuinely different topics (startup vs hiking) separate
+# while still merging closely related discussions.
+# Tuned down from 0.5 which was too aggressive and merged unlike topics.
+FALLBACK_DISTANCE_THRESHOLD = float(os.environ.get("FALLBACK_THRESHOLD", "0.2"))
 
 # Maximum clusters from fallback (prevents over-segmentation)
 FALLBACK_MAX_CLUSTERS = 5
