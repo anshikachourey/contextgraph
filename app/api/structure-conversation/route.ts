@@ -8,6 +8,7 @@ import { cosineSimilarity } from "@/src/lib/cosineSimilarity";
 import { computeSuggestedEdges } from "@/src/lib/edgeSuggestions";
 import { STRONGLY_RELATED_THRESHOLD } from "@/src/lib/similarityThresholds";
 import { DRAFT_SUPPRESS_THRESHOLD } from "@/src/lib/aiDraftConfig";
+import { parseJsonFromLLM } from "@/src/lib/llmJson";
 import type { ChatMessage } from "@/src/types/message";
 import type { ContextNode } from "@/src/types/node";
 import type { DbMessage } from "@/src/types/db";
@@ -248,7 +249,7 @@ Respond with raw JSON only.`,
       const raw = completion.choices[0]?.message?.content;
       if (!raw) throw new Error("Empty response");
 
-      const parsed = JSON.parse(raw);
+      const parsed = parseJsonFromLLM(raw);
       title = parsed.title ?? "Untitled Cluster";
       summary = parsed.summary ?? "";
     } catch (err) {

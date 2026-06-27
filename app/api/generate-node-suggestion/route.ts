@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
+import { parseJsonFromLLM } from "@/src/lib/llmJson";
 import type {
   GenerateNodeSuggestionRequest,
   GenerateNodeSuggestionResponse,
@@ -97,7 +98,7 @@ export async function POST(
   // --- Parse and validate the model response ---
   let parsed: unknown;
   try {
-    parsed = JSON.parse(rawContent);
+    parsed = parseJsonFromLLM(rawContent);
   } catch {
     return NextResponse.json(
       { error: "Model response could not be parsed as JSON." },
