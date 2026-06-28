@@ -65,6 +65,8 @@ export async function loadLatestConversation(): Promise<ConversationData | null>
     id: m.id,
     role: m.role,
     content: m.content,
+    parentNodeId: m.parent_node_id ?? null,
+    branchRootMessageId: m.branch_root_message_id ?? null,
   }));
 
   const nodes: ContextNode[] = (dbNodes ?? []).map((n: DbNode) => ({

@@ -2,7 +2,7 @@ import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import type { ChatMessage } from "@/src/types/message";
 
 // Persist one or more messages to the database.
-// Called after optimistic UI update — fire and forget from the frontend.
+// Supports branch messages: if parentNodeId is set, stores it.
 export async function persistMessages(
   conversationId: string,
   messages: ChatMessage[],
@@ -14,6 +14,8 @@ export async function persistMessages(
     conversation_id: conversationId,
     role: m.role,
     content: m.content,
+    parent_node_id: m.parentNodeId ?? null,
+    branch_root_message_id: m.branchRootMessageId ?? null,
   }));
 
   const { error } = await db.from("messages").insert(rows);

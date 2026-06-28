@@ -12,6 +12,8 @@ export type DbMessage = {
   conversation_id: string;
   role: "user" | "assistant";
   content: string;
+  parent_node_id: string | null;
+  branch_root_message_id: string | null;
   created_at: string;
 };
 

@@ -1,12 +1,17 @@
 import type { ChatMessage as ChatMessageType } from "@/src/types/message";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
+import BranchBanner from "./BranchBanner";
 
 type ChatPanelProps = {
   messages: ChatMessageType[];
   selectedMessageIds: string[];
   highlightedMessageIds: string[];
   isAssistantResponding: boolean;
+  // Branch mode
+  branchNodeTitle: string | null;
+  onExitBranch: () => void;
+  // Actions
   onToggleMessage: (id: string) => void;
   onCreateNode: () => void;
   onSendMessage: (content: string) => void;
@@ -17,6 +22,8 @@ export default function ChatPanel({
   selectedMessageIds,
   highlightedMessageIds,
   isAssistantResponding,
+  branchNodeTitle,
+  onExitBranch,
   onToggleMessage,
   onCreateNode,
   onSendMessage,
@@ -42,16 +49,23 @@ export default function ChatPanel({
       {/* Message list */}
       <div className="mb-4 space-y-5">
         {messages.map((message) => (
-          <ChatMessage
-            key={message.id}
-            message={message}
-            isSelected={selectedMessageIds.includes(message.id)}
-            isHighlighted={highlightedMessageIds.includes(message.id)}
-            onToggle={onToggleMessage}
-          />
+          <div key={message.id}>
+            {/* Branch label for branch messages */}
+            {message.parentNodeId && (
+              <p className="mb-1 text-xs text-purple-500">
+                ↳ Branch message
+              </p>
+            )}
+            <ChatMessage
+              message={message}
+              isSelected={selectedMessageIds.includes(message.id)}
+              isHighlighted={highlightedMessageIds.includes(message.id)}
+              onToggle={onToggleMessage}
+            />
+          </div>
         ))}
 
-        {/* Typing indicator — shown while assistant is responding */}
+        {/* Typing indicator */}
         {isAssistantResponding && (
           <div className="flex items-center gap-2 rounded-2xl bg-blue-50 px-4 py-3">
             <span className="text-sm font-semibold text-gray-600">Assistant</span>
@@ -67,6 +81,13 @@ export default function ChatPanel({
           </div>
         )}
       </div>
+
+      {/* Branch banner */}
+      {branchNodeTitle && (
+        <div className="mb-3">
+          <BranchBanner nodeTitle={branchNodeTitle} onExit={onExitBranch} />
+        </div>
+      )}
 
       {/* Input */}
       <div className="mb-4">

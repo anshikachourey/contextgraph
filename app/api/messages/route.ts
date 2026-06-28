@@ -2,11 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { persistMessages } from "@/src/lib/db/messages";
 import type { ChatMessage } from "@/src/types/message";
 
-type MessagesRequest = {
-  conversationId: string;
-  messages: ChatMessage[];
-};
-
 type ErrorResponse = { error: string };
 
 export async function POST(

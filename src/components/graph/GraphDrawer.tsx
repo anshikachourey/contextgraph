@@ -25,6 +25,8 @@ type GraphDrawerProps = {
   // Structure conversation
   isStructuring: boolean;
   onStructure: () => void;
+  // Branch
+  onBranch: (nodeId: string) => void;
   // Actions
   onToggleMaximize: () => void;
   onClose: () => void;
@@ -49,6 +51,7 @@ export default function GraphDrawer({
   onClearSummary,
   isStructuring,
   onStructure,
+  onBranch,
   onToggleMaximize,
   onClose,
   onNodeClick,
@@ -88,6 +91,7 @@ export default function GraphDrawer({
           node={activeNode}
           linkedMessages={activeNodeMessages}
           onClose={onClearSelection}
+          onBranch={onBranch}
         />
       );
     }

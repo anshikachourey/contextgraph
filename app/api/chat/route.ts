@@ -12,10 +12,22 @@ Be concise and direct. When a user's question is specific, answer it specificall
 
 You are aware that users of this app can create "context nodes" from conversation excerpts to save important topics as reusable knowledge objects. This is the product they are building together.`;
 
+const BRANCH_SYSTEM_PROMPT = `You are ContextGraph Assistant, continuing a focused discussion about a specific topic from the user's knowledge graph.
+
+The user has selected a saved context node and is asking a follow-up question about that specific topic. Your response should be focused entirely on this topic's context — do not bring in unrelated conversation threads.
+
+Be concise, direct, and helpful. Build on what was previously discussed in this topic.`;
+
+type BranchContext = {
+  nodeTitle: string;
+  nodeSummary: string;
+  evidenceSummary?: string;
+  linkedMessages: Array<{ role: "user" | "assistant"; content: string }>;
+};
+
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<ChatResponse | ChatErrorResponse>> {
-  // Parse body
   let body: unknown;
   try {
     body = await request.json();
@@ -37,7 +49,9 @@ export async function POST(
     );
   }
 
-  const { messages } = body as ChatRequest;
+  const b = body as Record<string, unknown>;
+  const messages = b.messages as Array<{ role: "user" | "assistant"; content: string }>;
+  const branchContext = b.branchContext as BranchContext | undefined;
 
   if (messages.length === 0) {
     return NextResponse.json(
@@ -46,15 +60,50 @@ export async function POST(
     );
   }
 
+  // Build LLM messages based on mode
+  let llmMessages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+
+  if (branchContext) {
+    // Branch mode: scoped context from the node
+    const contextParts: string[] = [
+      `Topic: ${branchContext.nodeTitle}`,
+      `Summary: ${branchContext.nodeSummary}`,
+    ];
+    if (branchContext.evidenceSummary) {
+      contextParts.push(`Key points:\n${branchContext.evidenceSummary}`);
+    }
+
+    const nodeContextMessage = contextParts.join("\n\n");
+
+    llmMessages = [
+      { role: "system", content: BRANCH_SYSTEM_PROMPT },
+      { role: "user", content: `Here is the topic context:\n\n${nodeContextMessage}` },
+      { role: "assistant", content: "I understand the context. What would you like to explore about this topic?" },
+      // Include linked messages as conversation history
+      ...branchContext.linkedMessages.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      })),
+      // Include any prior branch messages + the new user message
+      ...messages.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      })),
+    ];
+  } else {
+    // Normal mode: full conversation history
+    llmMessages = [
+      { role: "system", content: SYSTEM_PROMPT },
+      ...messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+    ];
+  }
+
   // Call OpenAI
   let content: string;
   try {
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...messages.map((m) => ({ role: m.role, content: m.content })),
-      ],
+      messages: llmMessages,
       temperature: 0.7,
       max_tokens: 512,
     });

@@ -49,6 +49,9 @@ export default function Home() {
   // Structure conversation state
   const [isStructuring, setIsStructuring] = useState(false);
 
+  // Branch mode state
+  const [activeBranchNodeId, setActiveBranchNodeId] = useState<string | null>(null);
+
   // Load conversation from the database on mount
   useEffect(() => {
     async function loadConversation() {
@@ -81,6 +84,11 @@ export default function Home() {
   const selectedMessages = messages.filter((m) =>
     selectedMessageIds.includes(m.id),
   );
+  // Branch mode derived
+  const activeBranchNode = activeBranchNodeId
+    ? (nodes.find((n) => n.id === activeBranchNodeId) ?? null)
+    : null;
+  const branchNodeTitle = activeBranchNode?.title ?? null;
 
   function toggleMessageSelection(messageId: string) {
     setSelectedMessageIds((current) =>
@@ -91,10 +99,16 @@ export default function Home() {
   }
 
   async function handleSendMessage(content: string) {
+    // Determine if we're in branch mode
+    const isBranching = activeBranchNodeId !== null && activeBranchNode !== null;
+    const branchRootId = isBranching ? crypto.randomUUID() : undefined;
+
     const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
+      id: branchRootId ?? crypto.randomUUID(),
       role: "user",
       content,
+      parentNodeId: isBranching ? activeBranchNodeId : null,
+      branchRootMessageId: isBranching ? branchRootId : null,
     };
     const updatedMessages = [...messages, userMessage];
 
@@ -105,13 +119,36 @@ export default function Home() {
     let assistantMessage: ChatMessage;
 
     try {
-      // Get assistant reply
-      const requestBody: ChatRequest = {
-        messages: updatedMessages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
-      };
+      // Build request — different context for branch vs normal mode
+      let requestBody: Record<string, unknown>;
+
+      if (isBranching) {
+        // Branch mode: send node context + prior branch messages + new message
+        const priorBranchMessages = messages
+          .filter((m) => m.parentNodeId === activeBranchNodeId)
+          .map((m) => ({ role: m.role, content: m.content }));
+
+        const linkedMsgs = messages
+          .filter((m) => activeBranchNode!.messageIds.includes(m.id))
+          .map((m) => ({ role: m.role, content: m.content }));
+
+        requestBody = {
+          messages: [...priorBranchMessages, { role: "user", content }],
+          branchContext: {
+            nodeTitle: activeBranchNode!.title,
+            nodeSummary: activeBranchNode!.summary,
+            linkedMessages: linkedMsgs,
+          },
+        };
+      } else {
+        // Normal mode: full conversation history
+        requestBody = {
+          messages: updatedMessages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        };
+      }
 
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -131,6 +168,8 @@ export default function Home() {
         id: crypto.randomUUID(),
         role: "assistant",
         content: (data as ChatResponse).content,
+        parentNodeId: isBranching ? activeBranchNodeId : null,
+        branchRootMessageId: isBranching ? branchRootId : null,
       };
     } catch (err) {
       const errorText = err instanceof Error ? err.message : "Something went wrong.";
@@ -138,6 +177,8 @@ export default function Home() {
         id: crypto.randomUUID(),
         role: "assistant",
         content: `Sorry, I couldn't respond right now. (${errorText})`,
+        parentNodeId: isBranching ? activeBranchNodeId : null,
+        branchRootMessageId: isBranching ? branchRootId : null,
       };
     } finally {
       setIsAssistantResponding(false);
@@ -145,15 +186,15 @@ export default function Home() {
 
     setMessages((current) => [...current, assistantMessage!]);
 
-    // Track assistant response count for AI draft cadence
-    const newCount = assistantResponseCount + 1;
-    setAssistantResponseCount(newCount);
+    // Track assistant response count for AI draft cadence (only in normal mode)
+    if (!isBranching) {
+      const newCount = assistantResponseCount + 1;
+      setAssistantResponseCount(newCount);
 
-    // Check if we should generate a draft
-    if (newCount % AI_DRAFT_CHECK_INTERVAL === 0) {
-      // Fire and forget — don't block the chat UX
-      const allMessages = [...updatedMessages, assistantMessage!];
-      generateAiDraft(allMessages);
+      if (newCount % AI_DRAFT_CHECK_INTERVAL === 0) {
+        const allMessages = [...updatedMessages, assistantMessage!];
+        generateAiDraft(allMessages);
+      }
     }
 
     // Persist both messages — fire and forget
@@ -315,6 +356,20 @@ export default function Home() {
     setSummaryError(null);
   }
 
+  // Branch mode — enter/exit
+  function handleBranch(nodeId: string) {
+    setActiveBranchNodeId(nodeId);
+    // Close the graph drawer so the user focuses on the chat
+    setIsGraphOpen(false);
+    setIsGraphMaximized(false);
+    setActiveNodeId(null);
+    setActiveEdgeId(null);
+  }
+
+  function handleExitBranch() {
+    setActiveBranchNodeId(null);
+  }
+
   // Clicking a node clears edge selection and summary, toggle for same node
   function handleNodeClick(nodeId: string) {
     setActiveEdgeId(null);
@@ -435,6 +490,8 @@ export default function Home() {
         selectedMessageIds={selectedMessageIds}
         highlightedMessageIds={highlightedMessageIds}
         isAssistantResponding={isAssistantResponding || isLoadingConversation}
+        branchNodeTitle={branchNodeTitle}
+        onExitBranch={handleExitBranch}
         onToggleMessage={toggleMessageSelection}
         onCreateNode={handleOpenModal}
         onSendMessage={handleSendMessage}
@@ -466,6 +523,7 @@ export default function Home() {
         onClearSummary={handleClearSummary}
         isStructuring={isStructuring}
         onStructure={handleStructure}
+        onBranch={handleBranch}
         onToggleMaximize={() => setIsGraphMaximized((prev) => !prev)}
         onClose={handleCloseGraph}
         onNodeClick={handleNodeClick}
