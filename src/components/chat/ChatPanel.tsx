@@ -1,16 +1,18 @@
 import type { ChatMessage as ChatMessageType } from "@/src/types/message";
+import type { ContextNode } from "@/src/types/node";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
-import BranchBanner from "./BranchBanner";
+import NodeWorkspace from "./NodeWorkspace";
 
 type ChatPanelProps = {
   messages: ChatMessageType[];
   selectedMessageIds: string[];
   highlightedMessageIds: string[];
   isAssistantResponding: boolean;
-  // Branch mode
-  branchNodeTitle: string | null;
-  onExitBranch: () => void;
+  // Node workspace
+  workspaceNode: ContextNode | null;
+  workspaceLinkedMessages: ChatMessageType[];
+  onExitWorkspace: () => void;
   // Actions
   onToggleMessage: (id: string) => void;
   onCreateNode: () => void;
@@ -22,12 +24,28 @@ export default function ChatPanel({
   selectedMessageIds,
   highlightedMessageIds,
   isAssistantResponding,
-  branchNodeTitle,
-  onExitBranch,
+  workspaceNode,
+  workspaceLinkedMessages,
+  onExitWorkspace,
   onToggleMessage,
   onCreateNode,
   onSendMessage,
 }: ChatPanelProps) {
+  // If a workspace node is active, render the focused workspace view
+  if (workspaceNode) {
+    return (
+      <NodeWorkspace
+        node={workspaceNode}
+        linkedMessages={workspaceLinkedMessages}
+        continuationMessages={messages}
+        isAssistantResponding={isAssistantResponding}
+        onBack={onExitWorkspace}
+        onSendMessage={onSendMessage}
+      />
+    );
+  }
+
+  // Normal conversation view
   return (
     <section className="mx-auto flex min-h-screen max-w-3xl flex-col justify-end px-6 pb-10 pt-24">
       {/* Selection toolbar */}
@@ -49,20 +67,13 @@ export default function ChatPanel({
       {/* Message list */}
       <div className="mb-4 space-y-5">
         {messages.map((message) => (
-          <div key={message.id}>
-            {/* Branch label for branch messages */}
-            {message.parentNodeId && (
-              <p className="mb-1 text-xs text-purple-500">
-                ↳ Branch message
-              </p>
-            )}
-            <ChatMessage
-              message={message}
-              isSelected={selectedMessageIds.includes(message.id)}
-              isHighlighted={highlightedMessageIds.includes(message.id)}
-              onToggle={onToggleMessage}
-            />
-          </div>
+          <ChatMessage
+            key={message.id}
+            message={message}
+            isSelected={selectedMessageIds.includes(message.id)}
+            isHighlighted={highlightedMessageIds.includes(message.id)}
+            onToggle={onToggleMessage}
+          />
         ))}
 
         {/* Typing indicator */}
@@ -81,13 +92,6 @@ export default function ChatPanel({
           </div>
         )}
       </div>
-
-      {/* Branch banner */}
-      {branchNodeTitle && (
-        <div className="mb-3">
-          <BranchBanner nodeTitle={branchNodeTitle} onExit={onExitBranch} />
-        </div>
-      )}
 
       {/* Input */}
       <div className="mb-4">

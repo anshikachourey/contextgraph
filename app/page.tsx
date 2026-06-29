@@ -89,6 +89,15 @@ export default function Home() {
     ? (nodes.find((n) => n.id === activeBranchNodeId) ?? null)
     : null;
   const branchNodeTitle = activeBranchNode?.title ?? null;
+  const branchNodeSummary = activeBranchNode?.summary ?? null;
+  const branchLinkedMessages = activeBranchNode
+    ? messages.filter((m) => activeBranchNode.messageIds.includes(m.id))
+    : [];
+
+  // Messages to display — filtered in branch mode
+  const displayMessages = activeBranchNodeId
+    ? messages.filter((m) => m.parentNodeId === activeBranchNodeId)
+    : messages;
 
   function toggleMessageSelection(messageId: string) {
     setSelectedMessageIds((current) =>
@@ -486,12 +495,13 @@ export default function Home() {
       <Header onShowGraph={() => setIsGraphOpen(true)} />
 
       <ChatPanel
-        messages={messages}
+        messages={displayMessages}
         selectedMessageIds={selectedMessageIds}
         highlightedMessageIds={highlightedMessageIds}
         isAssistantResponding={isAssistantResponding || isLoadingConversation}
-        branchNodeTitle={branchNodeTitle}
-        onExitBranch={handleExitBranch}
+        workspaceNode={activeBranchNode}
+        workspaceLinkedMessages={branchLinkedMessages}
+        onExitWorkspace={handleExitBranch}
         onToggleMessage={toggleMessageSelection}
         onCreateNode={handleOpenModal}
         onSendMessage={handleSendMessage}
