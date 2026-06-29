@@ -94,10 +94,10 @@ export default function Home() {
     ? messages.filter((m) => activeBranchNode.messageIds.includes(m.id))
     : [];
 
-  // Messages to display — filtered in branch mode
+  // Messages to display — filtered by mode
   const displayMessages = activeBranchNodeId
     ? messages.filter((m) => m.parentNodeId === activeBranchNodeId)
-    : messages;
+    : messages.filter((m) => !m.parentNodeId);
 
   function toggleMessageSelection(messageId: string) {
     setSelectedMessageIds((current) =>
