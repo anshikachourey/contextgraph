@@ -1,20 +1,17 @@
 import type { ContextNode } from "@/src/types/node";
 import type { ChatMessage } from "@/src/types/message";
 import type { SemanticEdge } from "@/src/types/edge";
-import type { EvolutionSuggestion } from "@/src/types/evolution";
 import GraphToolbar from "./GraphToolbar";
 import GraphCanvas from "./GraphCanvas";
 import NodeDetailPanel from "./NodeDetailPanel";
 import EdgeDetailPanel from "./EdgeDetailPanel";
 import GraphSummaryPanel from "./GraphSummaryPanel";
-import EvolutionPanel from "./EvolutionPanel";
 
 type GraphDrawerProps = {
   isOpen: boolean;
   isMaximized: boolean;
   nodes: ContextNode[];
   semanticEdges: SemanticEdge[];
-  hasMessages: boolean;
   activeNode: ContextNode | null;
   activeNodeMessages: ChatMessage[];
   activeEdge: SemanticEdge | null;
@@ -24,16 +21,6 @@ type GraphDrawerProps = {
   summaryError: string | null;
   onSummarize: () => void;
   onClearSummary: () => void;
-  // Structure conversation
-  isStructuring: boolean;
-  onStructure: () => void;
-  // Evolution
-  isEvolving: boolean;
-  evolutionSuggestions: EvolutionSuggestion[];
-  onEvolve: () => void;
-  onApplySuggestion: (s: EvolutionSuggestion) => void;
-  onDismissSuggestion: (s: EvolutionSuggestion) => void;
-  onCloseEvolution: () => void;
   // Branch
   onBranch: (nodeId: string) => void;
   // Actions
@@ -49,7 +36,6 @@ export default function GraphDrawer({
   isMaximized,
   nodes,
   semanticEdges,
-  hasMessages,
   activeNode,
   activeNodeMessages,
   activeEdge,
@@ -58,14 +44,6 @@ export default function GraphDrawer({
   summaryError,
   onSummarize,
   onClearSummary,
-  isStructuring,
-  onStructure,
-  isEvolving,
-  evolutionSuggestions,
-  onEvolve,
-  onApplySuggestion,
-  onDismissSuggestion,
-  onCloseEvolution,
   onBranch,
   onToggleMaximize,
   onClose,
@@ -74,12 +52,8 @@ export default function GraphDrawer({
   onClearSelection,
 }: GraphDrawerProps) {
   const isEmpty = nodes.length === 0;
-
   const showSummary = isSummarizing || graphSummary !== null || summaryError !== null;
-  const showEvolution = isEvolving || evolutionSuggestions.length > 0;
-
-  // Evolution panel takes priority when active
-  const hasPanel = showEvolution || showSummary || activeNode !== null || activeEdge !== null;
+  const hasPanel = showSummary || activeNode !== null || activeEdge !== null;
 
   const edgeSourceTitle = activeEdge
     ? (nodes.find((n) => n.id === activeEdge.sourceNodeId)?.title ?? "Unknown")
@@ -89,17 +63,6 @@ export default function GraphDrawer({
     : "";
 
   function renderPanel() {
-    if (showEvolution) {
-      return (
-        <EvolutionPanel
-          suggestions={evolutionSuggestions}
-          isLoading={isEvolving}
-          onApply={onApplySuggestion}
-          onDismiss={onDismissSuggestion}
-          onClose={onCloseEvolution}
-        />
-      );
-    }
     if (showSummary) {
       return (
         <GraphSummaryPanel
@@ -147,13 +110,8 @@ export default function GraphDrawer({
         <GraphToolbar
           isMaximized={isMaximized}
           hasNodes={!isEmpty}
-          hasMessages={hasMessages}
           isSummarizing={isSummarizing}
-          isStructuring={isStructuring}
-          isEvolving={isEvolving}
           onSummarize={onSummarize}
-          onStructure={onStructure}
-          onEvolve={onEvolve}
           onToggleMaximize={onToggleMaximize}
           onClose={onClose}
         />
@@ -165,7 +123,7 @@ export default function GraphDrawer({
                 <div className="mb-3 text-4xl">●──●</div>
                 <p className="font-medium">No nodes yet</p>
                 <p className="mt-1 text-sm">
-                  Select chat messages and create your first context node.
+                  Start chatting. The graph will evolve automatically.
                 </p>
               </div>
             </div>

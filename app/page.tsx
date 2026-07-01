@@ -9,12 +9,9 @@ import { mockMessages } from "@/src/data/mockMessages";
 import type { ContextNode } from "@/src/types/node";
 import type { ChatMessage } from "@/src/types/message";
 import type { SemanticEdge } from "@/src/types/edge";
-import type { AiDraft } from "@/src/types/draft";
-import type { ChatRequest, ChatResponse, ChatErrorResponse } from "@/src/types/ai";
+import type { ChatResponse, ChatErrorResponse } from "@/src/types/ai";
 import type { ConversationRouteResponse } from "@/app/api/conversation/route";
 import { checkNodeOverlap } from "@/src/lib/nodeOverlap";
-import { AI_DRAFT_CHECK_INTERVAL, AI_DRAFT_CANDIDATE_WINDOW } from "@/src/lib/aiDraftConfig";
-import AiDraftNotification from "@/src/components/nodes/AiDraftNotification";
 
 export default function Home() {
   // Conversation is loaded from the DB on mount.
@@ -35,25 +32,13 @@ export default function Home() {
   // Nodes that partially overlap the current selection — passed to the modal as a warning
   const [overlappingNodes, setOverlappingNodes] = useState<ContextNode[]>([]);
 
-  // AI Draft state
-  const [aiDraft, setAiDraft] = useState<AiDraft | null>(null);
-  const [assistantResponseCount, setAssistantResponseCount] = useState(0);
-  // When reviewing a draft, open modal with draft values pre-filled
-  const [isDraftReview, setIsDraftReview] = useState(false);
-
   // Graph summary state
   const [graphSummary, setGraphSummary] = useState<string | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
-  // Structure conversation state
-  const [isStructuring, setIsStructuring] = useState(false);
-
-  // Evolution engine state
-  const [isEvolving, setIsEvolving] = useState(false);
-  const [evolutionSuggestions, setEvolutionSuggestions] = useState<
-    import("@/src/types/evolution").EvolutionSuggestion[]
-  >([]);
+  // Structure conversation state — replaced by automatic graph engine
+  // (kept as unused vars won't break tsc, but remove the handlers)
 
   // Branch mode state
   const [activeBranchNodeId, setActiveBranchNodeId] = useState<string | null>(null);
@@ -158,6 +143,7 @@ export default function Home() {
       } else {
         // Normal mode: full conversation history
         requestBody = {
+          conversationId,
           messages: updatedMessages.map((m) => ({
             role: m.role,
             content: m.content,
@@ -201,17 +187,6 @@ export default function Home() {
 
     setMessages((current) => [...current, assistantMessage!]);
 
-    // Track assistant response count for AI draft cadence (only in normal mode)
-    if (!isBranching) {
-      const newCount = assistantResponseCount + 1;
-      setAssistantResponseCount(newCount);
-
-      if (newCount % AI_DRAFT_CHECK_INTERVAL === 0) {
-        const allMessages = [...updatedMessages, assistantMessage!];
-        generateAiDraft(allMessages);
-      }
-    }
-
     // Persist both messages — fire and forget
     if (conversationId) {
       fetch("/api/messages", {
@@ -221,57 +196,25 @@ export default function Home() {
           conversationId,
           messages: [userMessage, assistantMessage!],
         }),
-      }).catch(() => {
-        // Silently ignore persist failures — conversation is still in memory
-      });
+      })
+        .then(() => {
+          // Graph engine already ran inside /api/chat — just refetch to pick up changes
+          return fetch("/api/conversation");
+        })
+        .then((res) => {
+          if (res && res.ok) return res.json();
+        })
+        .then((data) => {
+          if (data) {
+            const conv = data as ConversationRouteResponse;
+            setNodes(conv.nodes);
+            setSemanticEdges(conv.edges);
+          }
+        })
+        .catch(() => {
+          // Silently ignore — refetch failure is non-fatal
+        });
     }
-  }
-
-  // ─── AI Draft generation ──────────────────────────────────────────────────
-
-  async function generateAiDraft(allMessages: ChatMessage[]) {
-    if (!conversationId) return;
-
-    // Take the last N messages as the candidate window
-    const candidateMessages = allMessages.slice(-AI_DRAFT_CANDIDATE_WINDOW);
-
-    try {
-      const response = await fetch("/api/draft-node", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId,
-          messages: candidateMessages.map((m) => ({
-            id: m.id,
-            role: m.role,
-            content: m.content,
-          })),
-        }),
-      });
-
-      if (!response.ok) return; // Silently ignore failures
-
-      const data = await response.json();
-      if (data.suppressed) return; // Topic already covered by existing node
-
-      setAiDraft({
-        title: data.title,
-        summary: data.summary,
-        candidateMessages,
-      });
-    } catch {
-      // Silently ignore — draft generation is non-critical
-    }
-  }
-
-  function handleDraftReview() {
-    if (!aiDraft) return;
-    setIsDraftReview(true);
-    setIsModalOpen(true);
-  }
-
-  function handleDraftDismiss() {
-    setAiDraft(null);
   }
 
   // ─── Manual node creation ───────────────────────────────────────────────────
@@ -296,20 +239,11 @@ export default function Home() {
   }
 
   function handleModalConfirm(title: string, summary: string) {
-    // Determine which messages to link — from draft or from manual selection
-    const linkedMessageIds = isDraftReview && aiDraft
-      ? aiDraft.candidateMessages.map((m) => m.id)
-      : selectedMessageIds;
-
-    const linkedMsgs = isDraftReview && aiDraft
-      ? aiDraft.candidateMessages
-      : selectedMessages;
-
     const newNode: ContextNode = {
       id: crypto.randomUUID(),
       title,
       summary,
-      messageIds: linkedMessageIds,
+      messageIds: selectedMessageIds,
     };
 
     // Optimistic update
@@ -318,8 +252,6 @@ export default function Home() {
     setOverlappingNodes([]);
     setIsModalOpen(false);
     setIsGraphOpen(true);
-    setAiDraft(null);
-    setIsDraftReview(false);
 
     // Persist node + auto-compute edges — then refresh state to pick up new edges
     if (conversationId) {
@@ -329,8 +261,8 @@ export default function Home() {
         body: JSON.stringify({
           conversationId,
           node: newNode,
-          linkedMessages: linkedMsgs,
-          metadata: { createdBy: isDraftReview ? "ai" : "user" },
+          linkedMessages: selectedMessages,
+          metadata: { createdBy: "user" },
         }),
       })
         .then((res) => {
@@ -358,8 +290,6 @@ export default function Home() {
   function handleModalCancel() {
     setIsModalOpen(false);
     setOverlappingNodes([]);
-    setIsDraftReview(false);
-    // Don't clear aiDraft on cancel — the notification stays visible
   }
 
   function handleCloseGraph() {
@@ -454,119 +384,6 @@ export default function Home() {
 
   // ─── Structure conversation ─────────────────────────────────────────────────
 
-  async function handleStructure() {
-    if (!conversationId) return;
-    setIsStructuring(true);
-
-    try {
-      const response = await fetch("/api/structure-conversation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        alert(data.error ?? "Structuring failed.");
-        return;
-      }
-
-      const result = data as {
-        nodesCreated: number;
-        clustersSkipped: number;
-        edgesCreated: number;
-      };
-
-      console.log(
-        `[structure] Created ${result.nodesCreated} nodes, ${result.edgesCreated} edges, skipped ${result.clustersSkipped} clusters`,
-      );
-
-      // Refresh conversation to pick up new nodes and edges
-      const convResponse = await fetch("/api/conversation");
-      if (convResponse.ok) {
-        const convData = (await convResponse.json()) as ConversationRouteResponse;
-        setNodes(convData.nodes);
-        setSemanticEdges(convData.edges);
-      }
-    } catch {
-      alert("Failed to structure conversation. Check if the ML service is running.");
-    } finally {
-      setIsStructuring(false);
-    }
-  }
-
-  // ─── Evolution engine ───────────────────────────────────────────────────────
-
-  async function handleEvolve() {
-    if (!conversationId) return;
-    setIsEvolving(true);
-    setEvolutionSuggestions([]);
-
-    try {
-      const response = await fetch("/api/evolve-graph", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        alert(data.error ?? "Evolution analysis failed.");
-        return;
-      }
-
-      setEvolutionSuggestions(data.suggestions ?? []);
-    } catch {
-      alert("Failed to analyze graph evolution.");
-    } finally {
-      setIsEvolving(false);
-    }
-  }
-
-  function handleApplySuggestion(
-    suggestion: import("@/src/types/evolution").EvolutionSuggestion,
-  ) {
-    if (suggestion.action === "extend_node" && conversationId) {
-      // Link messages to the target node via the existing messages persistence
-      const nodeToExtend = nodes.find((n) => n.id === suggestion.targetNodeId);
-      if (nodeToExtend) {
-        // Persist the link by calling node_messages insert
-        fetch("/api/evolve-apply", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            conversationId,
-            nodeId: suggestion.targetNodeId,
-            messageIds: suggestion.messageIds,
-          }),
-        })
-          .then(() => fetch("/api/conversation"))
-          .then((res) => res.ok ? res.json() : null)
-          .then((data) => {
-            if (data) {
-              const conv = data as ConversationRouteResponse;
-              setNodes(conv.nodes);
-              setSemanticEdges(conv.edges);
-            }
-          })
-          .catch(() => {});
-      }
-    }
-    // Remove from suggestions list
-    setEvolutionSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
-  }
-
-  function handleDismissSuggestion(
-    suggestion: import("@/src/types/evolution").EvolutionSuggestion,
-  ) {
-    setEvolutionSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
-  }
-
-  function handleCloseEvolution() {
-    setEvolutionSuggestions([]);
-  }
-
   return (
     <main className="relative min-h-screen bg-white text-black">
       <Header onShowGraph={() => setIsGraphOpen(true)} />
@@ -584,22 +401,11 @@ export default function Home() {
         onSendMessage={handleSendMessage}
       />
 
-      {/* AI Draft notification pill */}
-      {aiDraft && !isModalOpen && (
-        <div className="fixed bottom-24 left-1/2 z-20 -translate-x-1/2">
-          <AiDraftNotification
-            onReview={handleDraftReview}
-            onDismiss={handleDraftDismiss}
-          />
-        </div>
-      )}
-
       <GraphDrawer
         isOpen={isGraphOpen}
         isMaximized={isGraphMaximized}
         nodes={nodes}
         semanticEdges={semanticEdges}
-        hasMessages={messages.length > 0}
         activeNode={activeNode}
         activeNodeMessages={activeNodeMessages}
         activeEdge={activeEdge}
@@ -608,14 +414,6 @@ export default function Home() {
         summaryError={summaryError}
         onSummarize={handleSummarize}
         onClearSummary={handleClearSummary}
-        isStructuring={isStructuring}
-        onStructure={handleStructure}
-        isEvolving={isEvolving}
-        evolutionSuggestions={evolutionSuggestions}
-        onEvolve={handleEvolve}
-        onApplySuggestion={handleApplySuggestion}
-        onDismissSuggestion={handleDismissSuggestion}
-        onCloseEvolution={handleCloseEvolution}
         onBranch={handleBranch}
         onToggleMaximize={() => setIsGraphMaximized((prev) => !prev)}
         onClose={handleCloseGraph}
@@ -626,12 +424,8 @@ export default function Home() {
 
       {isModalOpen && (
         <CreateNodeModal
-          selectedMessages={
-            isDraftReview && aiDraft ? aiDraft.candidateMessages : selectedMessages
-          }
-          overlappingNodes={isDraftReview ? [] : overlappingNodes}
-          initialTitle={isDraftReview && aiDraft ? aiDraft.title : ""}
-          initialSummary={isDraftReview && aiDraft ? aiDraft.summary : ""}
+          selectedMessages={selectedMessages}
+          overlappingNodes={overlappingNodes}
           onConfirm={handleModalConfirm}
           onCancel={handleModalCancel}
         />

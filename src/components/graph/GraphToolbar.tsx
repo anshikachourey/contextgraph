@@ -1,13 +1,18 @@
+"use client";
+
+import { useDevMode } from "@/src/hooks/useDevMode";
+
 type GraphToolbarProps = {
   isMaximized: boolean;
   hasNodes: boolean;
-  hasMessages: boolean;
   isSummarizing: boolean;
-  isStructuring: boolean;
-  isEvolving: boolean;
   onSummarize: () => void;
-  onStructure: () => void;
-  onEvolve: () => void;
+  // Dev mode actions (hidden from normal UI)
+  onStructure?: () => void;
+  onEvolve?: () => void;
+  isStructuring?: boolean;
+  isEvolving?: boolean;
+  // Layout
   onToggleMaximize: () => void;
   onClose: () => void;
 };
@@ -15,72 +20,65 @@ type GraphToolbarProps = {
 export default function GraphToolbar({
   isMaximized,
   hasNodes,
-  hasMessages,
   isSummarizing,
-  isStructuring,
-  isEvolving,
   onSummarize,
   onStructure,
   onEvolve,
+  isStructuring = false,
+  isEvolving = false,
   onToggleMaximize,
   onClose,
 }: GraphToolbarProps) {
-  const isBusy = isSummarizing || isStructuring || isEvolving;
+  const devMode = useDevMode();
 
   return (
     <div className="flex h-16 items-center justify-between border-b border-gray-200 px-5">
-      <h2 className="font-semibold">Context Graph</h2>
+      <div className="flex items-center gap-2">
+        <h2 className="font-semibold">Context Graph</h2>
+        {devMode && (
+          <span className="rounded-full bg-yellow-100 px-1.5 py-0.5 text-[10px] font-medium text-yellow-700">
+            DEV
+          </span>
+        )}
+      </div>
 
       <div className="flex items-center gap-2">
-        {hasMessages && (
+        {/* Dev-only debug tools */}
+        {devMode && hasNodes && onStructure && (
           <button
             onClick={onStructure}
-            disabled={isBusy}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1 text-sm hover:bg-gray-100 disabled:opacity-40"
+            disabled={isStructuring || isEvolving || isSummarizing}
+            className="flex items-center gap-1.5 rounded-md px-3 py-1 text-sm text-gray-500 hover:bg-gray-100 disabled:opacity-40"
           >
-            {isStructuring ? (
-              <>
-                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
-                Structuring…
-              </>
-            ) : (
-              <>⚡ Structure</>
-            )}
+            {isStructuring ? "Structuring…" : "⚙ Structure"}
+          </button>
+        )}
+        {devMode && hasNodes && onEvolve && (
+          <button
+            onClick={onEvolve}
+            disabled={isStructuring || isEvolving || isSummarizing}
+            className="flex items-center gap-1.5 rounded-md px-3 py-1 text-sm text-gray-500 hover:bg-gray-100 disabled:opacity-40"
+          >
+            {isEvolving ? "Evolving…" : "⚡ Evolve"}
           </button>
         )}
 
+        {/* Always visible */}
         {hasNodes && (
-          <>
-            <button
-              onClick={onEvolve}
-              disabled={isBusy}
-              className="flex items-center gap-1.5 rounded-md px-3 py-1 text-sm hover:bg-gray-100 disabled:opacity-40"
-            >
-              {isEvolving ? (
-                <>
-                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
-                  Evolving…
-                </>
-              ) : (
-                <>🔄 Evolve</>
-              )}
-            </button>
-
-            <button
-              onClick={onSummarize}
-              disabled={isBusy}
-              className="flex items-center gap-1.5 rounded-md px-3 py-1 text-sm hover:bg-gray-100 disabled:opacity-40"
-            >
-              {isSummarizing ? (
-                <>
-                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
-                  Summarizing…
-                </>
-              ) : (
-                <>✦ Summarize</>
-              )}
-            </button>
-          </>
+          <button
+            onClick={onSummarize}
+            disabled={isSummarizing}
+            className="flex items-center gap-1.5 rounded-md px-3 py-1 text-sm hover:bg-gray-100 disabled:opacity-40"
+          >
+            {isSummarizing ? (
+              <>
+                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
+                Summarizing…
+              </>
+            ) : (
+              <>✦ Summarize</>
+            )}
+          </button>
         )}
 
         <button

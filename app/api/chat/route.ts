@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import type { ChatRequest, ChatResponse, ChatErrorResponse } from "@/src/types/ai";
+import { runIntelligenceEngine } from "@/src/lib/intelligence";
+import type { ChatResponse, ChatErrorResponse } from "@/src/types/ai";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -51,6 +52,7 @@ export async function POST(
 
   const b = body as Record<string, unknown>;
   const messages = b.messages as Array<{ role: "user" | "assistant"; content: string }>;
+  const conversationId = b.conversationId as string | undefined;
   const branchContext = b.branchContext as BranchContext | undefined;
 
   if (messages.length === 0) {
@@ -64,7 +66,6 @@ export async function POST(
   let llmMessages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
 
   if (branchContext) {
-    // Branch mode: scoped context from the node
     const contextParts: string[] = [
       `Topic: ${branchContext.nodeTitle}`,
       `Summary: ${branchContext.nodeSummary}`,
@@ -79,26 +80,23 @@ export async function POST(
       { role: "system", content: BRANCH_SYSTEM_PROMPT },
       { role: "user", content: `Here is the topic context:\n\n${nodeContextMessage}` },
       { role: "assistant", content: "I understand the context. What would you like to explore about this topic?" },
-      // Include linked messages as conversation history
       ...branchContext.linkedMessages.map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
       })),
-      // Include any prior branch messages + the new user message
       ...messages.map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
       })),
     ];
   } else {
-    // Normal mode: full conversation history
     llmMessages = [
       { role: "system", content: SYSTEM_PROMPT },
       ...messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
     ];
   }
 
-  // Call OpenAI
+  // Call OpenAI for assistant response
   let content: string;
   try {
     const completion = await openai.chat.completions.create({
@@ -122,6 +120,21 @@ export async function POST(
       { error: `OpenAI request failed: ${message}` },
       { status: 500 },
     );
+  }
+
+  // Run GraphIntelligenceEngine (non-fatal — errors logged, chat still returns)
+  // Only runs for normal conversation, not branch mode
+  if (conversationId && !branchContext) {
+    try {
+      const engineResult = await runIntelligenceEngine(conversationId);
+      if (engineResult.nodesCreated > 0 || engineResult.nodesExtended > 0) {
+        console.log(
+          `[chat] Intelligence engine: ${engineResult.nodesCreated} created, ${engineResult.nodesExtended} extended, +${engineResult.edgesAdded}/-${engineResult.edgesRemoved} edges`,
+        );
+      }
+    } catch (err) {
+      console.error("[chat] Intelligence engine failed (non-fatal):", err);
+    }
   }
 
   return NextResponse.json({ content }, { status: 200 });
