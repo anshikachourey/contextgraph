@@ -4,8 +4,10 @@ type GraphToolbarProps = {
   hasMessages: boolean;
   isSummarizing: boolean;
   isStructuring: boolean;
+  isEvolving: boolean;
   onSummarize: () => void;
   onStructure: () => void;
+  onEvolve: () => void;
   onToggleMaximize: () => void;
   onClose: () => void;
 };
@@ -16,11 +18,15 @@ export default function GraphToolbar({
   hasMessages,
   isSummarizing,
   isStructuring,
+  isEvolving,
   onSummarize,
   onStructure,
+  onEvolve,
   onToggleMaximize,
   onClose,
 }: GraphToolbarProps) {
+  const isBusy = isSummarizing || isStructuring || isEvolving;
+
   return (
     <div className="flex h-16 items-center justify-between border-b border-gray-200 px-5">
       <h2 className="font-semibold">Context Graph</h2>
@@ -29,7 +35,7 @@ export default function GraphToolbar({
         {hasMessages && (
           <button
             onClick={onStructure}
-            disabled={isStructuring || isSummarizing}
+            disabled={isBusy}
             className="flex items-center gap-1.5 rounded-md px-3 py-1 text-sm hover:bg-gray-100 disabled:opacity-40"
           >
             {isStructuring ? (
@@ -44,20 +50,37 @@ export default function GraphToolbar({
         )}
 
         {hasNodes && (
-          <button
-            onClick={onSummarize}
-            disabled={isSummarizing || isStructuring}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1 text-sm hover:bg-gray-100 disabled:opacity-40"
-          >
-            {isSummarizing ? (
-              <>
-                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
-                Summarizing…
-              </>
-            ) : (
-              <>✦ Summarize</>
-            )}
-          </button>
+          <>
+            <button
+              onClick={onEvolve}
+              disabled={isBusy}
+              className="flex items-center gap-1.5 rounded-md px-3 py-1 text-sm hover:bg-gray-100 disabled:opacity-40"
+            >
+              {isEvolving ? (
+                <>
+                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
+                  Evolving…
+                </>
+              ) : (
+                <>🔄 Evolve</>
+              )}
+            </button>
+
+            <button
+              onClick={onSummarize}
+              disabled={isBusy}
+              className="flex items-center gap-1.5 rounded-md px-3 py-1 text-sm hover:bg-gray-100 disabled:opacity-40"
+            >
+              {isSummarizing ? (
+                <>
+                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
+                  Summarizing…
+                </>
+              ) : (
+                <>✦ Summarize</>
+              )}
+            </button>
+          </>
         )}
 
         <button

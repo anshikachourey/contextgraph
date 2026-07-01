@@ -49,6 +49,12 @@ export default function Home() {
   // Structure conversation state
   const [isStructuring, setIsStructuring] = useState(false);
 
+  // Evolution engine state
+  const [isEvolving, setIsEvolving] = useState(false);
+  const [evolutionSuggestions, setEvolutionSuggestions] = useState<
+    import("@/src/types/evolution").EvolutionSuggestion[]
+  >([]);
+
   // Branch mode state
   const [activeBranchNodeId, setActiveBranchNodeId] = useState<string | null>(null);
 
@@ -490,6 +496,77 @@ export default function Home() {
     }
   }
 
+  // ─── Evolution engine ───────────────────────────────────────────────────────
+
+  async function handleEvolve() {
+    if (!conversationId) return;
+    setIsEvolving(true);
+    setEvolutionSuggestions([]);
+
+    try {
+      const response = await fetch("/api/evolve-graph", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.error ?? "Evolution analysis failed.");
+        return;
+      }
+
+      setEvolutionSuggestions(data.suggestions ?? []);
+    } catch {
+      alert("Failed to analyze graph evolution.");
+    } finally {
+      setIsEvolving(false);
+    }
+  }
+
+  function handleApplySuggestion(
+    suggestion: import("@/src/types/evolution").EvolutionSuggestion,
+  ) {
+    if (suggestion.action === "extend_node" && conversationId) {
+      // Link messages to the target node via the existing messages persistence
+      const nodeToExtend = nodes.find((n) => n.id === suggestion.targetNodeId);
+      if (nodeToExtend) {
+        // Persist the link by calling node_messages insert
+        fetch("/api/evolve-apply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId,
+            nodeId: suggestion.targetNodeId,
+            messageIds: suggestion.messageIds,
+          }),
+        })
+          .then(() => fetch("/api/conversation"))
+          .then((res) => res.ok ? res.json() : null)
+          .then((data) => {
+            if (data) {
+              const conv = data as ConversationRouteResponse;
+              setNodes(conv.nodes);
+              setSemanticEdges(conv.edges);
+            }
+          })
+          .catch(() => {});
+      }
+    }
+    // Remove from suggestions list
+    setEvolutionSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
+  }
+
+  function handleDismissSuggestion(
+    suggestion: import("@/src/types/evolution").EvolutionSuggestion,
+  ) {
+    setEvolutionSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
+  }
+
+  function handleCloseEvolution() {
+    setEvolutionSuggestions([]);
+  }
+
   return (
     <main className="relative min-h-screen bg-white text-black">
       <Header onShowGraph={() => setIsGraphOpen(true)} />
@@ -533,6 +610,12 @@ export default function Home() {
         onClearSummary={handleClearSummary}
         isStructuring={isStructuring}
         onStructure={handleStructure}
+        isEvolving={isEvolving}
+        evolutionSuggestions={evolutionSuggestions}
+        onEvolve={handleEvolve}
+        onApplySuggestion={handleApplySuggestion}
+        onDismissSuggestion={handleDismissSuggestion}
+        onCloseEvolution={handleCloseEvolution}
         onBranch={handleBranch}
         onToggleMaximize={() => setIsGraphMaximized((prev) => !prev)}
         onClose={handleCloseGraph}

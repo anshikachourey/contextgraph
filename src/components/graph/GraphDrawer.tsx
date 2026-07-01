@@ -1,11 +1,13 @@
 import type { ContextNode } from "@/src/types/node";
 import type { ChatMessage } from "@/src/types/message";
 import type { SemanticEdge } from "@/src/types/edge";
+import type { EvolutionSuggestion } from "@/src/types/evolution";
 import GraphToolbar from "./GraphToolbar";
 import GraphCanvas from "./GraphCanvas";
 import NodeDetailPanel from "./NodeDetailPanel";
 import EdgeDetailPanel from "./EdgeDetailPanel";
 import GraphSummaryPanel from "./GraphSummaryPanel";
+import EvolutionPanel from "./EvolutionPanel";
 
 type GraphDrawerProps = {
   isOpen: boolean;
@@ -25,6 +27,13 @@ type GraphDrawerProps = {
   // Structure conversation
   isStructuring: boolean;
   onStructure: () => void;
+  // Evolution
+  isEvolving: boolean;
+  evolutionSuggestions: EvolutionSuggestion[];
+  onEvolve: () => void;
+  onApplySuggestion: (s: EvolutionSuggestion) => void;
+  onDismissSuggestion: (s: EvolutionSuggestion) => void;
+  onCloseEvolution: () => void;
   // Branch
   onBranch: (nodeId: string) => void;
   // Actions
@@ -51,6 +60,12 @@ export default function GraphDrawer({
   onClearSummary,
   isStructuring,
   onStructure,
+  isEvolving,
+  evolutionSuggestions,
+  onEvolve,
+  onApplySuggestion,
+  onDismissSuggestion,
+  onCloseEvolution,
   onBranch,
   onToggleMaximize,
   onClose,
@@ -60,13 +75,12 @@ export default function GraphDrawer({
 }: GraphDrawerProps) {
   const isEmpty = nodes.length === 0;
 
-  // Summary panel is shown when summary is being generated or has content
   const showSummary = isSummarizing || graphSummary !== null || summaryError !== null;
+  const showEvolution = isEvolving || evolutionSuggestions.length > 0;
 
-  // A side/bottom panel is shown when any of node detail, edge detail, or summary is active
-  const hasPanel = activeNode !== null || activeEdge !== null || showSummary;
+  // Evolution panel takes priority when active
+  const hasPanel = showEvolution || showSummary || activeNode !== null || activeEdge !== null;
 
-  // Resolve edge node titles
   const edgeSourceTitle = activeEdge
     ? (nodes.find((n) => n.id === activeEdge.sourceNodeId)?.title ?? "Unknown")
     : "";
@@ -75,6 +89,17 @@ export default function GraphDrawer({
     : "";
 
   function renderPanel() {
+    if (showEvolution) {
+      return (
+        <EvolutionPanel
+          suggestions={evolutionSuggestions}
+          isLoading={isEvolving}
+          onApply={onApplySuggestion}
+          onDismiss={onDismissSuggestion}
+          onClose={onCloseEvolution}
+        />
+      );
+    }
     if (showSummary) {
       return (
         <GraphSummaryPanel
@@ -110,12 +135,10 @@ export default function GraphDrawer({
 
   return (
     <>
-      {/* Backdrop */}
       {isOpen && (
         <div className="fixed inset-0 z-30 bg-black/20" onClick={onClose} />
       )}
 
-      {/* Drawer */}
       <aside
         className={`fixed right-0 top-0 z-40 h-full transform border-l border-gray-200 bg-white shadow-2xl transition-all duration-300 ${
           isOpen ? "translate-x-0" : "translate-x-full"
@@ -127,13 +150,14 @@ export default function GraphDrawer({
           hasMessages={hasMessages}
           isSummarizing={isSummarizing}
           isStructuring={isStructuring}
+          isEvolving={isEvolving}
           onSummarize={onSummarize}
           onStructure={onStructure}
+          onEvolve={onEvolve}
           onToggleMaximize={onToggleMaximize}
           onClose={onClose}
         />
 
-        {/* Body */}
         <div className="h-[calc(100%-4rem)]">
           {isEmpty ? (
             <div className="flex h-full items-center justify-center bg-gray-50 text-center text-gray-500">
