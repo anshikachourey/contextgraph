@@ -14,6 +14,10 @@ import {
   CANDIDATE_MATCH_THRESHOLD,
   MATERIALIZE_THRESHOLD,
   MIN_EVIDENCE_MESSAGES,
+  MAX_AUTO_NODE_MESSAGES,
+  MAX_AUTO_NODE_SEGMENTS,
+  MIN_COHERENCE_FOR_MATERIALIZATION,
+  THRESHOLD_INCREASE_PER_EXTRA_SEGMENT,
   EDGE_THRESHOLD,
   WEIGHTS,
   TRIVIAL_MAX_CHARS,
@@ -124,6 +128,11 @@ export function routeSegment(
 
 /**
  * Check if a candidate should materialize into a visible node.
+ *
+ * Guardrails against overly-broad nodes:
+ * 1. Hard message cap — too many messages = too broad
+ * 2. Internal coherence gate — low pairwise segment similarity = mixed topics
+ * 3. Size-adjusted threshold — more segments require higher confidence
  */
 export function shouldMaterialize(
   candidate: CandidateState,
@@ -133,10 +142,65 @@ export function shouldMaterialize(
     (sum, s) => sum + s.messageIds.length, 0,
   );
 
-  if (totalMessages < MIN_EVIDENCE_MESSAGES) return false;
+  // Gate 1: Minimum evidence
+  if (totalMessages < MIN_EVIDENCE_MESSAGES) {
+    return false;
+  }
+
+  // Gate 2: Maximum size — too many messages means too broad
+  if (totalMessages > MAX_AUTO_NODE_MESSAGES) {
+    console.log(
+      `[intelligence] Materialization BLOCKED: ${totalMessages} messages exceeds MAX_AUTO_NODE_MESSAGES (${MAX_AUTO_NODE_MESSAGES})`,
+    );
+    return false;
+  }
+
+  // Gate 3: Internal coherence check (hard gate for multi-segment candidates)
+  if (candidate.segments.length >= 2) {
+    const internalCoherence = computeInternalCoherence(candidate.segments);
+    if (internalCoherence < MIN_COHERENCE_FOR_MATERIALIZATION) {
+      console.log(
+        `[intelligence] Materialization BLOCKED: internal coherence ${internalCoherence.toFixed(3)} < ${MIN_COHERENCE_FOR_MATERIALIZATION} (${candidate.segments.length} segments, ${totalMessages} messages)`,
+      );
+      return false;
+    }
+  }
+
+  // Gate 4: Size-adjusted threshold
+  const extraSegments = Math.max(0, candidate.segments.length - MAX_AUTO_NODE_SEGMENTS);
+  const adjustedThreshold = MATERIALIZE_THRESHOLD + (extraSegments * THRESHOLD_INCREASE_PER_EXTRA_SEGMENT);
 
   const confidence = computeConfidence(candidate, nodes);
-  return confidence >= MATERIALIZE_THRESHOLD;
+
+  if (confidence < adjustedThreshold) {
+    return false;
+  }
+
+  console.log(
+    `[intelligence] Materialization APPROVED: confidence=${confidence.toFixed(3)}, threshold=${adjustedThreshold.toFixed(3)}, segments=${candidate.segments.length}, messages=${totalMessages}`,
+  );
+  return true;
+}
+
+/**
+ * Compute avg pairwise similarity between segments inside a candidate.
+ * Low value = mixed/drifted topics. High value = focused coherent topic.
+ */
+export function computeInternalCoherence(segments: SegmentData[]): number {
+  const validSegments = segments.filter((s) => s.embedding.length > 0);
+  if (validSegments.length < 2) return 1.0; // single segment is coherent by definition
+
+  let totalSim = 0;
+  let pairs = 0;
+
+  for (let i = 0; i < validSegments.length; i++) {
+    for (let j = i + 1; j < validSegments.length; j++) {
+      totalSim += cosineSimilarity(validSegments[i].embedding, validSegments[j].embedding);
+      pairs++;
+    }
+  }
+
+  return pairs > 0 ? totalSim / pairs : 0;
 }
 
 export function computeConfidence(
