@@ -95,7 +95,7 @@ export type GraphMutation =
   | { type: "add_edge"; sourceNodeId: string; targetNodeId: string; similarity: number; explanation: string }
   | { type: "remove_edge"; edgeId: string }
   | { type: "update_metrics"; nodeId: string; importance: number; stability: number }
-  | { type: "update_engine_state"; windowEmbedding: number[]; lastMessageId: string };
+  | { type: "update_engine_state"; windowEmbedding: number[]; lastMessageId: string; totalRuns: number };
 
 // ─── Engine Result ──────────────────────────────────────────────────────────
 

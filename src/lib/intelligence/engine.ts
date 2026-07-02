@@ -70,6 +70,7 @@ export async function runIntelligenceEngine(
       type: "update_engine_state",
       windowEmbedding,
       lastMessageId: ctx.newMessages[ctx.newMessages.length - 1]?.id ?? "",
+      totalRuns: ctx.engineState.totalRuns + 1,
     });
 
     // ─── Stage 2: SEGMENT ───────────────────────────────────────────────
@@ -496,7 +497,7 @@ async function persistMutations(
             conversation_id: conversationId,
             last_window_embedding: m.windowEmbedding,
             last_processed_message_id: m.lastMessageId,
-            total_engine_runs: db.rpc ? undefined : 1, // increment would be ideal
+            total_engine_runs: m.totalRuns,
             last_engine_run_at: new Date().toISOString(),
           }, { onConflict: "conversation_id" });
           break;
