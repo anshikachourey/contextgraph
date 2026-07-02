@@ -10,7 +10,7 @@ import type { ChatMessage } from "./message";
 
 // ─── Topic Candidate (persisted, hidden) ────────────────────────────────────
 
-export type CandidateStatus = "accumulating" | "materialized" | "discarded";
+export type CandidateStatus = "accumulating" | "materialized" | "discarded" | "blocked";
 
 export interface MessageSegment {
   messageIds: string[];

@@ -126,13 +126,46 @@ export function routeSegment(
 
 // ─── Stage 4: MATERIALIZE ───────────────────────────────────────────────────
 
+export type BlockReason =
+  | { blocked: true; reason: string }
+  | { blocked: false };
+
+/**
+ * Check if a candidate should be PERMANENTLY blocked from materialization.
+ * Blocked candidates are marked in DB and never retried.
+ */
+export function checkMaterializationBlock(
+  candidate: CandidateState,
+): BlockReason {
+  const totalMessages = candidate.segments.reduce(
+    (sum, s) => sum + s.messageIds.length, 0,
+  );
+
+  // Block: too many messages — candidate is too broad
+  if (totalMessages > MAX_AUTO_NODE_MESSAGES) {
+    return {
+      blocked: true,
+      reason: `${totalMessages} messages exceeds MAX_AUTO_NODE_MESSAGES (${MAX_AUTO_NODE_MESSAGES})`,
+    };
+  }
+
+  // Block: low internal coherence with multiple segments — mixed topics
+  if (candidate.segments.length >= 2) {
+    const internalCoherence = computeInternalCoherence(candidate.segments);
+    if (internalCoherence < MIN_COHERENCE_FOR_MATERIALIZATION) {
+      return {
+        blocked: true,
+        reason: `internal coherence ${internalCoherence.toFixed(3)} < ${MIN_COHERENCE_FOR_MATERIALIZATION} (${candidate.segments.length} segments, ${totalMessages} messages)`,
+      };
+    }
+  }
+
+  return { blocked: false };
+}
+
 /**
  * Check if a candidate should materialize into a visible node.
- *
- * Guardrails against overly-broad nodes:
- * 1. Hard message cap — too many messages = too broad
- * 2. Internal coherence gate — low pairwise segment similarity = mixed topics
- * 3. Size-adjusted threshold — more segments require higher confidence
+ * Only called AFTER checkMaterializationBlock returns { blocked: false }.
  */
 export function shouldMaterialize(
   candidate: CandidateState,
@@ -147,26 +180,13 @@ export function shouldMaterialize(
     return false;
   }
 
-  // Gate 2: Maximum size — too many messages means too broad
-  if (totalMessages > MAX_AUTO_NODE_MESSAGES) {
-    console.log(
-      `[intelligence] Materialization BLOCKED: ${totalMessages} messages exceeds MAX_AUTO_NODE_MESSAGES (${MAX_AUTO_NODE_MESSAGES})`,
-    );
+  // Gate 2: Check permanent block conditions
+  const block = checkMaterializationBlock(candidate);
+  if (block.blocked) {
     return false;
   }
 
-  // Gate 3: Internal coherence check (hard gate for multi-segment candidates)
-  if (candidate.segments.length >= 2) {
-    const internalCoherence = computeInternalCoherence(candidate.segments);
-    if (internalCoherence < MIN_COHERENCE_FOR_MATERIALIZATION) {
-      console.log(
-        `[intelligence] Materialization BLOCKED: internal coherence ${internalCoherence.toFixed(3)} < ${MIN_COHERENCE_FOR_MATERIALIZATION} (${candidate.segments.length} segments, ${totalMessages} messages)`,
-      );
-      return false;
-    }
-  }
-
-  // Gate 4: Size-adjusted threshold
+  // Gate 3: Size-adjusted threshold
   const extraSegments = Math.max(0, candidate.segments.length - MAX_AUTO_NODE_SEGMENTS);
   const adjustedThreshold = MATERIALIZE_THRESHOLD + (extraSegments * THRESHOLD_INCREASE_PER_EXTRA_SEGMENT);
 

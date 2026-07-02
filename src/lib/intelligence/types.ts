@@ -91,6 +91,7 @@ export type GraphMutation =
   | { type: "extend_node"; nodeId: string; messageIds: string[] }
   | { type: "create_candidate"; segment: SegmentData; embedding: number[]; confidence: number }
   | { type: "update_candidate"; candidateId: string; segments: SegmentData[]; embedding: number[]; confidence: number }
+  | { type: "block_candidate"; candidateId: string; reason: string }
   | { type: "materialize"; candidateId: string; nodeId: string; title: string; summary: string; messageIds: string[]; embedding: number[]; position: { x: number; y: number } }
   | { type: "add_edge"; sourceNodeId: string; targetNodeId: string; similarity: number; explanation: string }
   | { type: "remove_edge"; edgeId: string }

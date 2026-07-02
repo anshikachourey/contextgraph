@@ -18,6 +18,7 @@ import {
   detectSegment,
   routeSegment,
   shouldMaterialize,
+  checkMaterializationBlock,
   computeConfidence,
   computeIncrementalEdges,
   computeMetrics,
@@ -138,7 +139,18 @@ export async function runIntelligenceEngine(
           confidence,
         };
 
-        if (shouldMaterialize(updatedCandidate, ctx.nodes)) {
+        // Check for permanent block first
+        const blockCheck = checkMaterializationBlock(updatedCandidate);
+        if (blockCheck.blocked) {
+          console.log(
+            `[intelligence] Candidate BLOCKED permanently: ${blockCheck.reason}`,
+          );
+          result.mutations.push({
+            type: "block_candidate",
+            candidateId: decision.candidateId,
+            reason: blockCheck.reason,
+          });
+        } else if (shouldMaterialize(updatedCandidate, ctx.nodes)) {
           const node = await materializeToNode(conversationId, updatedCandidate, ctx);
           if (node) {
             result.mutations.push(node.mutation);
@@ -429,6 +441,13 @@ async function persistMutations(
             segments: m.segments,
             embedding: m.embedding,
             confidence: m.confidence,
+            last_updated_at: new Date().toISOString(),
+          }).eq("id", m.candidateId);
+          break;
+        }
+        case "block_candidate": {
+          await db.from("topic_candidates").update({
+            status: "blocked",
             last_updated_at: new Date().toISOString(),
           }).eq("id", m.candidateId);
           break;
