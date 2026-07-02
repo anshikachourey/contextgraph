@@ -28,8 +28,8 @@ const nodeTypes = { contextNode: ContextNodeCard };
 function buildFlowNodes(
   contextNodes: ContextNode[],
   semanticEdges: SemanticEdge[],
+  continuationCounts: Map<string, number>,
 ): ContextFlowNode[] {
-  // Compute layout using semantic edges as graph structure
   const edges = semanticEdges.map((se) => ({
     source: se.sourceNodeId,
     target: se.targetNodeId,
@@ -50,6 +50,7 @@ function buildFlowNodes(
         title: node.title,
         summary: node.summary,
         messageCount: node.messageIds.length,
+        continuationCount: continuationCounts.get(node.id) ?? 0,
       },
     };
   });
@@ -77,6 +78,7 @@ function buildFlowEdges(semanticEdges: SemanticEdge[]): Edge[] {
 type GraphCanvasProps = {
   contextNodes: ContextNode[];
   semanticEdges: SemanticEdge[];
+  continuationCounts: Map<string, number>;
   onNodeClick: (nodeId: string) => void;
   onEdgeClick: (edgeId: string) => void;
 };
@@ -84,11 +86,12 @@ type GraphCanvasProps = {
 export default function GraphCanvas({
   contextNodes,
   semanticEdges,
+  continuationCounts,
   onNodeClick,
   onEdgeClick,
 }: GraphCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<ContextFlowNode>(
-    buildFlowNodes(contextNodes, semanticEdges),
+    buildFlowNodes(contextNodes, semanticEdges, continuationCounts),
   );
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(
     buildFlowEdges(semanticEdges),
@@ -96,8 +99,8 @@ export default function GraphCanvas({
 
   // Recompute layout when nodes or edges change
   useEffect(() => {
-    setNodes(buildFlowNodes(contextNodes, semanticEdges));
-  }, [contextNodes, semanticEdges, setNodes]);
+    setNodes(buildFlowNodes(contextNodes, semanticEdges, continuationCounts));
+  }, [contextNodes, semanticEdges, continuationCounts, setNodes]);
 
   useEffect(() => {
     setEdges(buildFlowEdges(semanticEdges));

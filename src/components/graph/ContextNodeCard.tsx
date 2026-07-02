@@ -7,6 +7,7 @@ export type ContextNodeData = {
   title: string;
   summary: string;
   messageCount: number;
+  continuationCount: number;
 };
 
 // Full React Flow node type — data shape + type discriminator
@@ -33,6 +34,12 @@ export default function ContextNodeCard({
           {data.messageCount} linked message
           {data.messageCount === 1 ? "" : "s"}
         </p>
+        {data.continuationCount > 0 && (
+          <p className="mt-1.5 text-xs text-purple-500">
+            {data.continuationCount} continuation
+            {data.continuationCount === 1 ? "" : "s"}
+          </p>
+        )}
       </div>
 
       {/* Source handle — where edges leave (bottom) */}

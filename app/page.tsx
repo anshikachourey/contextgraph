@@ -90,6 +90,17 @@ export default function Home() {
     ? messages.filter((m) => m.parentNodeId === activeBranchNodeId)
     : messages.filter((m) => !m.parentNodeId);
 
+  // Continuation counts per node (derived from all messages, no extra queries)
+  const continuationCounts = new Map<string, number>();
+  for (const m of messages) {
+    if (m.parentNodeId) {
+      continuationCounts.set(
+        m.parentNodeId,
+        (continuationCounts.get(m.parentNodeId) ?? 0) + 1,
+      );
+    }
+  }
+
   function toggleMessageSelection(messageId: string) {
     setSelectedMessageIds((current) =>
       current.includes(messageId)
@@ -406,6 +417,7 @@ export default function Home() {
         isMaximized={isGraphMaximized}
         nodes={nodes}
         semanticEdges={semanticEdges}
+        continuationCounts={continuationCounts}
         activeNode={activeNode}
         activeNodeMessages={activeNodeMessages}
         activeEdge={activeEdge}

@@ -12,6 +12,7 @@ type GraphDrawerProps = {
   isMaximized: boolean;
   nodes: ContextNode[];
   semanticEdges: SemanticEdge[];
+  continuationCounts: Map<string, number>;
   activeNode: ContextNode | null;
   activeNodeMessages: ChatMessage[];
   activeEdge: SemanticEdge | null;
@@ -36,6 +37,7 @@ export default function GraphDrawer({
   isMaximized,
   nodes,
   semanticEdges,
+  continuationCounts,
   activeNode,
   activeNodeMessages,
   activeEdge,
@@ -133,6 +135,7 @@ export default function GraphDrawer({
                 <GraphCanvas
                   contextNodes={nodes}
                   semanticEdges={semanticEdges}
+                  continuationCounts={continuationCounts}
                   onNodeClick={onNodeClick}
                   onEdgeClick={onEdgeClick}
                 />
@@ -147,6 +150,7 @@ export default function GraphDrawer({
                 <GraphCanvas
                   contextNodes={nodes}
                   semanticEdges={semanticEdges}
+                  continuationCounts={continuationCounts}
                   onNodeClick={onNodeClick}
                   onEdgeClick={onEdgeClick}
                 />
