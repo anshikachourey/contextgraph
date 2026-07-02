@@ -1,6 +1,7 @@
 "use client";
 
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { nodeColorFromNeighborhood } from "@/src/lib/neighborhoodColor";
 
 // The data payload stored on each React Flow node
 export type ContextNodeData = {
@@ -8,6 +9,8 @@ export type ContextNodeData = {
   summary: string;
   messageCount: number;
   continuationCount: number;
+  neighborhoodHue: number | null;
+  hierarchyDepth: number;
 };
 
 // Full React Flow node type — data shape + type discriminator
@@ -18,15 +21,25 @@ export default function ContextNodeCard({
   data,
   selected,
 }: NodeProps<ContextFlowNode>) {
+  const colors = nodeColorFromNeighborhood(data.neighborhoodHue, data.hierarchyDepth);
+
+  const borderStyle = selected
+    ? "border-black ring-2 ring-black"
+    : colors
+      ? ""
+      : "border-gray-200";
+
+  const customBorder = !selected && colors
+    ? { borderColor: colors.borderColor, borderWidth: "2px" }
+    : undefined;
+
   return (
     <>
-      {/* Target handle — where edges arrive (top) */}
       <Handle type="target" position={Position.Top} />
 
       <div
-        className={`w-64 rounded-2xl border bg-white p-5 shadow-sm transition ${
-          selected ? "border-black ring-2 ring-black" : "border-gray-200"
-        }`}
+        className={`w-64 rounded-2xl border bg-white p-5 shadow-sm transition ${borderStyle}`}
+        style={customBorder}
       >
         <p className="text-base font-semibold leading-snug">{data.title}</p>
         <p className="mt-2 text-sm text-gray-600 line-clamp-3">{data.summary}</p>
@@ -42,7 +55,6 @@ export default function ContextNodeCard({
         )}
       </div>
 
-      {/* Source handle — where edges leave (bottom) */}
       <Handle type="source" position={Position.Bottom} />
     </>
   );

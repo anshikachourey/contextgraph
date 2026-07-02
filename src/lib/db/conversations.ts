@@ -69,13 +69,32 @@ export async function loadLatestConversation(): Promise<ConversationData | null>
     branchRootMessageId: m.branch_root_message_id ?? null,
   }));
 
-  const nodes: ContextNode[] = (dbNodes ?? []).map((n: DbNode) => ({
+  // Load neighborhood hues for color derivation
+  const neighborhoodIds = (dbNodes ?? [])
+    .map((n: any) => n.neighborhood_id)
+    .filter((id: unknown): id is string => id !== null && id !== undefined);
+
+  let neighborhoodHueMap = new Map<string, number>();
+  if (neighborhoodIds.length > 0) {
+    const uniqueIds = [...new Set(neighborhoodIds)];
+    const { data: nbData } = await db
+      .from("neighborhoods")
+      .select("id, hue")
+      .in("id", uniqueIds);
+    for (const nb of (nbData ?? []) as { id: string; hue: number }[]) {
+      neighborhoodHueMap.set(nb.id, nb.hue);
+    }
+  }
+
+  const nodes: ContextNode[] = (dbNodes ?? []).map((n: DbNode & { neighborhood_id?: string; hierarchy_depth?: number }) => ({
     id: n.id,
     title: n.title,
     summary: n.summary,
     messageIds: nodeMessages
       .filter((nm) => nm.node_id === n.id)
       .map((nm) => nm.message_id),
+    neighborhoodHue: n.neighborhood_id ? (neighborhoodHueMap.get(n.neighborhood_id) ?? null) : null,
+    hierarchyDepth: (n as any).hierarchy_depth ?? 0,
   }));
 
   // Load persisted semantic edges

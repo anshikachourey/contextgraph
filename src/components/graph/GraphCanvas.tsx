@@ -51,6 +51,8 @@ function buildFlowNodes(
         summary: node.summary,
         messageCount: node.messageIds.length,
         continuationCount: continuationCounts.get(node.id) ?? 0,
+        neighborhoodHue: node.neighborhoodHue ?? null,
+        hierarchyDepth: node.hierarchyDepth ?? 0,
       },
     };
   });

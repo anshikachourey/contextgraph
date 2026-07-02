@@ -24,6 +24,7 @@ import {
   computeNewNodePosition,
   computeCentroid,
 } from "./stages";
+import { assignNodeToNeighborhood } from "./neighborhoods";
 import type { ChatMessage } from "@/src/types/message";
 import type {
   PipelineContext,
@@ -82,7 +83,7 @@ export async function runIntelligenceEngine(
 
     if (!segmentResult.segmentCompleted || !segmentResult.completedSegmentEmbedding) {
       // No boundary — store embedding and exit
-      await persistMutations(conversationId, result.mutations);
+      await persistMutations(conversationId, result.mutations, ctx);
       return result;
     }
 
@@ -219,7 +220,7 @@ export async function runIntelligenceEngine(
     }
 
     // ─── Stage 9: PERSIST ───────────────────────────────────────────────
-    await persistMutations(conversationId, result.mutations);
+    await persistMutations(conversationId, result.mutations, ctx);
 
   } catch (err) {
     console.error("[intelligence] Engine failed (non-fatal):", err);
@@ -394,6 +395,7 @@ async function materializeToNode(
 async function persistMutations(
   conversationId: string,
   mutations: GraphMutation[],
+  ctx?: PipelineContext,
 ): Promise<void> {
   const db = createServerSupabaseClient();
 
@@ -432,34 +434,54 @@ async function persistMutations(
           break;
         }
         case "materialize": {
-          // Create the node
-          await db.from("nodes").insert({
+          // Use persistNode which generates canonical embedding + evidence summary
+          const linkedMsgs = ctx?.recentMessages?.filter(
+            (msg: any) => m.messageIds.includes(msg.id),
+          ) ?? [];
+          
+          const nodeForPersist = {
             id: m.nodeId,
-            conversation_id: conversationId,
             title: m.title,
             summary: m.summary,
-            embedding: m.embedding,
+            messageIds: m.messageIds,
+          };
+          
+          // persistNode handles: evidence_summary + canonical embedding + DB insert + node_messages
+          const { persistNode: persistNodeFn } = await import("@/src/lib/db/nodes");
+          await persistNodeFn(conversationId, nodeForPersist, linkedMsgs, { createdBy: "ai" });
+
+          // Set position (persistNode doesn't handle this)
+          await db.from("nodes").update({
             position_x: m.position.x,
             position_y: m.position.y,
-            metadata: { createdBy: "ai" },
-          });
-          // Link messages
-          const links = m.messageIds.map((mid) => ({
-            node_id: m.nodeId,
-            message_id: mid,
-          }));
-          if (links.length > 0) {
-            await db.from("node_messages").upsert(links, {
-              onConflict: "node_id,message_id",
-              ignoreDuplicates: true,
-            });
-          }
+          }).eq("id", m.nodeId);
+
           // Mark candidate as materialized
           if (m.candidateId) {
             await db.from("topic_candidates").update({
               status: "materialized",
               materialized_node_id: m.nodeId,
             }).eq("id", m.candidateId);
+          }
+          // Assign to neighborhood (reload the fresh embedding from persistNode)
+          const { data: freshNode } = await db
+            .from("nodes")
+            .select("embedding")
+            .eq("id", m.nodeId)
+            .single();
+          const freshEmbedding = Array.isArray(freshNode?.embedding) ? freshNode.embedding as number[] : m.embedding;
+          
+          if (freshEmbedding && freshEmbedding.length > 0) {
+            try {
+              await assignNodeToNeighborhood(
+                conversationId,
+                m.nodeId,
+                freshEmbedding,
+                m.title,
+              );
+            } catch (err) {
+              console.error("[intelligence] Neighborhood assignment failed:", err);
+            }
           }
           break;
         }
