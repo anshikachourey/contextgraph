@@ -1,21 +1,29 @@
 /**
- * GraphIntelligenceEngine v1 — Orchestrator.
+ * GraphIntelligenceEngine v2 — Exchange-Based Incremental Segmentation.
  *
- * Called from /api/chat after messages are persisted.
- * Loads state, runs pure pipeline stages, collects mutations, persists batch.
+ * Architecture:
+ * - Processes ONE exchange (user + assistant) per run.
+ * - Maintains an open segment that grows via centroid update.
+ * - When a new exchange diverges from the open segment, the segment freezes.
+ * - Frozen segments are routed to candidates/nodes (existing pipeline).
+ * - Cursor tracks progress — never rescans history.
  *
- * Soft-fail: if the engine fails, chat still works.
- * Incremental: only touches affected nodes, never full rebuild.
- * Deterministic: same state + same messages → same mutations.
+ * Called from /api/messages after persistence.
  */
 
 import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { generateEmbedding } from "@/src/lib/embeddings";
+import { cosineSimilarity } from "@/src/lib/cosineSimilarity";
 import { parseJsonFromLLM, isTitleSummaryResponse } from "@/src/lib/llmJson";
 import OpenAI from "openai";
-import { WINDOW_SIZE } from "./config";
 import {
-  detectSegment,
+  STALE_PROMOTION_THRESHOLD,
+  STALE_PROMOTION_RUNS,
+  MIN_EVIDENCE_MESSAGES,
+} from "./config";
+import {
+  checkSegmentBoundary,
+  updateSegmentCentroid,
   routeSegment,
   shouldMaterialize,
   checkMaterializationBlock,
@@ -26,26 +34,113 @@ import {
   computeCentroid,
 } from "./stages";
 import { assignNodeToNeighborhood } from "./neighborhoods";
+import { debugLog, infoLog, errorLog, emitPipelineLog } from "./logger";
 import type { ChatMessage } from "@/src/types/message";
 import type {
   PipelineContext,
   NodeState,
   EdgeState,
   CandidateState,
+  SegmentData,
   EngineState,
+  OpenSegmentState,
   GraphMutation,
   EngineResult,
 } from "./types";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// ─── Structured Pipeline Log ────────────────────────────────────────────────
+
+export interface PipelineLog {
+  conversationId: string;
+  timestamp: string;
+  exchange: {
+    userSnippet: string;
+    assistantSnippet: string;
+    embedding: boolean;
+  } | null;
+  stages: {
+    conversation: {
+      existingNodes: number;
+      existingEdges: number;
+      activeCandidates: number;
+      engineRuns: number;
+      openSegmentExchanges: number;
+      cursor: string | null;
+    };
+    segmentation: {
+      similarity: number | null;
+      threshold: number | null;
+      shouldClose: boolean;
+      reason: string;
+    };
+    routing: {
+      decision: string;
+      candidateId: string | null;
+      nodeId: string | null;
+      confidence: number | null;
+      segmentMessageCount: number;
+    };
+    materialization: {
+      attempted: boolean;
+      materialized: boolean;
+      blocked: boolean;
+      blockReason: string | null;
+      nodeId: string | null;
+      nodeTitle: string | null;
+      linkedMessageCount: number;
+    };
+    edges: {
+      added: number;
+      removed: number;
+    };
+    neighborhoods: {
+      assigned: boolean;
+      neighborhoodId: string | null;
+    };
+    persistence: {
+      totalNodesAfter: number;
+      totalEdgesAfter: number;
+      mutationsApplied: number;
+    };
+  };
+  earlyExit: string | null;
+  error: string | null;
+}
+
+function createEmptyLog(conversationId: string): PipelineLog {
+  const log: any = {
+    _v: "engine-v2.4",
+    conversationId,
+    timestamp: new Date().toISOString(),
+    exchange: null,
+    stages: {
+      conversation: { existingNodes: 0, existingEdges: 0, activeCandidates: 0, engineRuns: 0, openSegmentExchanges: 0, cursor: null },
+      segmentation: { similarity: null, threshold: null, shouldClose: false, reason: "" },
+      routing: { decision: "none", candidateId: null, nodeId: null, confidence: null, segmentMessageCount: 0 },
+      materialization: { attempted: false, materialized: false, blocked: false, blockReason: null, nodeId: null, nodeTitle: null, linkedMessageCount: 0 },
+      edges: { added: 0, removed: 0 },
+      neighborhoods: { assigned: false, neighborhoodId: null },
+      persistence: { totalNodesAfter: 0, totalEdgesAfter: 0, mutationsApplied: 0 },
+    },
+    earlyExit: null,
+    error: null,
+  };
+  return log as PipelineLog;
+}
+
 /**
  * Run the GraphIntelligenceEngine for a conversation.
- * Called after messages are persisted.
- * Returns a result summary. Never throws — errors are caught and logged.
+ * Called from /api/messages after messages are persisted.
+ * Processes the specified exchange (user + assistant).
+ *
+ * @param conversationId - The conversation to process
+ * @param newMessageIds - The exact user + assistant message IDs just persisted
  */
 export async function runIntelligenceEngine(
   conversationId: string,
+  newMessageIds?: { userMessageId: string; assistantMessageId: string },
 ): Promise<EngineResult> {
   const result: EngineResult = {
     mutations: [],
@@ -55,151 +150,279 @@ export async function runIntelligenceEngine(
     edgesRemoved: 0,
   };
 
+  const log = createEmptyLog(conversationId);
+
   try {
-    // ─── Load state ─────────────────────────────────────────────────────
-    const ctx = await loadPipelineContext(conversationId);
-    if (ctx.recentMessages.length < 2 * WINDOW_SIZE) return result;
+    debugLog("[engine] run", { conversationId, newMessageIds: newMessageIds ?? "none" });
 
-    // ─── Stage 1: EMBED ─────────────────────────────────────────────────
-    const currentWindow = ctx.recentMessages.slice(-WINDOW_SIZE);
-    const windowText = currentWindow
-      .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
-      .join("\n");
-    const windowEmbedding = await generateEmbedding(windowText.slice(0, 7000));
+    // ─── Load context ───────────────────────────────────────────────────
+    const ctx = await loadPipelineContext(conversationId, newMessageIds);
 
-    // Always store the window embedding for next run
-    result.mutations.push({
-      type: "update_engine_state",
-      windowEmbedding,
-      lastMessageId: ctx.newMessages[ctx.newMessages.length - 1]?.id ?? "",
-      totalRuns: ctx.engineState.totalRuns + 1,
-    });
+    log.stages.conversation = {
+      existingNodes: ctx.nodes.length,
+      existingEdges: ctx.edges.length,
+      activeCandidates: ctx.candidates.length,
+      engineRuns: ctx.engineState.totalRuns,
+      openSegmentExchanges: ctx.engineState.openSegment?.exchangeCount ?? 0,
+      cursor: ctx.engineState.cursor,
+    };
 
-    // ─── Stage 2: SEGMENT ───────────────────────────────────────────────
-    const segmentResult = detectSegment(
-      windowEmbedding,
-      ctx.engineState.lastWindowEmbedding,
-      ctx.recentMessages,
-    );
-
-    if (!segmentResult.segmentCompleted || !segmentResult.completedSegmentEmbedding) {
-      // No boundary — store embedding and exit
-      await persistMutations(conversationId, result.mutations, ctx);
+    if (!ctx.newExchange) {
+      log.earlyExit = "No new exchange found after cursor";
+      emitPipelineLog(log);
       return result;
     }
 
-    const segmentEmbedding = segmentResult.completedSegmentEmbedding;
-    const segmentMessageIds = segmentResult.completedSegment!.map((m) => m.id);
+    const { user, assistant } = ctx.newExchange;
+    log.exchange = {
+      userSnippet: user.content.slice(0, 80),
+      assistantSnippet: assistant.content.slice(0, 80),
+      embedding: false,
+    };
 
-    // ─── Stage 3: ROUTE ─────────────────────────────────────────────────
-    const decision = routeSegment(
-      segmentEmbedding,
-      segmentMessageIds,
-      ctx.nodes,
-      ctx.candidates,
-    );
+    // ─── Stage 1: EMBED the exchange ────────────────────────────────────
+    const exchangeText = `User: ${user.content}\nAssistant: ${assistant.content}`;
+    const exchangeEmbedding = await generateEmbedding(exchangeText.slice(0, 7000));
+    const userEmbedding = await generateEmbedding(user.content.slice(0, 3000));
+    log.exchange.embedding = true;
 
+    // ─── Stage 2: SEGMENT — decide if open segment should close ─────────
+    const openSeg = ctx.engineState.openSegment;
+
+    let segmentFrozen = false;
+    let frozenSegmentMessageIds: string[] = [];
+    let frozenSegmentEmbedding: number[] = [];
+    let newOpenSegment: OpenSegmentState;
+
+    debugLog("[engine] segmentation", { openSegIsNull: !openSeg });
+
+    if (!openSeg) {
+      // No open segment — start one with this exchange
+      newOpenSegment = {
+        startMessageId: user.id,
+        endMessageId: assistant.id,
+        embedding: exchangeEmbedding,
+        userEmbedding,
+        lastUserEmbedding: userEmbedding,
+        lastExchangeEmbedding: exchangeEmbedding,
+        exchangeCount: 1,
+      };
+      log.stages.segmentation.reason = "No open segment — started new one";
+    } else {
+      debugLog("[engine] boundary check", { exchangeCount: openSeg.exchangeCount });
+      // Compare new user message against open segment's user centroid
+      const boundary = checkSegmentBoundary(openSeg, userEmbedding);
+      log.stages.segmentation.similarity = boundary.centroidUserSim;
+      log.stages.segmentation.threshold = boundary.centroidThreshold;
+      log.stages.segmentation.shouldClose = boundary.shouldClose;
+
+      // ─── Segmentation instrumentation ───────────────────────────────
+      const segmentationDiagnostic = {
+        currentExchange: `User: ${user.content.slice(0, 60)}`,
+        centroidUserSim: parseFloat(boundary.centroidUserSim.toFixed(4)),
+        localUserSim: boundary.localUserSim !== null ? parseFloat(boundary.localUserSim.toFixed(4)) : null,
+        centroidThreshold: boundary.centroidThreshold,
+        localThreshold: boundary.localThreshold,
+        exchangeCountBefore: openSeg.exchangeCount,
+        decision: boundary.shouldClose ? "freeze" : "continue",
+        reason: boundary.reason,
+      };
+
+      (log as any).segmentationDiagnostic = segmentationDiagnostic;
+      log.stages.segmentation.reason = boundary.reason;
+      // ─── End instrumentation ────────────────────────────────────────
+
+      if (boundary.shouldClose) {
+        // FREEZE the open segment
+        segmentFrozen = true;
+
+        // Collect message IDs from the frozen segment
+        frozenSegmentMessageIds = await getSegmentMessageIds(
+          conversationId, openSeg.startMessageId, openSeg.endMessageId,
+        );
+        frozenSegmentEmbedding = openSeg.embedding;
+
+        // Start a NEW open segment with the current exchange
+        newOpenSegment = {
+          startMessageId: user.id,
+          endMessageId: assistant.id,
+          embedding: exchangeEmbedding,
+          userEmbedding,
+          lastUserEmbedding: userEmbedding,
+          lastExchangeEmbedding: exchangeEmbedding,
+          exchangeCount: 1,
+        };
+      } else {
+        // APPEND to open segment — update centroids
+        const updatedEmbedding = updateSegmentCentroid(
+          openSeg.embedding,
+          openSeg.exchangeCount,
+          exchangeEmbedding,
+        );
+        const updatedUserEmbedding = updateSegmentCentroid(
+          openSeg.userEmbedding,
+          openSeg.exchangeCount,
+          userEmbedding,
+        );
+
+        newOpenSegment = {
+          startMessageId: openSeg.startMessageId,
+          endMessageId: assistant.id,
+          embedding: updatedEmbedding,
+          userEmbedding: updatedUserEmbedding,
+          lastUserEmbedding: userEmbedding,
+          lastExchangeEmbedding: exchangeEmbedding,
+          exchangeCount: openSeg.exchangeCount + 1,
+        };
+      }
+    }
+
+    // Update engine state
+    const newEngineState: EngineState = {
+      cursor: assistant.id,
+      openSegment: newOpenSegment,
+      totalRuns: ctx.engineState.totalRuns + 1,
+    };
+    result.mutations.push({ type: "update_engine_state", engineState: newEngineState });
+
+    // ─── Stage 3: ROUTE frozen segment ──────────────────────────────────
     let affectedNodeId: string | null = null;
     let affectedNodeEmbedding: number[] | null = null;
 
-    if (decision.type === "extend_node") {
-      result.mutations.push({
-        type: "extend_node",
-        nodeId: decision.nodeId,
-        messageIds: decision.messageIds,
-      });
-      result.nodesExtended++;
-      affectedNodeId = decision.nodeId;
-      affectedNodeEmbedding = ctx.nodes.find((n) => n.id === decision.nodeId)?.embedding ?? null;
-      console.log(`[intelligence] Extended node ${decision.nodeId} with ${decision.messageIds.length} messages`);
+    if (segmentFrozen && frozenSegmentMessageIds.length >= 2) {
+      log.stages.routing.segmentMessageCount = frozenSegmentMessageIds.length;
 
-    } else if (decision.type === "accumulate") {
-      const candidate = ctx.candidates.find((c) => c.id === decision.candidateId);
-      if (candidate) {
-        const newSegments = [...candidate.segments, decision.segment];
-        const newEmbedding = computeCentroid(newSegments);
+      const decision = routeSegment(
+        frozenSegmentEmbedding,
+        frozenSegmentMessageIds,
+        ctx.nodes,
+        ctx.candidates,
+      );
+
+      log.stages.routing.decision = decision.type;
+
+      if (decision.type === "extend_node") {
+        result.mutations.push({
+          type: "extend_node",
+          nodeId: decision.nodeId,
+          messageIds: decision.messageIds,
+        });
+        result.nodesExtended++;
+        affectedNodeId = decision.nodeId;
+        affectedNodeEmbedding = ctx.nodes.find((n) => n.id === decision.nodeId)?.embedding ?? null;
+        log.stages.routing.nodeId = decision.nodeId;
+
+      } else if (decision.type === "accumulate") {
+        const candidate = ctx.candidates.find((c) => c.id === decision.candidateId);
+        log.stages.routing.candidateId = decision.candidateId;
+
+        if (candidate) {
+          const oldSegmentCount = candidate.segments.length;
+          const oldConfidence = candidate.confidence;
+          const newSegments = [...candidate.segments, decision.segment];
+          const newEmbedding = computeCentroid(newSegments);
+          const confidence = computeConfidence(
+            { ...candidate, segments: newSegments, embedding: newEmbedding },
+            ctx.nodes,
+          );
+          log.stages.routing.confidence = confidence;
+
+          // Detailed accumulation logging
+          (log as any).accumulation = {
+            candidateId: decision.candidateId,
+            oldSegmentCount,
+            newSegmentCount: newSegments.length,
+            oldConfidence: parseFloat(oldConfidence.toFixed(3)),
+            newConfidence: parseFloat(confidence.toFixed(3)),
+          };
+
+          result.mutations.push({
+            type: "update_candidate",
+            candidateId: decision.candidateId,
+            segments: newSegments,
+            embedding: newEmbedding,
+            confidence,
+          });
+
+          // ─── Stage 4: MATERIALIZE check ─────────────────────────────
+          const updatedCandidate: CandidateState = {
+            ...candidate, segments: newSegments, embedding: newEmbedding, confidence,
+          };
+          const totalMsgs = newSegments.reduce((s, seg) => s + seg.messageIds.length, 0);
+          log.stages.materialization.linkedMessageCount = totalMsgs;
+          log.stages.materialization.attempted = true;
+
+          const blockCheck = checkMaterializationBlock(updatedCandidate);
+          if (blockCheck.blocked) {
+            log.stages.materialization.blocked = true;
+            log.stages.materialization.blockReason = blockCheck.reason;
+            (log as any).accumulation.materializeResult = `BLOCKED: ${blockCheck.reason}`;
+            result.mutations.push({
+              type: "block_candidate",
+              candidateId: decision.candidateId,
+              reason: blockCheck.reason,
+            });
+          } else if (shouldMaterialize(updatedCandidate, ctx.nodes)) {
+            (log as any).accumulation.materializeResult = "APPROVED";
+            const node = await materializeToNode(conversationId, updatedCandidate, ctx);
+            if (node) {
+              result.mutations.push(node.mutation);
+              result.nodesCreated++;
+              affectedNodeId = node.nodeId;
+              affectedNodeEmbedding = node.embedding;
+              log.stages.materialization.materialized = true;
+              log.stages.materialization.nodeId = node.nodeId;
+              log.stages.materialization.nodeTitle = (node.mutation as any).title;
+              infoLog("[engine] Node materialized", { title: (node.mutation as any).title, nodeId: node.nodeId });
+            }
+          } else {
+            log.stages.materialization.blocked = true;
+            log.stages.materialization.blockReason = `Confidence ${confidence.toFixed(3)} below threshold (0.72) or messages ${totalMsgs} < ${MIN_EVIDENCE_MESSAGES}`;
+            (log as any).accumulation.materializeResult = `NOT_READY: confidence=${confidence.toFixed(3)}, threshold=0.72, messages=${totalMsgs}, minRequired=${MIN_EVIDENCE_MESSAGES}`;
+          }
+        }
+
+      } else if (decision.type === "new_candidate") {
         const confidence = computeConfidence(
-          { ...candidate, segments: newSegments, embedding: newEmbedding },
+          { id: "", segments: [decision.segment], embedding: frozenSegmentEmbedding, confidence: 0, lastTouchedRun: null },
           ctx.nodes,
         );
+        log.stages.routing.confidence = confidence;
 
         result.mutations.push({
-          type: "update_candidate",
-          candidateId: decision.candidateId,
-          segments: newSegments,
-          embedding: newEmbedding,
+          type: "create_candidate",
+          segment: decision.segment,
+          embedding: frozenSegmentEmbedding,
           confidence,
         });
 
-        // ─── Stage 4: MATERIALIZE check ─────────────────────────────────
-        const updatedCandidate: CandidateState = {
-          ...candidate,
-          segments: newSegments,
-          embedding: newEmbedding,
-          confidence,
+        // Check immediate materialization
+        const tempCandidate: CandidateState = {
+          id: "", segments: [decision.segment], embedding: frozenSegmentEmbedding, confidence, lastTouchedRun: null,
         };
+        const totalMsgs = decision.segment.messageIds.length;
+        log.stages.materialization.linkedMessageCount = totalMsgs;
 
-        // Check for permanent block first
-        const blockCheck = checkMaterializationBlock(updatedCandidate);
-        if (blockCheck.blocked) {
-          console.log(
-            `[intelligence] Candidate BLOCKED permanently: ${blockCheck.reason}`,
-          );
-          result.mutations.push({
-            type: "block_candidate",
-            candidateId: decision.candidateId,
-            reason: blockCheck.reason,
-          });
-        } else if (shouldMaterialize(updatedCandidate, ctx.nodes)) {
-          const node = await materializeToNode(conversationId, updatedCandidate, ctx);
+        if (shouldMaterialize(tempCandidate, ctx.nodes)) {
+          log.stages.materialization.attempted = true;
+          const node = await materializeToNode(conversationId, tempCandidate, ctx);
           if (node) {
             result.mutations.push(node.mutation);
             result.nodesCreated++;
             affectedNodeId = node.nodeId;
             affectedNodeEmbedding = node.embedding;
+            log.stages.materialization.materialized = true;
+            log.stages.materialization.nodeId = node.nodeId;
+            log.stages.materialization.nodeTitle = (node.mutation as any).title;
           }
-        }
-      }
-
-    } else if (decision.type === "new_candidate") {
-      const confidence = computeConfidence(
-        { id: "", segments: [decision.segment], embedding: segmentEmbedding, confidence: 0 },
-        ctx.nodes,
-      );
-
-      result.mutations.push({
-        type: "create_candidate",
-        segment: decision.segment,
-        embedding: segmentEmbedding,
-        confidence,
-      });
-      console.log(`[intelligence] New candidate (confidence: ${confidence.toFixed(2)})`);
-
-      // Check if single rich segment should materialize immediately
-      const tempCandidate: CandidateState = {
-        id: "",
-        segments: [decision.segment],
-        embedding: segmentEmbedding,
-        confidence,
-      };
-      if (shouldMaterialize(tempCandidate, ctx.nodes)) {
-        const node = await materializeToNode(conversationId, tempCandidate, ctx);
-        if (node) {
-          result.mutations.push(node.mutation);
-          result.nodesCreated++;
-          affectedNodeId = node.nodeId;
-          affectedNodeEmbedding = node.embedding;
         }
       }
     }
 
-    // ─── Stage 5: RELATE (incremental edges for affected node) ──────────
+    // ─── Stage 5: RELATE ────────────────────────────────────────────────
     if (affectedNodeId && affectedNodeEmbedding && affectedNodeEmbedding.length > 0) {
       const { addEdges, removeEdgeIds } = computeIncrementalEdges(
-        affectedNodeId,
-        affectedNodeEmbedding,
-        ctx.nodes,
-        ctx.edges,
+        affectedNodeId, affectedNodeEmbedding, ctx.nodes, ctx.edges,
       );
 
       for (const edge of addEdges) {
@@ -208,17 +431,18 @@ export async function runIntelligenceEngine(
           sourceNodeId: affectedNodeId,
           targetNodeId: edge.targetNodeId,
           similarity: edge.similarity,
-          explanation: "", // LLM explanation deferred for v1
+          explanation: "",
         });
         result.edgesAdded++;
       }
-
       for (const edgeId of removeEdgeIds) {
         result.mutations.push({ type: "remove_edge", edgeId });
         result.edgesRemoved++;
       }
 
-      // ─── Stage 7: METRICS ─────────────────────────────────────────────
+      log.stages.edges.added = result.edgesAdded;
+      log.stages.edges.removed = result.edgesRemoved;
+
       const affectedNode = ctx.nodes.find((n) => n.id === affectedNodeId);
       if (affectedNode) {
         const metrics = computeMetrics(affectedNode, ctx.edges);
@@ -231,48 +455,159 @@ export async function runIntelligenceEngine(
       }
     }
 
+    // ─── Stage 6: STALE CANDIDATE PROMOTION ────────────────────────────
+    // Check candidates that haven't grown for STALE_PROMOTION_RUNS.
+    // Promote them if they meet the lower threshold.
+    if (!segmentFrozen || !affectedNodeId) {
+      // Only run stale promotion when the current turn didn't already materialize something
+      const stalePromoted = await promoteStaleCandidates(
+        conversationId, ctx, result, log,
+      );
+      if (stalePromoted) {
+        // Update affected node for edge computation
+        affectedNodeId = stalePromoted.nodeId;
+        affectedNodeEmbedding = stalePromoted.embedding;
+      }
+    }
+
     // ─── Stage 9: PERSIST ───────────────────────────────────────────────
+    log.stages.persistence.mutationsApplied = result.mutations.length;
+    log.stages.persistence.totalNodesAfter = ctx.nodes.length + result.nodesCreated;
+    log.stages.persistence.totalEdgesAfter = ctx.edges.length + result.edgesAdded - result.edgesRemoved;
     await persistMutations(conversationId, result.mutations, ctx);
 
   } catch (err) {
-    console.error("[intelligence] Engine failed (non-fatal):", err);
+    log.error = err instanceof Error ? err.message : String(err);
+    errorLog("[engine] Engine failed (non-fatal):", err);
   }
 
+  emitPipelineLog(log);
   return result;
 }
 
 // ─── State loading ──────────────────────────────────────────────────────────
 
-async function loadPipelineContext(conversationId: string): Promise<PipelineContext> {
+async function loadPipelineContext(
+  conversationId: string,
+  newMessageIds?: { userMessageId: string; assistantMessageId: string },
+): Promise<PipelineContext> {
   const db = createServerSupabaseClient();
 
-  // Load recent messages (last 20 — enough for windowing)
-  const { data: msgData } = await db
-    .from("messages")
-    .select("id, role, content")
+  // Load engine state
+  debugLog("[engine] loading state for:", conversationId);
+
+  const { data: stateData, error: stateError } = await db
+    .from("conversation_engine_state")
+    .select("*")
     .eq("conversation_id", conversationId)
-    .is("parent_node_id", null)
-    .order("created_at", { ascending: false })
-    .limit(20);
+    .maybeSingle();
 
-  const recentMessages: ChatMessage[] = (msgData ?? [])
-    .reverse()
-    .map((m: { id: string; role: string; content: string }) => ({
-      id: m.id,
-      role: m.role as "user" | "assistant",
-      content: m.content,
-    }));
+  debugLog("[engine] state loaded", {
+    hasData: stateData !== null,
+    error: stateError?.message ?? null,
+  });
 
-  // Last 2 messages are the new ones (user + assistant just persisted)
-  const newMessages = recentMessages.slice(-2);
+  if (stateError) {
+    errorLog("[engine] Failed to load engine state:", stateError.message);
+  }
 
-  // Load nodes with embeddings + positions
+  const engineState: EngineState = {
+    cursor: stateData?.cursor ?? null,
+    openSegment: stateData?.open_segment ?? null,
+    totalRuns: stateData?.total_engine_runs ?? 0,
+  };
+
+  debugLog("[engine] mapped state", {
+    cursor: engineState.cursor,
+    openSegmentNull: engineState.openSegment === null,
+    openSegmentExchanges: engineState.openSegment?.exchangeCount ?? "N/A",
+    totalRuns: engineState.totalRuns,
+  });
+
+  // ─── Resolve the new exchange ───────────────────────────────────────
+  // Prefer explicit message IDs passed from the caller (guaranteed correct pairing).
+  // Fallback to DB query only if not provided.
+  let newExchange: PipelineContext["newExchange"] = null;
+
+  if (newMessageIds) {
+    // Load the exact messages by ID — guaranteed correct pairing
+    const { data: pairData } = await db
+      .from("messages")
+      .select("id, role, content")
+      .in("id", [newMessageIds.userMessageId, newMessageIds.assistantMessageId]);
+
+    const pairMsgs = (pairData ?? []) as Array<{ id: string; role: string; content: string }>;
+    const userMsg = pairMsgs.find((m) => m.id === newMessageIds.userMessageId);
+    const assistantMsg = pairMsgs.find((m) => m.id === newMessageIds.assistantMessageId);
+
+    if (userMsg && assistantMsg) {
+      newExchange = {
+        user: { id: userMsg.id, role: "user", content: userMsg.content },
+        assistant: { id: assistantMsg.id, role: "assistant", content: assistantMsg.content },
+      };
+    }
+  } else {
+    // Fallback: find latest unprocessed exchange from DB
+    if (engineState.cursor) {
+      const { data: cursorMsg } = await db
+        .from("messages")
+        .select("created_at")
+        .eq("id", engineState.cursor)
+        .single();
+
+      if (cursorMsg) {
+        const { data: afterMsgs } = await db
+          .from("messages")
+          .select("id, role, content")
+          .eq("conversation_id", conversationId)
+          .is("parent_node_id", null)
+          .gt("created_at", cursorMsg.created_at)
+          .order("created_at", { ascending: true })
+          .limit(10);
+
+        const msgs = (afterMsgs ?? []) as Array<{ id: string; role: string; content: string }>;
+        // Find the first user followed by first assistant (in order)
+        const userMsg = msgs.find((m) => m.role === "user");
+        if (userMsg) {
+          const userIdx = msgs.indexOf(userMsg);
+          const assistantMsg = msgs.slice(userIdx + 1).find((m) => m.role === "assistant");
+          if (assistantMsg) {
+            newExchange = {
+              user: { id: userMsg.id, role: "user", content: userMsg.content },
+              assistant: { id: assistantMsg.id, role: "assistant", content: assistantMsg.content },
+            };
+          }
+        }
+      }
+    } else {
+      // No cursor — get the last complete exchange
+      const { data: recentMsgs } = await db
+        .from("messages")
+        .select("id, role, content")
+        .eq("conversation_id", conversationId)
+        .is("parent_node_id", null)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      const msgs = ((recentMsgs ?? []) as Array<{ id: string; role: string; content: string }>).reverse();
+      for (let i = msgs.length - 2; i >= 0; i--) {
+        if (msgs[i].role === "user" && msgs[i + 1]?.role === "assistant") {
+          newExchange = {
+            user: { id: msgs[i].id, role: "user", content: msgs[i].content },
+            assistant: { id: msgs[i + 1].id, role: "assistant", content: msgs[i + 1].content },
+          };
+          break;
+        }
+      }
+    }
+  }
+
+  // Load nodes with embeddings
   const { data: nodeData } = await db
     .from("nodes")
     .select("id, title, summary, embedding, position_x, position_y, neighborhood_id, importance, stability")
     .eq("conversation_id", conversationId);
 
-  // Load node_messages to get messageIds per node
   const nodeIds = (nodeData ?? []).map((n: { id: string }) => n.id);
   let nodeMsgMap = new Map<string, string[]>();
   if (nodeIds.length > 0) {
@@ -313,10 +648,10 @@ async function loadPipelineContext(conversationId: string): Promise<PipelineCont
     similarityScore: e.similarity_score,
   }));
 
-  // Load candidates
+  // Load active candidates
   const { data: candData } = await db
     .from("topic_candidates")
-    .select("id, segments, embedding, confidence")
+    .select("id, segments, embedding, confidence, last_touched_run")
     .eq("conversation_id", conversationId)
     .eq("status", "accumulating");
 
@@ -325,22 +660,46 @@ async function loadPipelineContext(conversationId: string): Promise<PipelineCont
     segments: Array.isArray(c.segments) ? c.segments : [],
     embedding: Array.isArray(c.embedding) ? c.embedding : null,
     confidence: c.confidence ?? 0,
+    lastTouchedRun: c.last_touched_run ?? null,
   }));
 
-  // Load engine state
-  const { data: stateData } = await db
-    .from("conversation_engine_state")
-    .select("*")
-    .eq("conversation_id", conversationId)
+  return { conversationId, newExchange, nodes, edges, candidates, engineState };
+}
+
+// ─── Helper: get message IDs in a range ─────────────────────────────────────
+
+async function getSegmentMessageIds(
+  conversationId: string,
+  startMessageId: string,
+  endMessageId: string,
+): Promise<string[]> {
+  const db = createServerSupabaseClient();
+
+  // Get timestamps for range boundaries
+  const { data: startMsg } = await db
+    .from("messages")
+    .select("created_at")
+    .eq("id", startMessageId)
     .single();
 
-  const engineState: EngineState = {
-    lastWindowEmbedding: stateData?.last_window_embedding ?? null,
-    lastProcessedMessageId: stateData?.last_processed_message_id ?? null,
-    totalRuns: stateData?.total_engine_runs ?? 0,
-  };
+  const { data: endMsg } = await db
+    .from("messages")
+    .select("created_at")
+    .eq("id", endMessageId)
+    .single();
 
-  return { conversationId, newMessages, recentMessages, nodes, edges, candidates, engineState };
+  if (!startMsg || !endMsg) return [];
+
+  const { data: msgs } = await db
+    .from("messages")
+    .select("id")
+    .eq("conversation_id", conversationId)
+    .is("parent_node_id", null)
+    .gte("created_at", startMsg.created_at)
+    .lte("created_at", endMsg.created_at)
+    .order("created_at", { ascending: true });
+
+  return (msgs ?? []).map((m: { id: string }) => m.id);
 }
 
 // ─── Materialization helper ─────────────────────────────────────────────────
@@ -351,17 +710,23 @@ async function materializeToNode(
   ctx: PipelineContext,
 ): Promise<{ mutation: GraphMutation; nodeId: string; embedding: number[] } | null> {
   const messageIds = [...new Set(candidate.segments.flatMap((s) => s.messageIds))];
-  const linkedMessages = ctx.recentMessages.filter((m) => messageIds.includes(m.id));
 
-  // If we can't find messages in recent, use what we have
-  const messagesToSummarize = linkedMessages.length > 0
-    ? linkedMessages
-    : ctx.recentMessages.slice(-WINDOW_SIZE * 2);
+  // Load the actual messages for LLM summarization
+  const db = createServerSupabaseClient();
+  const { data: msgData } = await db
+    .from("messages")
+    .select("id, role, content")
+    .in("id", messageIds)
+    .order("created_at", { ascending: true });
 
-  const formatted = messagesToSummarize
+  const linkedMessages = (msgData ?? []) as Array<{ id: string; role: string; content: string }>;
+
+  const formatted = linkedMessages
     .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
     .join("\n")
     .slice(0, 3000);
+
+  if (!formatted) return null;
 
   try {
     const completion = await openai.chat.completions.create({
@@ -395,11 +760,75 @@ async function materializeToNode(
       position,
     };
 
-    console.log(`[intelligence] Materialized: "${parsed.title}"`);
     return { mutation, nodeId, embedding };
   } catch {
     return null;
   }
+}
+
+// ─── Stale Candidate Promotion ──────────────────────────────────────────────
+
+async function promoteStaleCandidates(
+  conversationId: string,
+  ctx: PipelineContext,
+  result: EngineResult,
+  log: PipelineLog,
+): Promise<{ nodeId: string; embedding: number[] } | null> {
+  const currentRun = ctx.engineState.totalRuns;
+  const candidatesChecked: string[] = [];
+  let promoted: { nodeId: string; embedding: number[] } | null = null;
+
+  for (const candidate of ctx.candidates) {
+    const totalMessages = candidate.segments.reduce(
+      (sum, s) => sum + s.messageIds.length, 0,
+    );
+    const touchedRun = candidate.lastTouchedRun ?? 0;
+    const runsSinceTouch = currentRun - touchedRun;
+    const isStale = runsSinceTouch >= STALE_PROMOTION_RUNS;
+
+    candidatesChecked.push(candidate.id);
+
+    if (!isStale) continue;
+    if (totalMessages < MIN_EVIDENCE_MESSAGES) continue;
+    if (candidate.confidence < STALE_PROMOTION_THRESHOLD) continue;
+
+    // Pass block checks
+    const blockCheck = checkMaterializationBlock(candidate);
+    if (blockCheck.blocked) continue;
+
+    // Promote this candidate
+    infoLog("[engine] Stale promotion", {
+      candidateId: candidate.id,
+      confidence: parseFloat(candidate.confidence.toFixed(3)),
+      messages: totalMessages,
+      staleRuns: runsSinceTouch,
+    });
+
+    const node = await materializeToNode(conversationId, candidate, ctx);
+    if (node) {
+      result.mutations.push(node.mutation);
+      result.nodesCreated++;
+      promoted = { nodeId: node.nodeId, embedding: node.embedding };
+
+      log.stages.materialization.materialized = true;
+      log.stages.materialization.nodeId = node.nodeId;
+      log.stages.materialization.nodeTitle = (node.mutation as any).title;
+      log.stages.materialization.linkedMessageCount = totalMessages;
+
+      // Only promote one per run to keep things controlled
+      break;
+    }
+  }
+
+  if (candidatesChecked.length > 0) {
+    (log as any).stalePromotion = {
+      candidatesChecked: candidatesChecked.length,
+      promoted: promoted !== null,
+      promotedNodeId: promoted?.nodeId ?? null,
+    };
+  }
+
+  return promoted;
 }
 
 // ─── Mutation persistence ───────────────────────────────────────────────────
@@ -433,6 +862,7 @@ async function persistMutations(
             segments: [m.segment],
             embedding: m.embedding,
             confidence: m.confidence,
+            last_touched_run: ctx?.engineState?.totalRuns ?? 0,
           });
           break;
         }
@@ -442,6 +872,7 @@ async function persistMutations(
             embedding: m.embedding,
             confidence: m.confidence,
             last_updated_at: new Date().toISOString(),
+            last_touched_run: ctx?.engineState?.totalRuns ?? 0,
           }).eq("id", m.candidateId);
           break;
         }
@@ -453,53 +884,52 @@ async function persistMutations(
           break;
         }
         case "materialize": {
-          // Use persistNode which generates canonical embedding + evidence summary
-          const linkedMsgs = ctx?.recentMessages?.filter(
-            (msg: any) => m.messageIds.includes(msg.id),
-          ) ?? [];
-          
+          // Load linked messages for persistNode
+          const linkedMsgData = await db
+            .from("messages")
+            .select("id, role, content")
+            .in("id", m.messageIds)
+            .order("created_at", { ascending: true });
+
+          const linkedMsgs = ((linkedMsgData.data ?? []) as Array<{ id: string; role: string; content: string }>)
+            .map((msg) => ({ id: msg.id, role: msg.role as "user" | "assistant", content: msg.content }));
+
           const nodeForPersist = {
             id: m.nodeId,
             title: m.title,
             summary: m.summary,
             messageIds: m.messageIds,
           };
-          
-          // persistNode handles: evidence_summary + canonical embedding + DB insert + node_messages
+
           const { persistNode: persistNodeFn } = await import("@/src/lib/db/nodes");
           await persistNodeFn(conversationId, nodeForPersist, linkedMsgs, { createdBy: "ai" });
 
-          // Set position (persistNode doesn't handle this)
           await db.from("nodes").update({
             position_x: m.position.x,
             position_y: m.position.y,
           }).eq("id", m.nodeId);
 
-          // Mark candidate as materialized
           if (m.candidateId) {
             await db.from("topic_candidates").update({
               status: "materialized",
               materialized_node_id: m.nodeId,
             }).eq("id", m.candidateId);
           }
-          // Assign to neighborhood (reload the fresh embedding from persistNode)
+
+          // Neighborhood assignment
           const { data: freshNode } = await db
             .from("nodes")
             .select("embedding")
             .eq("id", m.nodeId)
             .single();
           const freshEmbedding = Array.isArray(freshNode?.embedding) ? freshNode.embedding as number[] : m.embedding;
-          
+
           if (freshEmbedding && freshEmbedding.length > 0) {
             try {
-              await assignNodeToNeighborhood(
-                conversationId,
-                m.nodeId,
-                freshEmbedding,
-                m.title,
-              );
+              await assignNodeToNeighborhood(conversationId, m.nodeId, freshEmbedding, m.title);
+              // Log would go here but we don't have access to log in this scope
             } catch (err) {
-              console.error("[intelligence] Neighborhood assignment failed:", err);
+              errorLog("[engine] Neighborhood assignment failed:", err);
             }
           }
           break;
@@ -534,19 +964,31 @@ async function persistMutations(
           break;
         }
         case "update_engine_state": {
-          await db.from("conversation_engine_state").upsert({
-            conversation_id: conversationId,
-            last_window_embedding: m.windowEmbedding,
-            last_processed_message_id: m.lastMessageId,
-            total_engine_runs: m.totalRuns,
-            last_engine_run_at: new Date().toISOString(),
-          }, { onConflict: "conversation_id" });
+          const { data: upsertResult, error: upsertError } = await db
+            .from("conversation_engine_state")
+            .upsert({
+              conversation_id: conversationId,
+              cursor: m.engineState.cursor,
+              open_segment: m.engineState.openSegment,
+              total_engine_runs: m.engineState.totalRuns,
+              last_engine_run_at: new Date().toISOString(),
+            }, { onConflict: "conversation_id" })
+            .select()
+            .single();
+
+          if (upsertError) {
+            errorLog("[engine] Engine state upsert FAILED:", upsertError.message);
+          } else {
+            debugLog("[engine] state saved", {
+              cursor: upsertResult?.cursor,
+              runs: upsertResult?.total_engine_runs,
+            });
+          }
           break;
         }
       }
     } catch (err) {
-      console.error(`[intelligence] Mutation ${m.type} failed:`, err);
-      // Continue with other mutations — partial success is acceptable
+      errorLog(`[engine] Mutation ${m.type} failed:`, err);
     }
   }
 }

@@ -1,8 +1,9 @@
 /**
- * GraphIntelligenceEngine v1 — Types.
+ * GraphIntelligenceEngine v2 — Types.
  *
- * Separates decisions from mutations.
- * Each pipeline stage produces typed outputs.
+ * Exchange-based incremental segmentation.
+ * The engine processes one exchange (user+assistant pair) per run.
+ * Open segment grows until a boundary is detected, then freezes.
  */
 
 import type { ChatMessage } from "@/src/types/message";
@@ -34,6 +35,8 @@ export interface CandidateState {
   segments: SegmentData[];
   embedding: number[] | null;
   confidence: number;
+  /** Engine run count when this candidate was last touched (created or accumulated into) */
+  lastTouchedRun: number | null;
 }
 
 export interface SegmentData {
@@ -42,9 +45,31 @@ export interface SegmentData {
   completedAt: string;
 }
 
+// ─── Engine State (persisted in conversation_engine_state) ──────────────────
+
+export interface OpenSegmentState {
+  /** ID of the first message in this open segment */
+  startMessageId: string;
+  /** ID of the last message included in this open segment */
+  endMessageId: string;
+  /** Running centroid embedding of all exchanges (for candidate/node creation) */
+  embedding: number[];
+  /** Running centroid of user-only embeddings (for segmentation boundary detection) */
+  userEmbedding: number[];
+  /** Embedding of the most recent user message (for local boundary detection) */
+  lastUserEmbedding: number[];
+  /** Embedding of the most recent exchange (kept for compatibility) */
+  lastExchangeEmbedding: number[];
+  /** Number of exchanges (user+assistant pairs) in this segment */
+  exchangeCount: number;
+}
+
 export interface EngineState {
-  lastWindowEmbedding: number[] | null;
-  lastProcessedMessageId: string | null;
+  /** Cursor: ID of the last fully processed message. Engine only looks AFTER this. */
+  cursor: string | null;
+  /** The currently open (unfrozen) segment. Null if no segment is open. */
+  openSegment: OpenSegmentState | null;
+  /** Total engine runs for this conversation */
   totalRuns: number;
 }
 
@@ -52,8 +77,8 @@ export interface EngineState {
 
 export interface PipelineContext {
   conversationId: string;
-  newMessages: ChatMessage[];
-  recentMessages: ChatMessage[];       // last N messages for window comparison
+  /** The new exchange to process (user + assistant messages after cursor) */
+  newExchange: { user: ChatMessage; assistant: ChatMessage } | null;
   nodes: NodeState[];
   edges: EdgeState[];
   candidates: CandidateState[];
@@ -96,7 +121,7 @@ export type GraphMutation =
   | { type: "add_edge"; sourceNodeId: string; targetNodeId: string; similarity: number; explanation: string }
   | { type: "remove_edge"; edgeId: string }
   | { type: "update_metrics"; nodeId: string; importance: number; stability: number }
-  | { type: "update_engine_state"; windowEmbedding: number[]; lastMessageId: string; totalRuns: number };
+  | { type: "update_engine_state"; engineState: EngineState };
 
 // ─── Engine Result ──────────────────────────────────────────────────────────
 

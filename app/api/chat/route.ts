@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { runIntelligenceEngine } from "@/src/lib/intelligence";
 import type { ChatResponse, ChatErrorResponse } from "@/src/types/ai";
 
 const openai = new OpenAI({
@@ -52,7 +51,6 @@ export async function POST(
 
   const b = body as Record<string, unknown>;
   const messages = b.messages as Array<{ role: "user" | "assistant"; content: string }>;
-  const conversationId = b.conversationId as string | undefined;
   const branchContext = b.branchContext as BranchContext | undefined;
 
   if (messages.length === 0) {
@@ -122,20 +120,8 @@ export async function POST(
     );
   }
 
-  // Run GraphIntelligenceEngine (non-fatal — errors logged, chat still returns)
-  // Only runs for normal conversation, not branch mode
-  if (conversationId && !branchContext) {
-    try {
-      const engineResult = await runIntelligenceEngine(conversationId);
-      if (engineResult.nodesCreated > 0 || engineResult.nodesExtended > 0) {
-        console.log(
-          `[chat] Intelligence engine: ${engineResult.nodesCreated} created, ${engineResult.nodesExtended} extended, +${engineResult.edgesAdded}/-${engineResult.edgesRemoved} edges`,
-        );
-      }
-    } catch (err) {
-      console.error("[chat] Intelligence engine failed (non-fatal):", err);
-    }
-  }
+  // Intelligence engine no longer runs here — it runs in /api/messages
+  // after the new messages are persisted, so it has access to the current turn.
 
   return NextResponse.json({ content }, { status: 200 });
 }

@@ -12,21 +12,65 @@ export type ConversationData = {
   edges: SemanticEdge[];
 };
 
-// Load the most recent conversation with all its messages and nodes.
-// Returns null if no conversations exist yet.
-export async function loadLatestConversation(): Promise<ConversationData | null> {
+export type ConversationListItem = {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string | null;
+};
+
+// List all conversations, most recent first.
+export async function listConversations(): Promise<ConversationListItem[]> {
   const db = createServerSupabaseClient();
 
-  const { data: conversations, error: convError } = await db
+  // Select only guaranteed columns — updated_at may not exist in all schemas
+  const { data, error } = await db
     .from("conversations")
     .select("*")
-    .order("created_at", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(`Failed to list conversations: ${error.message}`);
+
+  return (data ?? []).map((c: any) => ({
+    id: c.id,
+    title: c.title,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at ?? c.created_at,
+  }));
+}
+
+// Load a specific conversation by ID.
+export async function loadConversationById(id: string): Promise<ConversationData | null> {
+  const db = createServerSupabaseClient();
+
+  const { data: convData, error: convError } = await db
+    .from("conversations")
+    .select("*")
+    .eq("id", id)
     .limit(1);
 
   if (convError) throw new Error(`Failed to load conversation: ${convError.message}`);
-  if (!conversations || conversations.length === 0) return null;
+  if (!convData || convData.length === 0) return null;
 
-  const conversation = conversations[0] as DbConversation;
+  const conversation = convData[0] as DbConversation;
+  return loadConversationData(conversation);
+}
+
+// Update conversation title.
+export async function updateConversationTitle(id: string, title: string): Promise<void> {
+  const db = createServerSupabaseClient();
+
+  const { error } = await db
+    .from("conversations")
+    .update({ title })
+    .eq("id", id);
+
+  if (error) throw new Error(`Failed to update conversation title: ${error.message}`);
+}
+
+// Shared helper: given a DbConversation, load its messages, nodes, and edges.
+async function loadConversationData(conversation: DbConversation): Promise<ConversationData> {
+  const db = createServerSupabaseClient();
 
   // Load messages ordered by creation time
   const { data: dbMessages, error: msgError } = await db
@@ -103,10 +147,28 @@ export async function loadLatestConversation(): Promise<ConversationData | null>
   return { conversation, messages, nodes, edges };
 }
 
-// Create a new conversation and seed it with initial messages.
+// Load the most recent conversation with all its messages and nodes.
+// Returns null if no conversations exist yet.
+export async function loadLatestConversation(): Promise<ConversationData | null> {
+  const db = createServerSupabaseClient();
+
+  const { data: conversations, error: convError } = await db
+    .from("conversations")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (convError) throw new Error(`Failed to load conversation: ${convError.message}`);
+  if (!conversations || conversations.length === 0) return null;
+
+  const conversation = conversations[0] as DbConversation;
+  return loadConversationData(conversation);
+}
+
+// Create a new conversation, optionally seeding it with messages.
 export async function createConversation(
   title: string,
-  seedMessages: ChatMessage[],
+  seedMessages: ChatMessage[] = [],
 ): Promise<ConversationData> {
   const db = createServerSupabaseClient();
 

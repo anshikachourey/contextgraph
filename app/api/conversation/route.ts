@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   loadLatestConversation,
+  loadConversationById,
   createConversation,
 } from "@/src/lib/db/conversations";
 import { mockMessages } from "@/src/data/mockMessages";
@@ -17,16 +18,32 @@ export type ConversationRouteResponse = {
 
 type ErrorResponse = { error: string };
 
-export async function GET(): Promise<
-  NextResponse<ConversationRouteResponse | ErrorResponse>
-> {
+export async function GET(
+  request: NextRequest,
+): Promise<NextResponse<ConversationRouteResponse | ErrorResponse>> {
   try {
-    // Try to load an existing conversation
-    let data = await loadLatestConversation();
+    const { searchParams } = new URL(request.url);
+    const idParam = searchParams.get("id");
 
-    // No conversation yet — create one and seed with mock messages
-    if (!data) {
-      data = await createConversation("My first conversation", mockMessages);
+    let data;
+
+    if (idParam) {
+      // Load specific conversation by ID
+      data = await loadConversationById(idParam);
+      if (!data) {
+        return NextResponse.json(
+          { error: `Conversation not found: ${idParam}` },
+          { status: 404 },
+        );
+      }
+    } else {
+      // Load the most recent conversation
+      data = await loadLatestConversation();
+
+      // No conversation yet — create one and seed with mock messages
+      if (!data) {
+        data = await createConversation("My first conversation", mockMessages);
+      }
     }
 
     return NextResponse.json({

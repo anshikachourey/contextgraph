@@ -1,17 +1,22 @@
 /**
- * GraphIntelligenceEngine v1 — Pipeline Stages.
+ * GraphIntelligenceEngine v2 — Pipeline Stages.
  *
  * Each stage is a pure function (no DB, no side effects).
- * Input: previous stage output + context.
- * Output: typed decisions/mutations.
+ * Exchange-based incremental segmentation.
  */
 
 import { cosineSimilarity } from "@/src/lib/cosineSimilarity";
+import { debugLog } from "./logger";
 import {
-  WINDOW_SIZE,
-  BOUNDARY_THRESHOLD,
+  SEGMENT_CLOSE_THRESHOLD,
+  SEGMENT_CLOSE_THRESHOLD_EARLY,
+  USER_CENTROID_THRESHOLD,
+  USER_LOCAL_THRESHOLD,
+  USER_CENTROID_THRESHOLD_EARLY,
+  USER_LOCAL_THRESHOLD_EARLY,
   EXTEND_THRESHOLD,
   CANDIDATE_MATCH_THRESHOLD,
+  ACCUMULATE_COHERENCE_GATE,
   MATERIALIZE_THRESHOLD,
   MIN_EVIDENCE_MESSAGES,
   MAX_AUTO_NODE_MESSAGES,
@@ -20,60 +25,120 @@ import {
   THRESHOLD_INCREASE_PER_EXTRA_SEGMENT,
   EDGE_THRESHOLD,
   WEIGHTS,
-  TRIVIAL_MAX_CHARS,
-  SUBSTANTIVE_MIN_CHARS,
 } from "./config";
-import type { ChatMessage } from "@/src/types/message";
 import type {
   NodeState,
   EdgeState,
   CandidateState,
   SegmentData,
-  EmbedOutput,
-  SegmentOutput,
+  OpenSegmentState,
   RouteDecision,
-  MaterializeDecision,
-  GraphMutation,
 } from "./types";
 
-// ─── Stage 2: SEGMENT ───────────────────────────────────────────────────────
+// ─── Stage 2: SEGMENT (user-message boundary detection) ─────────────────────
+
+export interface SegmentBoundaryResult {
+  /** Whether the open segment should be closed */
+  shouldClose: boolean;
+  /** Similarity between new user message and open segment's user centroid */
+  centroidUserSim: number;
+  /** Similarity between new user message and the previous user message */
+  localUserSim: number | null;
+  /** Centroid threshold applied */
+  centroidThreshold: number;
+  /** Local threshold applied */
+  localThreshold: number;
+  /** Reason for decision */
+  reason: string;
+}
 
 /**
- * Detect if a segment boundary exists by comparing
- * current window embedding against previous window embedding.
+ * Determine whether a new exchange should close the current open segment.
+ * Uses user-message-only embeddings to avoid format/style inflation.
  */
-export function detectSegment(
-  currentWindowEmbedding: number[],
-  previousWindowEmbedding: number[] | null,
-  recentMessages: ChatMessage[],
-): SegmentOutput {
-  if (!previousWindowEmbedding || previousWindowEmbedding.length === 0) {
-    // First run — no comparison possible. Store embedding for next time.
-    return { segmentCompleted: false, completedSegment: null, completedSegmentEmbedding: null };
-  }
+export function checkSegmentBoundary(
+  openSegment: OpenSegmentState,
+  newUserEmbedding: number[],
+): SegmentBoundaryResult {
+  // Adaptive thresholds: early segments are more lenient
+  const centroidThreshold = openSegment.exchangeCount <= 2
+    ? USER_CENTROID_THRESHOLD_EARLY
+    : USER_CENTROID_THRESHOLD;
+  const localThreshold = openSegment.exchangeCount <= 2
+    ? USER_LOCAL_THRESHOLD_EARLY
+    : USER_LOCAL_THRESHOLD;
 
-  const similarity = cosineSimilarity(currentWindowEmbedding, previousWindowEmbedding);
-
-  if (similarity < BOUNDARY_THRESHOLD) {
-    // Boundary detected: the messages BEFORE the current window form the completed segment
-    const completedSegment = recentMessages.slice(0, -WINDOW_SIZE);
-    if (completedSegment.length === 0) {
-      return { segmentCompleted: false, completedSegment: null, completedSegmentEmbedding: null };
-    }
+  if (openSegment.userEmbedding.length === 0 || newUserEmbedding.length === 0) {
     return {
-      segmentCompleted: true,
-      completedSegment,
-      completedSegmentEmbedding: previousWindowEmbedding,
+      shouldClose: false,
+      centroidUserSim: 1.0,
+      localUserSim: null,
+      centroidThreshold,
+      localThreshold,
+      reason: "Missing embeddings — cannot compare",
     };
   }
 
-  return { segmentCompleted: false, completedSegment: null, completedSegmentEmbedding: null };
+  const centroidUserSim = cosineSimilarity(newUserEmbedding, openSegment.userEmbedding);
+
+  let localUserSim: number | null = null;
+  if (openSegment.lastUserEmbedding && openSegment.lastUserEmbedding.length > 0) {
+    localUserSim = cosineSimilarity(newUserEmbedding, openSegment.lastUserEmbedding);
+  }
+
+  // Close if EITHER centroid OR local similarity drops below threshold.
+  // This catches both gradual drift (centroid) and sharp pivots (local).
+  const centroidBelow = centroidUserSim < centroidThreshold;
+  const localBelow = localUserSim !== null && localUserSim < localThreshold;
+  const shouldClose = centroidBelow || localBelow;
+
+  let reason: string;
+  if (shouldClose) {
+    const parts: string[] = [];
+    if (centroidBelow) parts.push(`centroidUserSim ${centroidUserSim.toFixed(3)} < ${centroidThreshold}`);
+    if (localBelow) parts.push(`localUserSim ${localUserSim!.toFixed(3)} < ${localThreshold}`);
+    reason = `CLOSE: ${parts.join(" AND ")}`;
+  } else {
+    reason = `CONTINUE: centroidUserSim=${centroidUserSim.toFixed(3)}>=${centroidThreshold}` +
+      (localUserSim !== null ? `, localUserSim=${localUserSim.toFixed(3)}>=${localThreshold}` : "");
+  }
+
+  return { shouldClose, centroidUserSim, localUserSim, centroidThreshold, localThreshold, reason };
+}
+
+/**
+ * Compute updated centroid by incorporating a new exchange embedding.
+ * Incremental mean + L2 normalize.
+ */
+export function updateSegmentCentroid(
+  currentCentroid: number[],
+  currentCount: number,
+  newEmbedding: number[],
+): number[] {
+  if (currentCentroid.length === 0) return newEmbedding;
+
+  const dim = currentCentroid.length;
+  const result = new Array(dim);
+  for (let i = 0; i < dim; i++) {
+    result[i] = (currentCentroid[i] * currentCount + newEmbedding[i]) / (currentCount + 1);
+  }
+
+  // L2 normalize
+  let norm = 0;
+  for (let i = 0; i < dim; i++) norm += result[i] * result[i];
+  norm = Math.sqrt(norm);
+  if (norm > 0) {
+    for (let i = 0; i < dim; i++) result[i] /= norm;
+  }
+
+  return result;
 }
 
 // ─── Stage 3: ROUTE ─────────────────────────────────────────────────────────
 
 /**
- * Decide what to do with a completed segment.
+ * Decide what to do with a completed (frozen) segment.
+ * Compares against existing nodes and active candidates.
  */
 export function routeSegment(
   segmentEmbedding: number[],
@@ -82,29 +147,29 @@ export function routeSegment(
   candidates: CandidateState[],
 ): RouteDecision {
   // Compare against existing nodes
+  const nodeScores: Array<{ id: string; title: string; similarity: number }> = [];
   let bestNodeScore = 0;
   let bestNodeId: string | null = null;
 
   for (const node of nodes) {
     if (!node.embedding || node.embedding.length === 0) continue;
     const score = cosineSimilarity(segmentEmbedding, node.embedding);
+    nodeScores.push({ id: node.id, title: node.title, similarity: parseFloat(score.toFixed(3)) });
     if (score > bestNodeScore) {
       bestNodeScore = score;
       bestNodeId = node.id;
     }
   }
 
-  if (bestNodeScore >= EXTEND_THRESHOLD && bestNodeId) {
-    return { type: "extend_node", nodeId: bestNodeId, messageIds: segmentMessageIds };
-  }
-
   // Compare against candidates
+  const candidateScores: Array<{ id: string; similarity: number; segmentCount: number }> = [];
   let bestCandidateScore = 0;
   let bestCandidate: CandidateState | null = null;
 
   for (const candidate of candidates) {
     if (!candidate.embedding || candidate.embedding.length === 0) continue;
     const score = cosineSimilarity(segmentEmbedding, candidate.embedding);
+    candidateScores.push({ id: candidate.id, similarity: parseFloat(score.toFixed(3)), segmentCount: candidate.segments.length });
     if (score > bestCandidateScore) {
       bestCandidateScore = score;
       bestCandidate = candidate;
@@ -117,11 +182,53 @@ export function routeSegment(
     completedAt: new Date().toISOString(),
   };
 
-  if (bestCandidateScore >= CANDIDATE_MATCH_THRESHOLD && bestCandidate) {
-    return { type: "accumulate", candidateId: bestCandidate.id, segment };
+  // Determine decision
+  let decision: RouteDecision;
+  let reason: string;
+
+  if (bestNodeScore >= EXTEND_THRESHOLD && bestNodeId) {
+    decision = { type: "extend_node", nodeId: bestNodeId, messageIds: segmentMessageIds };
+    reason = `Best node score ${bestNodeScore.toFixed(3)} >= EXTEND_THRESHOLD ${EXTEND_THRESHOLD}`;
+  } else if (bestCandidateScore >= CANDIDATE_MATCH_THRESHOLD && bestCandidate) {
+    // Coherence gate
+    const existingSegments = bestCandidate.segments.filter(
+      (s) => s.embedding.length > 0,
+    );
+    let coherenceGatePassed = true;
+    let avgCoherence = 1.0;
+    if (existingSegments.length > 0) {
+      let totalSim = 0;
+      for (const seg of existingSegments) {
+        totalSim += cosineSimilarity(segmentEmbedding, seg.embedding);
+      }
+      avgCoherence = totalSim / existingSegments.length;
+      if (avgCoherence < ACCUMULATE_COHERENCE_GATE) {
+        coherenceGatePassed = false;
+      }
+    }
+
+    if (coherenceGatePassed) {
+      decision = { type: "accumulate", candidateId: bestCandidate.id, segment };
+      reason = `Best candidate score ${bestCandidateScore.toFixed(3)} >= CANDIDATE_MATCH_THRESHOLD ${CANDIDATE_MATCH_THRESHOLD}, coherence ${avgCoherence.toFixed(3)} >= ${ACCUMULATE_COHERENCE_GATE}`;
+    } else {
+      decision = { type: "new_candidate", segment };
+      reason = `Best candidate score ${bestCandidateScore.toFixed(3)} passed threshold but coherence gate FAILED: ${avgCoherence.toFixed(3)} < ${ACCUMULATE_COHERENCE_GATE}`;
+    }
+  } else {
+    decision = { type: "new_candidate", segment };
+    reason = `Best node ${bestNodeScore.toFixed(3)} < ${EXTEND_THRESHOLD}, best candidate ${bestCandidateScore.toFixed(3)} < ${CANDIDATE_MATCH_THRESHOLD}`;
   }
 
-  return { type: "new_candidate", segment };
+  // Log routing details
+  debugLog("[routeSegment]", {
+    decision: decision.type,
+    reason,
+    nodeScores,
+    candidateScores,
+    thresholds: { EXTEND_THRESHOLD, CANDIDATE_MATCH_THRESHOLD, ACCUMULATE_COHERENCE_GATE },
+  });
+
+  return decision;
 }
 
 // ─── Stage 4: MATERIALIZE ───────────────────────────────────────────────────
@@ -130,10 +237,6 @@ export type BlockReason =
   | { blocked: true; reason: string }
   | { blocked: false };
 
-/**
- * Check if a candidate should be PERMANENTLY blocked from materialization.
- * Blocked candidates are marked in DB and never retried.
- */
 export function checkMaterializationBlock(
   candidate: CandidateState,
 ): BlockReason {
@@ -141,7 +244,6 @@ export function checkMaterializationBlock(
     (sum, s) => sum + s.messageIds.length, 0,
   );
 
-  // Block: too many messages — candidate is too broad
   if (totalMessages > MAX_AUTO_NODE_MESSAGES) {
     return {
       blocked: true,
@@ -149,7 +251,6 @@ export function checkMaterializationBlock(
     };
   }
 
-  // Block: low internal coherence with multiple segments — mixed topics
   if (candidate.segments.length >= 2) {
     const internalCoherence = computeInternalCoherence(candidate.segments);
     if (internalCoherence < MIN_COHERENCE_FOR_MATERIALIZATION) {
@@ -163,10 +264,6 @@ export function checkMaterializationBlock(
   return { blocked: false };
 }
 
-/**
- * Check if a candidate should materialize into a visible node.
- * Only called AFTER checkMaterializationBlock returns { blocked: false }.
- */
 export function shouldMaterialize(
   candidate: CandidateState,
   nodes: NodeState[],
@@ -175,40 +272,21 @@ export function shouldMaterialize(
     (sum, s) => sum + s.messageIds.length, 0,
   );
 
-  // Gate 1: Minimum evidence
-  if (totalMessages < MIN_EVIDENCE_MESSAGES) {
-    return false;
-  }
+  if (totalMessages < MIN_EVIDENCE_MESSAGES) return false;
 
-  // Gate 2: Check permanent block conditions
   const block = checkMaterializationBlock(candidate);
-  if (block.blocked) {
-    return false;
-  }
+  if (block.blocked) return false;
 
-  // Gate 3: Size-adjusted threshold
   const extraSegments = Math.max(0, candidate.segments.length - MAX_AUTO_NODE_SEGMENTS);
   const adjustedThreshold = MATERIALIZE_THRESHOLD + (extraSegments * THRESHOLD_INCREASE_PER_EXTRA_SEGMENT);
 
   const confidence = computeConfidence(candidate, nodes);
-
-  if (confidence < adjustedThreshold) {
-    return false;
-  }
-
-  console.log(
-    `[intelligence] Materialization APPROVED: confidence=${confidence.toFixed(3)}, threshold=${adjustedThreshold.toFixed(3)}, segments=${candidate.segments.length}, messages=${totalMessages}`,
-  );
-  return true;
+  return confidence >= adjustedThreshold;
 }
 
-/**
- * Compute avg pairwise similarity between segments inside a candidate.
- * Low value = mixed/drifted topics. High value = focused coherent topic.
- */
 export function computeInternalCoherence(segments: SegmentData[]): number {
   const validSegments = segments.filter((s) => s.embedding.length > 0);
-  if (validSegments.length < 2) return 1.0; // single segment is coherent by definition
+  if (validSegments.length < 2) return 1.0;
 
   let totalSim = 0;
   let pairs = 0;
@@ -273,10 +351,6 @@ export function computeConfidence(
 
 // ─── Stage 5: RELATE (incremental) ─────────────────────────────────────────
 
-/**
- * Compute edges only for the affected node against all other nodes.
- * Returns edges to add and edges to remove.
- */
 export function computeIncrementalEdges(
   affectedNodeId: string,
   affectedNodeEmbedding: number[],
@@ -286,7 +360,6 @@ export function computeIncrementalEdges(
   const addEdges: Array<{ targetNodeId: string; similarity: number }> = [];
   const removeEdgeIds: string[] = [];
 
-  // Existing edges involving this node
   const currentEdges = existingEdges.filter(
     (e) => e.sourceNodeId === affectedNodeId || e.targetNodeId === affectedNodeId,
   );
@@ -307,7 +380,6 @@ export function computeIncrementalEdges(
     }
   }
 
-  // Check if existing edges should be removed (score dropped below threshold)
   for (const edge of currentEdges) {
     const otherNodeId = edge.sourceNodeId === affectedNodeId
       ? edge.targetNodeId
@@ -316,7 +388,7 @@ export function computeIncrementalEdges(
     if (!otherNode || !otherNode.embedding || otherNode.embedding.length === 0) continue;
 
     const newSim = cosineSimilarity(affectedNodeEmbedding, otherNode.embedding);
-    if (newSim < EDGE_THRESHOLD * 0.9) { // hysteresis: remove only if well below
+    if (newSim < EDGE_THRESHOLD * 0.9) {
       removeEdgeIds.push(edge.id);
     }
   }
@@ -326,9 +398,6 @@ export function computeIncrementalEdges(
 
 // ─── Stage 7: METRICS ───────────────────────────────────────────────────────
 
-/**
- * Compute basic importance and stability for a node.
- */
 export function computeMetrics(
   node: NodeState,
   edges: EdgeState[],
@@ -338,25 +407,18 @@ export function computeMetrics(
   ).length;
   const messageCount = node.messageIds.length;
 
-  // Importance: combination of connections and evidence
   const importance = Math.min(1.0, (edgeCount * 0.3 + messageCount * 0.1));
-
-  // Stability: older nodes are more stable (simple version)
   const stability = Math.min(1.0, node.stability);
 
   return { importance, stability };
 }
 
-// ─── Stage 8: LAYOUT (incremental) ──────────────────────────────────────────
+// ─── Stage 8: LAYOUT ────────────────────────────────────────────────────────
 
-/**
- * Compute position for a new node based on its most similar existing node.
- */
 export function computeNewNodePosition(
   newNodeEmbedding: number[],
   existingNodes: NodeState[],
 ): { x: number; y: number } {
-  // Find nearest existing node with a position
   let bestScore = 0;
   let nearestNode: NodeState | null = null;
 
@@ -371,8 +433,7 @@ export function computeNewNodePosition(
   }
 
   if (nearestNode && nearestNode.positionX !== null && nearestNode.positionY !== null) {
-    // Place near the most similar node, offset at a deterministic angle
-    const angle = (Math.random() * Math.PI * 2); // Will be replaced with hash-based determinism
+    const angle = (Math.random() * Math.PI * 2);
     const distance = 150 + Math.random() * 50;
     return {
       x: nearestNode.positionX + Math.cos(angle) * distance,
@@ -380,11 +441,10 @@ export function computeNewNodePosition(
     };
   }
 
-  // No positioned nodes yet — place at origin
   return { x: 0, y: 0 };
 }
 
-// ─── Centroid computation ────────────────────────────────────────────────────
+// ─── Centroid computation (for candidate segments) ──────────────────────────
 
 export function computeCentroid(segments: SegmentData[]): number[] {
   const valid = segments.filter((s) => s.embedding.length > 0);

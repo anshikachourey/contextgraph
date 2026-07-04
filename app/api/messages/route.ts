@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { persistMessages } from "@/src/lib/db/messages";
+import { runIntelligenceEngine } from "@/src/lib/intelligence";
 import type { ChatMessage } from "@/src/types/message";
 
 type ErrorResponse = { error: string };
+type SuccessResponse = { engineRan: boolean; nodesCreated: number; nodesExtended: number };
 
 export async function POST(
   request: NextRequest,
-): Promise<NextResponse<Record<string, never> | ErrorResponse>> {
+): Promise<NextResponse<SuccessResponse | ErrorResponse>> {
   let body: unknown;
   try {
     body = await request.json();
@@ -30,9 +32,11 @@ export async function POST(
     );
   }
 
+  const conversationId = b.conversationId as string;
+  const messages = b.messages as ChatMessage[];
+
   try {
-    await persistMessages(b.conversationId, b.messages as ChatMessage[]);
-    return NextResponse.json({}, { status: 200 });
+    await persistMessages(conversationId, messages);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(
@@ -40,4 +44,36 @@ export async function POST(
       { status: 500 },
     );
   }
+
+  // Run intelligence engine AFTER messages are persisted (so it sees the current turn).
+  // Skip for branch messages (parentNodeId != null).
+  const isBranch = messages.some((m) => m.parentNodeId);
+  let engineRan = false;
+  let nodesCreated = 0;
+  let nodesExtended = 0;
+
+  if (!isBranch) {
+    // Extract the user + assistant pair from the just-persisted messages
+    const userMsg = messages.find((m) => m.role === "user");
+    const assistantMsg = messages.find((m) => m.role === "assistant");
+    const newMessageIds = userMsg && assistantMsg
+      ? { userMessageId: userMsg.id, assistantMessageId: assistantMsg.id }
+      : undefined;
+
+    try {
+      const engineResult = await runIntelligenceEngine(conversationId, newMessageIds);
+      engineRan = true;
+      nodesCreated = engineResult.nodesCreated;
+      nodesExtended = engineResult.nodesExtended;
+      if (nodesCreated > 0 || nodesExtended > 0) {
+        console.log(
+          `[messages] Intelligence engine: ${nodesCreated} created, ${nodesExtended} extended, +${engineResult.edgesAdded}/-${engineResult.edgesRemoved} edges`,
+        );
+      }
+    } catch (err) {
+      console.error("[messages] Intelligence engine failed (non-fatal):", err);
+    }
+  }
+
+  return NextResponse.json({ engineRan, nodesCreated, nodesExtended }, { status: 200 });
 }

@@ -118,3 +118,49 @@ Moved to `src/types/message.ts` and `src/types/node.ts`.
 **Reason:**  
 Types are shared across components, services, and hooks. They don't belong to any
 single component. Centralizing them prevents duplication and drift.
+
+---
+
+## ADR-007: Exchange-based incremental segmentation (Phase A)
+
+**Date:** 2025  
+**Status:** Accepted
+
+**Context:**  
+The original segmentation algorithm compared isolated user messages retrospectively,
+causing phantom boundaries ("Can you look it up?" appeared as a topic pivot) and
+redundant rescanning of the same historical messages on every engine run.
+
+**Decision:**  
+Replace window-based retrospective segmentation with exchange-based incremental segmentation.
+
+**Architecture:**
+- The unit of meaning is the **exchange** (user message + assistant response).
+- Engine state tracks a **cursor** (last processed message ID) and an **open segment** (metadata only: startMessageId, endMessageId, embedding centroid, exchangeCount).
+- Each engine run processes exactly ONE new exchange.
+- New exchange embedding is compared against the open segment centroid.
+- If coherent → append (update centroid incrementally).
+- If diverged → freeze the open segment, start a new one.
+- Frozen segments are passed to the **unchanged** routing/materialization pipeline.
+
+**Key properties:**
+- O(1) per turn — no retrospective scanning.
+- Cursor makes past decisions immutable.
+- No message data stored in engine state — only IDs and centroid vector.
+- Conversational follow-ups ("Why?", "Really?") embed WITH the assistant's answer, so they carry the topic's semantics instead of appearing as noise.
+
+**Phase A (current):**
+- New segmentation is live.
+- Routing, materialization, edges, neighborhoods unchanged.
+- Old window/topicShift code in `src/lib/topicShiftDetector.ts`, `graphEngineConfig.ts`, `evolutionEngine.ts` is dead code (not imported by intelligence engine).
+
+**Phase B (future):**
+- Remove dead window/retrospective code files.
+- Remove `last_window_embedding` from `conversation_engine_state` schema.
+- Remove `WINDOW_SIZE`, `BOUNDARY_THRESHOLD` from legacy configs.
+
+**Reason:**  
+The exchange-based approach is architecturally sound because it operates on the correct
+unit of conversational meaning and avoids the pathologies of retrospective scanning.
+Phasing the migration reduces risk — we validate segmentation independently before touching
+downstream stages.
