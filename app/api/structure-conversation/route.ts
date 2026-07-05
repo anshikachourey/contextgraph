@@ -229,21 +229,27 @@ export async function POST(
         messages: [
           {
             role: "system",
-            content: `You analyze conversation excerpts and produce structured metadata for a knowledge graph node.
+            content: `You synthesize knowledge graph nodes from conversation segments. Each node captures what was REALIZED, LEARNED, or EMOTIONALLY UNDERSTOOD — not merely what was discussed.
 
-Given a list of chat messages that belong to one topic cluster, return a JSON object:
-- "title": a concise noun-phrase label, max 60 characters
-- "summary": what the messages discuss, max 200 characters
+Given a list of chat messages, return a JSON object:
+- "title": the core insight, realization, or emotional theme — max 80 chars — NOT a topic label
+- "summary": what was concluded, learned, or understood — max 300 chars — answer "What insight emerged?" not "What was discussed?"
+
+BAD titles: "Exploring Rock Music", "Discussion About Art"
+GOOD titles: "Searching for Art That Feels Exciting Again", "Rock as Authentic Emotional Expression"
+
+BAD summaries: "They discussed how art has declined"
+GOOD summaries: "A realization that mainstream art lost its emotional charge, prompting a search for creative forms that still provoke genuine feeling"
 
 Respond with raw JSON only.`,
           },
           {
             role: "user",
-            content: `Messages:\n\n${formatted}\n\nReturn JSON with "title" and "summary".`,
+            content: `Messages:\n\n${formatted}\n\nSynthesize the core insight. Return JSON with "title" and "summary".`,
           },
         ],
-        temperature: 0.4,
-        max_tokens: 150,
+        temperature: 0.6,
+        max_tokens: 300,
       });
 
       const raw = completion.choices[0]?.message?.content;

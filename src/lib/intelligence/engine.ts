@@ -373,7 +373,6 @@ export async function runIntelligenceEngine(
               log.stages.materialization.materialized = true;
               log.stages.materialization.nodeId = node.nodeId;
               log.stages.materialization.nodeTitle = (node.mutation as any).title;
-              infoLog("[engine] Node materialized", { title: (node.mutation as any).title, nodeId: node.nodeId });
             }
           } else {
             log.stages.materialization.blocked = true;
@@ -724,19 +723,62 @@ async function materializeToNode(
   const formatted = linkedMessages
     .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
     .join("\n")
-    .slice(0, 3000);
+    .slice(0, 4000);
 
   if (!formatted) return null;
+
+  // ─── Graph-aware context: load nearest neighbor nodes ─────────────
+  let neighborContext = "";
+  if (candidate.embedding && candidate.embedding.length > 0 && ctx.nodes.length > 0) {
+    const scored = ctx.nodes
+      .filter((n) => n.embedding && n.embedding.length > 0)
+      .map((n) => ({
+        title: n.title,
+        summary: n.summary,
+        sim: cosineSimilarity(candidate.embedding!, n.embedding!),
+      }))
+      .sort((a, b) => b.sim - a.sim)
+      .slice(0, 3);
+
+    if (scored.length > 0) {
+      neighborContext = scored
+        .map((n) => `• "${n.title}" — ${n.summary}`)
+        .join("\n");
+    }
+  }
+
+  // ─── Insight-synthesis prompt ─────────────────────────────────────
+  const systemPrompt = `You are synthesizing a knowledge graph node from a conversation segment. This node will represent what was REALIZED, LEARNED, or EMOTIONALLY UNDERSTOOD — not merely what was discussed.
+
+Your job is to capture the INSIGHT — the underlying realization, emotional truth, or conceptual breakthrough that emerged from this exchange. Think of it as writing the title and abstract of an essay that captures the core idea.
+
+${neighborContext ? `EXISTING NEARBY NODES (differentiate from these — capture what's unique about THIS segment):\n${neighborContext}\n` : ""}Return JSON:
+{
+  "title": "<the core insight, realization, or emotional theme — max 80 chars — NOT a topic label>",
+  "summary": "<what was concluded, learned, or understood — max 300 chars — answer 'What insight emerged?' not 'What was discussed?'>"
+}
+
+RULES:
+- Titles should read like essay titles or personal realizations, not topic categories
+- Summaries should articulate conclusions, not replay the conversation
+- Capture emotional themes and personal reflections when present
+- Focus on WHY something matters to the person, not just WHAT was said
+
+BAD (topic labels): "Exploring Rock Music", "Discussion About Art Decline", "Understanding Personal Growth"
+GOOD (insights): "Searching for Art That Feels Exciting Again", "Rock as the Sound of Authentic Emotion", "Building an Interesting Persona Through Distinct Taste"
+
+BAD (summaries that replay): "They discussed how art has declined and talked about rock music"
+GOOD (summaries that conclude): "A realization that mainstream art lost its emotional charge, leading to rock music as an art form that still provokes genuine feeling and becomes a foundation for personal identity"`;
 
   try {
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [{
-        role: "system",
-        content: `Analyze these messages and return JSON: {"title":"<noun phrase, max 60 chars>","summary":"<what they discuss, max 200 chars>"}. Raw JSON only.`,
-      }, { role: "user", content: formatted }],
-      temperature: 0.4,
-      max_tokens: 150,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `CONVERSATION SEGMENT:\n\n${formatted}\n\nSynthesize the core insight into a knowledge graph node. Return JSON only.` },
+      ],
+      temperature: 0.6,
+      max_tokens: 300,
     });
 
     const raw = completion.choices[0]?.message?.content;
@@ -760,6 +802,7 @@ async function materializeToNode(
       position,
     };
 
+    infoLog("[engine] Node materialized", { title: parsed.title, nodeId });
     return { mutation, nodeId, embedding };
   } catch {
     return null;

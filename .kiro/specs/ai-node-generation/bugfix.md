@@ -61,3 +61,13 @@ The ContextGraph intelligence engine's purpose is to build an externalized memor
 3.6 WHEN edges are computed THEN the system SHALL CONTINUE TO require a minimum similarity threshold before creating an edge connection
 
 3.7 WHEN a candidate exceeds message or segment guardrails THEN the system SHALL CONTINUE TO block materialization to prevent overly broad nodes
+
+## Benchmarks
+
+Quality improvements are evaluated against real conversation benchmarks stored in `/benchmarks/`:
+
+| Benchmark | File | Key Test |
+|-----------|------|----------|
+| Art → Rock → Persona | `benchmarks/art-rock-persona.md` | Gradual evolution from dissatisfaction → genre discovery → identity construction should yield 2-3 insight nodes with evolutionary edges |
+
+Each benchmark defines: expected segmentation, expected node titles/summaries, expected edge relationships, and a scoring rubric. Engine changes must be evaluated against all benchmarks before merging.
