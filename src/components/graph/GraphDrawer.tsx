@@ -120,12 +120,13 @@ export default function GraphDrawer({
 
         <div className="h-[calc(100%-4rem)]">
           {isEmpty ? (
-            <div className="flex h-full items-center justify-center bg-gray-50 text-center text-gray-500">
-              <div>
-                <div className="mb-3 text-4xl">●──●</div>
-                <p className="font-medium">No nodes yet</p>
-                <p className="mt-1 text-sm">
-                  Start chatting. The graph will evolve automatically.
+            <div className="flex h-full items-center justify-center bg-gray-50 text-center text-gray-500 px-8">
+              <div className="max-w-xs">
+                <div className="mb-4 text-5xl opacity-30">🧠</div>
+                <p className="text-lg font-medium text-gray-700">Your knowledge graph</p>
+                <p className="mt-2 text-sm leading-relaxed">
+                  Keep chatting — as your ideas evolve, I&apos;ll capture the insights
+                  and connections here automatically.
                 </p>
               </div>
             </div>

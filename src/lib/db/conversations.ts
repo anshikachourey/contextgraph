@@ -19,14 +19,14 @@ export type ConversationListItem = {
   updatedAt: string | null;
 };
 
-// List all conversations, most recent first.
+// List all active (non-archived) conversations, most recent first.
 export async function listConversations(): Promise<ConversationListItem[]> {
   const db = createServerSupabaseClient();
 
-  // Select only guaranteed columns — updated_at may not exist in all schemas
   const { data, error } = await db
     .from("conversations")
     .select("*")
+    .is("archived_at", null)
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(`Failed to list conversations: ${error.message}`);
@@ -37,6 +37,46 @@ export async function listConversations(): Promise<ConversationListItem[]> {
     createdAt: c.created_at,
     updatedAt: c.updated_at ?? c.created_at,
   }));
+}
+
+// List archived conversations.
+export async function listArchivedConversations(): Promise<ConversationListItem[]> {
+  const db = createServerSupabaseClient();
+
+  const { data, error } = await db
+    .from("conversations")
+    .select("*")
+    .not("archived_at", "is", null)
+    .order("archived_at", { ascending: false });
+
+  if (error) throw new Error(`Failed to list archived conversations: ${error.message}`);
+
+  return (data ?? []).map((c: any) => ({
+    id: c.id,
+    title: c.title,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at ?? c.created_at,
+  }));
+}
+
+// Archive a conversation.
+export async function archiveConversation(id: string): Promise<void> {
+  const db = createServerSupabaseClient();
+  const { error } = await db
+    .from("conversations")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(`Failed to archive conversation: ${error.message}`);
+}
+
+// Restore an archived conversation.
+export async function restoreConversation(id: string): Promise<void> {
+  const db = createServerSupabaseClient();
+  const { error } = await db
+    .from("conversations")
+    .update({ archived_at: null })
+    .eq("id", id);
+  if (error) throw new Error(`Failed to restore conversation: ${error.message}`);
 }
 
 // Load a specific conversation by ID.

@@ -425,12 +425,40 @@ export async function runIntelligenceEngine(
       );
 
       for (const edge of addEdges) {
+        // Generate semantic relationship via LLM (limit 3 per run for cost)
+        let relationship_type = "related";
+        let explanation = "";
+        if (result.edgesAdded < 3) {
+          const sourceNode = ctx.nodes.find((n) => n.id === affectedNodeId);
+          const targetNode = ctx.nodes.find((n) => n.id === edge.targetNodeId);
+          if (sourceNode && targetNode) {
+            const semantic = await generateSemanticEdge(sourceNode, targetNode);
+            if (semantic) {
+              relationship_type = semantic.relationship_type;
+              explanation = semantic.explanation;
+              // Respect directionality
+              if (semantic.direction === "b_to_a") {
+                result.mutations.push({
+                  type: "add_edge",
+                  sourceNodeId: edge.targetNodeId,
+                  targetNodeId: affectedNodeId,
+                  similarity: edge.similarity,
+                  relationship_type,
+                  explanation,
+                });
+                result.edgesAdded++;
+                continue;
+              }
+            }
+          }
+        }
         result.mutations.push({
           type: "add_edge",
           sourceNodeId: affectedNodeId,
           targetNodeId: edge.targetNodeId,
           similarity: edge.similarity,
-          explanation: "",
+          relationship_type,
+          explanation,
         });
         result.edgesAdded++;
       }
@@ -466,6 +494,17 @@ export async function runIntelligenceEngine(
         // Update affected node for edge computation
         affectedNodeId = stalePromoted.nodeId;
         affectedNodeEmbedding = stalePromoted.embedding;
+      }
+    }
+
+    // ─── Stage 7: GRAPH SYNTHESIS PASS ────────────────────────────────
+    // After materialization, review local subgraph and improve coherence
+    if (result.nodesCreated > 0 && affectedNodeId && ctx.nodes.length > 0) {
+      const synthesisMutations = await runGraphSynthesisPass(
+        affectedNodeId, ctx, result,
+      );
+      for (const m of synthesisMutations) {
+        result.mutations.push(m);
       }
     }
 
@@ -809,6 +848,215 @@ GOOD (summaries that conclude): "A realization that mainstream art lost its emot
   }
 }
 
+// ─── Semantic Edge Generation ───────────────────────────────────────────────
+
+async function generateSemanticEdge(
+  sourceNode: NodeState,
+  targetNode: NodeState,
+): Promise<{ relationship_type: string; explanation: string; direction: string } | null> {
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `Two nodes in a knowledge graph represent ideas from the same conversation. Determine how they are conceptually related.
+
+Return JSON:
+{
+  "relationship_type": "<verb phrase describing the relationship, e.g. 'led to exploration of', 'evolved into', 'emotionally connected to', 'inspired', 'contrasts with', 'became foundation for', 'deepened understanding of'>",
+  "explanation": "<one sentence explaining the conceptual connection>",
+  "direction": "a_to_b" | "b_to_a" | "bidirectional"
+}
+
+Rules:
+- relationship_type should be a short verb phrase (2-5 words)
+- explanation should be one clear sentence
+- direction indicates flow: did A lead to B, or B to A, or mutual?
+- Focus on conceptual/emotional evolution, not surface similarity`,
+        },
+        {
+          role: "user",
+          content: `Node A: "${sourceNode.title}" — ${sourceNode.summary}\n\nNode B: "${targetNode.title}" — ${targetNode.summary}\n\nHow are these ideas connected? Return JSON only.`,
+        },
+      ],
+      temperature: 0.5,
+      max_tokens: 150,
+    });
+
+    const raw = completion.choices[0]?.message?.content;
+    if (!raw) return null;
+
+    const parsed = parseJsonFromLLM(raw) as Record<string, unknown> | null;
+    if (
+      !parsed ||
+      typeof parsed.relationship_type !== "string" ||
+      typeof parsed.explanation !== "string"
+    ) {
+      return null;
+    }
+
+    return {
+      relationship_type: parsed.relationship_type as string,
+      explanation: parsed.explanation as string,
+      direction: (parsed.direction as string) ?? "a_to_b",
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ─── Graph Synthesis Pass ───────────────────────────────────────────────────
+
+async function runGraphSynthesisPass(
+  newNodeId: string,
+  ctx: PipelineContext,
+  result: EngineResult,
+): Promise<GraphMutation[]> {
+  const mutations: GraphMutation[] = [];
+
+  // Find the new node's data from the materialize mutation
+  const materializeMutation = result.mutations.find(
+    (m) => m.type === "materialize" && m.nodeId === newNodeId,
+  ) as Extract<GraphMutation, { type: "materialize" }> | undefined;
+
+  if (!materializeMutation) return mutations;
+
+  // Get nearest neighbors from existing nodes
+  const newEmbedding = materializeMutation.embedding;
+  if (!newEmbedding || newEmbedding.length === 0) return mutations;
+
+  const neighbors = ctx.nodes
+    .filter((n) => n.embedding && n.embedding.length > 0)
+    .map((n) => ({
+      ...n,
+      sim: cosineSimilarity(newEmbedding, n.embedding!),
+    }))
+    .sort((a, b) => b.sim - a.sim)
+    .slice(0, 3);
+
+  if (neighbors.length === 0) return mutations;
+
+  // Format the local subgraph for LLM review
+  const newNodeFormatted = `NEW NODE:\nTitle: "${materializeMutation.title}"\nSummary: "${materializeMutation.summary}"`;
+
+  const neighborsFormatted = neighbors
+    .map((n) => `• "${n.title}" — ${n.summary}`)
+    .join("\n");
+
+  // Find existing edges in this subgraph
+  const subgraphNodeIds = new Set([newNodeId, ...neighbors.map((n) => n.id)]);
+  const localEdges = ctx.edges.filter(
+    (e) => subgraphNodeIds.has(e.sourceNodeId) && subgraphNodeIds.has(e.targetNodeId),
+  );
+  const edgesFormatted = localEdges.length > 0
+    ? localEdges.map((e) => {
+        const src = neighbors.find((n) => n.id === e.sourceNodeId);
+        const tgt = neighbors.find((n) => n.id === e.targetNodeId);
+        return `• "${src?.title ?? "New Node"}" → "${tgt?.title ?? "New Node"}" (${e.similarityScore.toFixed(2)})`;
+      }).join("\n")
+    : "None yet";
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are reviewing a local section of a knowledge graph that represents how someone's ideas evolved during a conversation. Your goal: make it read like an externalized memory — capturing what was learned, realized, and how ideas evolved.
+
+Return JSON:
+{
+  "nodeImprovements": [
+    { "nodeId": "...", "improvedTitle": "...", "improvedSummary": "..." }
+  ],
+  "newEdges": [
+    { "sourceNodeId": "...", "targetNodeId": "...", "relationship_type": "...", "explanation": "..." }
+  ],
+  "removeEdgeIds": []
+}
+
+Rules:
+- Only improve nodes that are clearly shallow (topic labels, message replays, generic descriptions)
+- Only add edges that explain meaningful conceptual evolution between ideas
+- Do NOT improve nodes that already capture genuine insight
+- If everything looks good, return empty arrays
+- relationship_type should be a verb phrase (e.g., "led to", "evolved into", "became foundation for")
+- Keep improvements concise — better titles max 80 chars, better summaries max 300 chars`,
+        },
+        {
+          role: "user",
+          content: `${newNodeFormatted}\n\nNEARBY EXISTING NODES:\n${neighborsFormatted}\n\nEXISTING EDGES:\n${edgesFormatted}\n\nThe new node ID is: "${newNodeId}"\nNeighbor IDs: ${neighbors.map((n) => `"${n.id}"`).join(", ")}\n\nReview this subgraph. Return JSON only.`,
+        },
+      ],
+      temperature: 0.5,
+      max_tokens: 500,
+    });
+
+    const raw = completion.choices[0]?.message?.content;
+    if (!raw) return mutations;
+
+    const parsed = parseJsonFromLLM(raw) as Record<string, unknown> | null;
+    if (!parsed) return mutations;
+
+    // Process node improvements
+    if (Array.isArray(parsed.nodeImprovements)) {
+      for (const imp of parsed.nodeImprovements as Array<Record<string, unknown>>) {
+        if (imp.nodeId && imp.improvedTitle && imp.improvedSummary) {
+          // Only allow improvements to nodes in our subgraph
+          if (subgraphNodeIds.has(imp.nodeId as string)) {
+            mutations.push({
+              type: "update_node_content",
+              nodeId: imp.nodeId as string,
+              title: (imp.improvedTitle as string).slice(0, 80),
+              summary: (imp.improvedSummary as string).slice(0, 300),
+            });
+          }
+        }
+      }
+    }
+
+    // Process new edges
+    if (Array.isArray(parsed.newEdges)) {
+      for (const edge of parsed.newEdges as Array<Record<string, unknown>>) {
+        if (edge.sourceNodeId && edge.targetNodeId && edge.relationship_type) {
+          if (subgraphNodeIds.has(edge.sourceNodeId as string) && subgraphNodeIds.has(edge.targetNodeId as string)) {
+            mutations.push({
+              type: "add_edge",
+              sourceNodeId: edge.sourceNodeId as string,
+              targetNodeId: edge.targetNodeId as string,
+              similarity: 0.5, // synthesis-generated, not embedding-based
+              relationship_type: edge.relationship_type as string,
+              explanation: (edge.explanation as string) ?? "",
+            });
+          }
+        }
+      }
+    }
+
+    // Process edge removals
+    if (Array.isArray(parsed.removeEdgeIds)) {
+      for (const edgeId of parsed.removeEdgeIds as string[]) {
+        if (typeof edgeId === "string" && localEdges.some((e) => e.id === edgeId)) {
+          mutations.push({ type: "remove_edge", edgeId });
+        }
+      }
+    }
+
+    if (mutations.length > 0) {
+      infoLog("[engine] Synthesis pass", {
+        improvements: mutations.filter((m) => m.type === "update_node_content").length,
+        newEdges: mutations.filter((m) => m.type === "add_edge").length,
+        removedEdges: mutations.filter((m) => m.type === "remove_edge").length,
+      });
+    }
+  } catch {
+    // Non-fatal — synthesis is optional enhancement
+  }
+
+  return mutations;
+}
+
 // ─── Stale Candidate Promotion ──────────────────────────────────────────────
 
 async function promoteStaleCandidates(
@@ -978,25 +1226,31 @@ async function persistMutations(
           break;
         }
         case "add_edge": {
-          const [source, target] = m.sourceNodeId < m.targetNodeId
-            ? [m.sourceNodeId, m.targetNodeId]
-            : [m.targetNodeId, m.sourceNodeId];
+          // Respect directionality from the mutation (source/target already set by caller)
           await db.from("edges").upsert({
             conversation_id: conversationId,
-            source_node_id: source,
-            target_node_id: target,
-            relationship_type: "related",
+            source_node_id: m.sourceNodeId,
+            target_node_id: m.targetNodeId,
+            relationship_type: m.relationship_type || "related",
             status: "suggested",
             similarity_score: m.similarity,
             explanation: m.explanation,
           }, {
             onConflict: "conversation_id,source_node_id,target_node_id",
-            ignoreDuplicates: true,
+            ignoreDuplicates: false,
           });
           break;
         }
         case "remove_edge": {
           await db.from("edges").delete().eq("id", m.edgeId);
+          break;
+        }
+        case "update_node_content": {
+          await db.from("nodes").update({
+            title: m.title,
+            summary: m.summary,
+          }).eq("id", m.nodeId);
+          debugLog("[engine] Node content updated", { nodeId: m.nodeId, title: m.title });
           break;
         }
         case "update_metrics": {

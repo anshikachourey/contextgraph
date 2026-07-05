@@ -9,6 +9,7 @@ import {
   useEdgesState,
   addEdge,
   BackgroundVariant,
+  MarkerType,
   type Edge,
   type OnConnect,
 } from "@xyflow/react";
@@ -59,22 +60,33 @@ function buildFlowNodes(
 }
 
 // Convert persisted semantic edges into React Flow edge objects.
-// Suggested edges render as dashed + faint.
+// Shows relationship type as label, directional arrows, and explanation on hover.
 function buildFlowEdges(semanticEdges: SemanticEdge[]): Edge[] {
-  return semanticEdges.map((se) => ({
-    id: se.id,
-    source: se.sourceNodeId,
-    target: se.targetNodeId,
-    type: "default",
-    animated: false,
-    style: {
-      strokeDasharray: "5 5",
-      stroke: "#94a3b8", // slate-400
-      strokeWidth: 1.5,
-      opacity: 0.7,
-    },
-    label: "",
-  }));
+  return semanticEdges.map((se) => {
+    const hasRelationship = se.relationshipType && se.relationshipType !== "related";
+    const label = hasRelationship ? se.relationshipType : "";
+    // Thicker edges for higher similarity
+    const strokeWidth = Math.max(1.2, Math.min(3, se.similarityScore * 3.5));
+
+    return {
+      id: se.id,
+      source: se.sourceNodeId,
+      target: se.targetNodeId,
+      type: "default",
+      animated: false,
+      markerEnd: { type: "arrowclosed" as const, width: 16, height: 16, color: "#64748b" },
+      label,
+      labelStyle: { fontSize: 11, fill: "#475569", fontWeight: 500 },
+      labelBgStyle: { fill: "#f8fafc", stroke: "#e2e8f0", strokeWidth: 0.5 },
+      labelBgPadding: [6, 3] as [number, number],
+      style: {
+        stroke: "#64748b",
+        strokeWidth,
+        opacity: hasRelationship ? 0.85 : 0.5,
+      },
+      data: { explanation: se.explanation },
+    };
+  });
 }
 
 type GraphCanvasProps = {

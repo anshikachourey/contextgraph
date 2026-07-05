@@ -5,18 +5,17 @@ import Header from "@/src/components/layout/Header";
 import ConversationSidebar from "@/src/components/layout/ConversationSidebar";
 import ChatPanel from "@/src/components/chat/ChatPanel";
 import GraphDrawer from "@/src/components/graph/GraphDrawer";
-import CreateNodeModal from "@/src/components/nodes/CreateNodeModal";
 import type { ContextNode } from "@/src/types/node";
 import type { ChatMessage } from "@/src/types/message";
 import type { SemanticEdge } from "@/src/types/edge";
 import type { ChatResponse, ChatErrorResponse } from "@/src/types/ai";
 import type { ConversationRouteResponse } from "@/app/api/conversation/route";
 import type { ConversationListItem } from "@/src/lib/db/conversations";
-import { checkNodeOverlap } from "@/src/lib/nodeOverlap";
 
 export default function Home() {
   // ─── Conversation list state ──────────────────────────────────────────────
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
+  const [archivedConversations, setArchivedConversations] = useState<ConversationListItem[]>([]);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
 
   // ─── Active conversation state ────────────────────────────────────────────
@@ -29,11 +28,8 @@ export default function Home() {
   const [isAssistantResponding, setIsAssistantResponding] = useState(false);
   const [isGraphOpen, setIsGraphOpen] = useState(false);
   const [isGraphMaximized, setIsGraphMaximized] = useState(false);
-  const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [activeEdgeId, setActiveEdgeId] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [overlappingNodes, setOverlappingNodes] = useState<ContextNode[]>([]);
 
   // Graph summary state
   const [graphSummary, setGraphSummary] = useState<string | null>(null);
@@ -52,6 +48,13 @@ export default function Home() {
         if (listRes.ok) {
           const list = (await listRes.json()) as ConversationListItem[];
           setConversations(list);
+
+          // Also fetch archived conversations
+          const archiveRes = await fetch("/api/conversations?archived=true");
+          if (archiveRes.ok) {
+            const archived = (await archiveRes.json()) as ConversationListItem[];
+            setArchivedConversations(archived);
+          }
 
           if (list.length > 0) {
             // Load the most recent conversation
@@ -119,7 +122,6 @@ export default function Home() {
     setMessages([]);
     setNodes([]);
     setSemanticEdges([]);
-    setSelectedMessageIds([]);
     setActiveNodeId(null);
     setActiveEdgeId(null);
     setActiveBranchNodeId(null);
@@ -127,8 +129,6 @@ export default function Home() {
     setIsGraphMaximized(false);
     setGraphSummary(null);
     setSummaryError(null);
-    setIsModalOpen(false);
-    setOverlappingNodes([]);
   }
 
   async function handleSelectConversation(id: string) {
@@ -169,6 +169,50 @@ export default function Home() {
     }
   }
 
+  async function handleArchive(id: string) {
+    try {
+      await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "archive" }),
+      });
+
+      // Move from active to archived list
+      const conv = conversations.find((c) => c.id === id);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (conv) setArchivedConversations((prev) => [conv, ...prev]);
+
+      // If we archived the active conversation, switch to another
+      if (id === conversationId) {
+        const remaining = conversations.filter((c) => c.id !== id);
+        if (remaining.length > 0) {
+          await loadConversation(remaining[0].id);
+        } else {
+          await handleNewChat();
+        }
+      }
+    } catch {
+      // Silently fail
+    }
+  }
+
+  async function handleRestore(id: string) {
+    try {
+      await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "restore" }),
+      });
+
+      // Move from archived to active list
+      const conv = archivedConversations.find((c) => c.id === id);
+      setArchivedConversations((prev) => prev.filter((c) => c.id !== id));
+      if (conv) setConversations((prev) => [conv, ...prev]);
+    } catch {
+      // Silently fail
+    }
+  }
+
   // ─── Derived values ────────────────────────────────────────────────────────
 
   const activeNode = nodes.find((n) => n.id === activeNodeId) ?? null;
@@ -177,9 +221,6 @@ export default function Home() {
     ? messages.filter((m) => activeNode.messageIds.includes(m.id))
     : [];
   const highlightedMessageIds = activeNode?.messageIds ?? [];
-  const selectedMessages = messages.filter((m) =>
-    selectedMessageIds.includes(m.id),
-  );
 
   // Branch mode derived
   const activeBranchNode = activeBranchNodeId
@@ -206,14 +247,6 @@ export default function Home() {
   }
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
-
-  function toggleMessageSelection(messageId: string) {
-    setSelectedMessageIds((current) =>
-      current.includes(messageId)
-        ? current.filter((id) => id !== messageId)
-        : [...current, messageId],
-    );
-  }
 
   async function handleSendMessage(content: string) {
     const isBranching = activeBranchNodeId !== null && activeBranchNode !== null;
@@ -365,76 +398,6 @@ export default function Home() {
     }
   }
 
-  // ─── Manual node creation ──────────────────────────────────────────────────
-
-  function handleOpenModal() {
-    if (selectedMessageIds.length === 0) return;
-
-    const { exactDuplicate, overlappingNodes: overlaps } = checkNodeOverlap(
-      selectedMessageIds,
-      nodes,
-    );
-
-    if (exactDuplicate) {
-      setActiveEdgeId(null);
-      setActiveNodeId(exactDuplicate.id);
-      setIsGraphOpen(true);
-      return;
-    }
-
-    setOverlappingNodes(overlaps);
-    setIsModalOpen(true);
-  }
-
-  function handleModalConfirm(title: string, summary: string) {
-    const newNode: ContextNode = {
-      id: crypto.randomUUID(),
-      title,
-      summary,
-      messageIds: selectedMessageIds,
-      neighborhoodHue: null,
-      hierarchyDepth: 0,
-    };
-
-    setNodes((current) => [...current, newNode]);
-    setSelectedMessageIds([]);
-    setOverlappingNodes([]);
-    setIsModalOpen(false);
-    setIsGraphOpen(true);
-
-    if (conversationId) {
-      fetch("/api/nodes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId,
-          node: newNode,
-          linkedMessages: selectedMessages,
-          metadata: { createdBy: "user" },
-        }),
-      })
-        .then((res) => {
-          if (res.ok) return fetch(`/api/conversation?id=${conversationId}`);
-        })
-        .then((res) => {
-          if (res && res.ok) return res.json();
-        })
-        .then((data) => {
-          if (data) {
-            const conv = data as ConversationRouteResponse;
-            setNodes(conv.nodes);
-            setSemanticEdges(conv.edges);
-          }
-        })
-        .catch(() => {});
-    }
-  }
-
-  function handleModalCancel() {
-    setIsModalOpen(false);
-    setOverlappingNodes([]);
-  }
-
   function handleCloseGraph() {
     setIsGraphOpen(false);
     setIsGraphMaximized(false);
@@ -528,24 +491,24 @@ export default function Home() {
 
       <ConversationSidebar
         conversations={conversations}
+        archivedConversations={archivedConversations}
         activeConversationId={conversationId}
         isCreating={isCreatingConversation}
         onSelect={handleSelectConversation}
         onNewChat={handleNewChat}
+        onArchive={handleArchive}
+        onRestore={handleRestore}
       />
 
       {/* Main content — offset for sidebar */}
       <div className="pl-64">
         <ChatPanel
           messages={displayMessages}
-          selectedMessageIds={selectedMessageIds}
           highlightedMessageIds={highlightedMessageIds}
           isAssistantResponding={isAssistantResponding || isLoadingConversation}
           workspaceNode={activeBranchNode}
           workspaceLinkedMessages={branchLinkedMessages}
           onExitWorkspace={handleExitBranch}
-          onToggleMessage={toggleMessageSelection}
-          onCreateNode={handleOpenModal}
           onSendMessage={handleSendMessage}
         />
       </div>
@@ -572,14 +535,6 @@ export default function Home() {
         onClearSelection={handleClearSelection}
       />
 
-      {isModalOpen && (
-        <CreateNodeModal
-          selectedMessages={selectedMessages}
-          overlappingNodes={overlappingNodes}
-          onConfirm={handleModalConfirm}
-          onCancel={handleModalCancel}
-        />
-      )}
     </main>
   );
 }

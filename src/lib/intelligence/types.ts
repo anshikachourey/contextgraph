@@ -118,8 +118,9 @@ export type GraphMutation =
   | { type: "update_candidate"; candidateId: string; segments: SegmentData[]; embedding: number[]; confidence: number }
   | { type: "block_candidate"; candidateId: string; reason: string }
   | { type: "materialize"; candidateId: string; nodeId: string; title: string; summary: string; messageIds: string[]; embedding: number[]; position: { x: number; y: number } }
-  | { type: "add_edge"; sourceNodeId: string; targetNodeId: string; similarity: number; explanation: string }
+  | { type: "add_edge"; sourceNodeId: string; targetNodeId: string; similarity: number; relationship_type: string; explanation: string }
   | { type: "remove_edge"; edgeId: string }
+  | { type: "update_node_content"; nodeId: string; title: string; summary: string }
   | { type: "update_metrics"; nodeId: string; importance: number; stability: number }
   | { type: "update_engine_state"; engineState: EngineState };
 

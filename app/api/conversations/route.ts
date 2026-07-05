@@ -1,19 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   listConversations,
+  listArchivedConversations,
   createConversation,
   updateConversationTitle,
+  archiveConversation,
+  restoreConversation,
 } from "@/src/lib/db/conversations";
 import type { ConversationListItem } from "@/src/lib/db/conversations";
 
 type ErrorResponse = { error: string };
 
-// GET /api/conversations — list all conversations
-export async function GET(): Promise<
-  NextResponse<ConversationListItem[] | ErrorResponse>
-> {
+// GET /api/conversations — list conversations (?archived=true for archived)
+export async function GET(
+  request: NextRequest,
+): Promise<NextResponse<ConversationListItem[] | ErrorResponse>> {
   try {
-    const conversations = await listConversations();
+    const { searchParams } = new URL(request.url);
+    const showArchived = searchParams.get("archived") === "true";
+    const conversations = showArchived
+      ? await listArchivedConversations()
+      : await listConversations();
     return NextResponse.json(conversations);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -46,6 +53,34 @@ export async function POST(
       const message = err instanceof Error ? err.message : "Unknown error";
       return NextResponse.json(
         { error: `Failed to update title: ${message}` },
+        { status: 500 },
+      );
+    }
+  }
+
+  // Archive action
+  if (typeof body.id === "string" && body.action === "archive") {
+    try {
+      await archiveConversation(body.id);
+      return NextResponse.json({ id: body.id, title: "archived" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return NextResponse.json(
+        { error: `Failed to archive: ${message}` },
+        { status: 500 },
+      );
+    }
+  }
+
+  // Restore action
+  if (typeof body.id === "string" && body.action === "restore") {
+    try {
+      await restoreConversation(body.id);
+      return NextResponse.json({ id: body.id, title: "restored" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return NextResponse.json(
+        { error: `Failed to restore: ${message}` },
         { status: 500 },
       );
     }
