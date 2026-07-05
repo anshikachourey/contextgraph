@@ -14,6 +14,7 @@ type ChatPanelProps = {
   onExitWorkspace: () => void;
   // Actions
   onSendMessage: (content: string) => void;
+  onEditMessage?: (messageId: string, newContent: string) => void;
 };
 
 export default function ChatPanel({
@@ -24,6 +25,7 @@ export default function ChatPanel({
   workspaceLinkedMessages,
   onExitWorkspace,
   onSendMessage,
+  onEditMessage,
 }: ChatPanelProps) {
   // If a workspace node is active, render the focused workspace view
   if (workspaceNode) {
@@ -50,6 +52,7 @@ export default function ChatPanel({
             message={message}
             isSelected={false}
             isHighlighted={highlightedMessageIds.includes(message.id)}
+            onEdit={onEditMessage}
           />
         ))}
 

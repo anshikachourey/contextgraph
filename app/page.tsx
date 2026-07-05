@@ -248,6 +248,43 @@ export default function Home() {
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
+  async function handleEditMessage(messageId: string, newContent: string) {
+    // Store original for revert
+    const originalContent = messages.find((m) => m.id === messageId)?.content;
+
+    // Optimistic UI update
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, content: newContent } : m)),
+    );
+
+    // Persist via server API
+    try {
+      const res = await fetch("/api/messages/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId, content: newContent }),
+      });
+
+      if (!res.ok) {
+        // Revert on failure
+        if (originalContent !== undefined) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === messageId ? { ...m, content: originalContent } : m)),
+          );
+        }
+        const data = await res.json().catch(() => ({}));
+        console.error("[edit] Failed to persist:", data.error ?? res.statusText);
+      }
+    } catch {
+      // Revert on network failure
+      if (originalContent !== undefined) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, content: originalContent } : m)),
+        );
+      }
+    }
+  }
+
   async function handleSendMessage(content: string) {
     const isBranching = activeBranchNodeId !== null && activeBranchNode !== null;
     const branchRootId = isBranching ? crypto.randomUUID() : undefined;
@@ -510,6 +547,7 @@ export default function Home() {
           workspaceLinkedMessages={branchLinkedMessages}
           onExitWorkspace={handleExitBranch}
           onSendMessage={handleSendMessage}
+          onEditMessage={handleEditMessage}
         />
       </div>
 
