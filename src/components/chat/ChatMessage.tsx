@@ -10,6 +10,7 @@ type ChatMessageProps = {
   onToggle?: (id: string) => void;
   onRetry?: (messageId: string) => void;
   onEdit?: (messageId: string, newContent: string) => void;
+  isLatestUserMessage?: boolean;
 };
 
 export default function ChatMessage({
@@ -18,14 +19,26 @@ export default function ChatMessage({
   isHighlighted,
   onRetry,
   onEdit,
+  isLatestUserMessage = false,
 }: ChatMessageProps) {
   const [showActions, setShowActions] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
+  const [originalContent, setOriginalContent] = useState("");
   const [copied, setCopied] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Debug: track editContent changes
+  useEffect(() => {
+    console.log("[ChatMessage] editContent changed:", editContent.slice(0, 50));
+  }, [editContent]);
+
+  // Debug: track message.content prop changes
+  useEffect(() => {
+    console.log("[ChatMessage] message.content prop changed:", message.content.slice(0, 50));
+  }, [message.content]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -67,6 +80,8 @@ export default function ChatMessage({
   }
 
   function handleEditStart() {
+    console.log("[ChatMessage] handleEditStart called for message:", message.id);
+    setOriginalContent(message.content);
     setEditContent(message.content);
     setIsEditing(true);
     setShowMenu(false);
@@ -74,10 +89,36 @@ export default function ChatMessage({
 
   function handleEditSave() {
     const trimmed = editContent.trim();
-    if (trimmed && trimmed !== message.content && onEdit) {
-      onEdit(message.id, trimmed);
-    }
+
+    console.log("[ChatMessage] handleEditSave diagnostic:", {
+      trimmed,
+      originalContent,
+      messageContent: message.content,
+      hasOnEdit: !!onEdit,
+      trimmedEmpty: !trimmed,
+      originalEqualsTrimmed: trimmed === originalContent,
+      messageEqualsTrimmed: trimmed === message.content,
+    });
+
     setIsEditing(false);
+
+    if (!trimmed) {
+      console.log("[ChatMessage] FAILED: empty");
+      return;
+    }
+
+    if (!onEdit) {
+      console.log("[ChatMessage] FAILED: onEdit missing");
+      return;
+    }
+
+    if (trimmed === originalContent) {
+      console.log("[ChatMessage] FAILED: unchanged");
+      return;
+    }
+
+    console.log("[ChatMessage] DISPATCHING onEdit");
+    onEdit(message.id, trimmed);
   }
 
   function handleEditCancel() {
@@ -87,13 +128,23 @@ export default function ChatMessage({
 
   // ─── Editing mode ─────────────────────────────────────────────────────────
   if (isEditing) {
+    const willBranch = message.role === "user" && !isLatestUserMessage;
+
     return (
       <div className={`w-full rounded-2xl p-4 text-left bg-gray-100 ring-2 ring-blue-400`}>
         <p className="text-sm font-semibold text-gray-600 mb-2">You</p>
+        {willBranch && (
+          <p className="mb-2 text-xs text-amber-600 bg-amber-50 rounded px-2 py-1">
+            Editing an earlier message will create a new branch.
+          </p>
+        )}
         <textarea
           ref={textareaRef}
           value={editContent}
-          onChange={(e) => setEditContent(e.target.value)}
+          onChange={(e) => {
+            console.log("[ChatMessage] textarea onChange:", e.target.value.slice(0, 50));
+            setEditContent(e.target.value);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -109,7 +160,7 @@ export default function ChatMessage({
             onClick={handleEditSave}
             className="rounded-md bg-black px-3 py-1 text-xs font-medium text-white hover:bg-gray-800"
           >
-            Save
+            {willBranch ? "Branch & send" : "Save & regenerate"}
           </button>
           <button
             onClick={handleEditCancel}

@@ -249,38 +249,245 @@ export default function Home() {
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
   async function handleEditMessage(messageId: string, newContent: string) {
-    // Store original for revert
-    const originalContent = messages.find((m) => m.id === messageId)?.content;
+    console.log("[edit] onEdit invoked", { messageId, newContent: newContent.slice(0, 50) });
 
-    // Optimistic UI update
-    setMessages((prev) =>
-      prev.map((m) => (m.id === messageId ? { ...m, content: newContent } : m)),
-    );
+    // Determine if this is the latest user message
+    const mainThreadMessages = messages.filter((m) => !m.parentNodeId);
+    const userMessages = mainThreadMessages.filter((m) => m.role === "user");
+    const isLatest = userMessages.length > 0 && userMessages[userMessages.length - 1].id === messageId;
 
-    // Persist via server API
-    try {
-      const res = await fetch("/api/messages/edit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messageId, content: newContent }),
-      });
+    console.log("[edit] isLatest computed:", {
+      isLatest,
+      lastUserMsgId: userMessages[userMessages.length - 1]?.id,
+      editedMsgId: messageId,
+      userMessageCount: userMessages.length,
+      mainThreadCount: mainThreadMessages.length,
+    });
 
-      if (!res.ok) {
-        // Revert on failure
-        if (originalContent !== undefined) {
-          setMessages((prev) =>
-            prev.map((m) => (m.id === messageId ? { ...m, content: originalContent } : m)),
-          );
+    if (isLatest) {
+      // ─── Case 1: Edit latest user message → regenerate assistant response ──
+      console.log("[edit] Taking LATEST path");
+
+      // Update the message content
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, content: newContent } : m)),
+      );
+
+      // Persist the edit
+      console.log("[edit] Persisting edit to /api/messages/edit...");
+      try {
+        const editRes = await fetch("/api/messages/edit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messageId, content: newContent }),
+        });
+        const editData = await editRes.json();
+        console.log("[edit] Persist response:", { status: editRes.status, body: editData });
+
+        if (!editRes.ok) {
+          console.error("[edit] Persist FAILED — aborting");
+          return;
         }
-        const data = await res.json().catch(() => ({}));
-        console.error("[edit] Failed to persist:", data.error ?? res.statusText);
+      } catch (err) {
+        console.error("[edit] Persist threw:", err);
+        return;
       }
-    } catch {
-      // Revert on network failure
-      if (originalContent !== undefined) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === messageId ? { ...m, content: originalContent } : m)),
-        );
+
+      // Remove the last assistant response (it's now stale)
+      const lastAssistant = mainThreadMessages.filter((m) => m.role === "assistant").pop();
+      console.log("[edit] Removing stale assistant:", { id: lastAssistant?.id, hasLastAssistant: !!lastAssistant });
+
+      if (lastAssistant) {
+        setMessages((prev) => prev.filter((m) => m.id !== lastAssistant.id));
+      }
+
+      // Regenerate assistant response with updated conversation
+      setIsAssistantResponding(true);
+      console.log("[edit] Generating new assistant response...");
+      try {
+        const updatedHistory = mainThreadMessages
+          .filter((m) => m.id !== lastAssistant?.id)
+          .map((m) => (m.id === messageId ? { ...m, content: newContent } : m))
+          .map((m) => ({ role: m.role, content: m.content }));
+
+        console.log("[edit] Sending to /api/chat with", updatedHistory.length, "messages");
+
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId, messages: updatedHistory }),
+        });
+
+        const data = (await response.json()) as ChatResponse | ChatErrorResponse;
+        console.log("[edit] /api/chat response:", { status: response.status, hasContent: "content" in data });
+
+        if (!response.ok) throw new Error((data as ChatErrorResponse).error);
+
+        const newAssistant: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: (data as ChatResponse).content,
+          parentNodeId: null,
+          branchRootMessageId: null,
+        };
+
+        setMessages((prev) => [...prev, newAssistant]);
+        console.log("[edit] New assistant message added to UI:", { id: newAssistant.id });
+
+        // Persist: delete old assistant, persist new one
+        if (conversationId && lastAssistant) {
+          console.log("[edit] Deleting old assistant from DB...");
+          await fetch("/api/messages/edit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messageId: lastAssistant.id, action: "delete" }),
+          });
+
+          console.log("[edit] Persisting new assistant to DB...");
+          await fetch("/api/messages", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              conversationId,
+              messages: [newAssistant],
+            }),
+          });
+          console.log("[edit] Latest path COMPLETE");
+        }
+      } catch (err) {
+        console.error("[edit] Regeneration failed:", err);
+        // Restore the old assistant on failure
+        if (lastAssistant) {
+          setMessages((prev) => [...prev, lastAssistant]);
+        }
+      } finally {
+        setIsAssistantResponding(false);
+      }
+
+    } else {
+      // ─── Case 2: Edit earlier message → branch into new conversation ───────
+      console.log("[edit] Taking BRANCH path");
+
+      const editIdx = mainThreadMessages.findIndex((m) => m.id === messageId);
+      if (editIdx === -1) {
+        console.error("[edit] Message not found in mainThread — aborting");
+        return;
+      }
+
+      const historyBeforeEdit = mainThreadMessages.slice(0, editIdx);
+      console.log("[edit] History before edit:", historyBeforeEdit.length, "messages");
+
+      try {
+        // Create new conversation
+        console.log("[edit] Creating new conversation...");
+        const createRes = await fetch("/api/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: newContent.slice(0, 40) + (newContent.length > 40 ? "…" : "") }),
+        });
+        if (!createRes.ok) {
+          console.error("[edit] Failed to create conversation:", createRes.status);
+          return;
+        }
+        const { id: newConvId } = (await createRes.json()) as { id: string; title: string };
+        console.log("[edit] New conversation created:", newConvId);
+
+        // Seed with history before edit
+        if (historyBeforeEdit.length > 0) {
+          console.log("[edit] Seeding history...");
+          const seedRes = await fetch("/api/messages", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              conversationId: newConvId,
+              messages: historyBeforeEdit,
+            }),
+          });
+          console.log("[edit] Seed response:", seedRes.status);
+        }
+
+        // Add new conversation to list
+        const newItem = {
+          id: newConvId,
+          title: newContent.slice(0, 40) + (newContent.length > 40 ? "…" : ""),
+          createdAt: new Date().toISOString(),
+          updatedAt: null,
+        };
+        setConversations((prev) => [newItem, ...prev]);
+
+        // Switch to the new conversation
+        console.log("[edit] Switching to new conversation...");
+        resetConversationState();
+        setConversationId(newConvId);
+        setMessages(historyBeforeEdit);
+        setIsLoadingConversation(false);
+
+        // Send the edited message directly in the new conversation
+        // (Cannot use handleSendMessage — it reads stale conversationId from state)
+        console.log("[edit] Sending edited message in new conversation...");
+        setIsAssistantResponding(true);
+
+        const userMessage: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: "user",
+          content: newContent,
+          parentNodeId: null,
+          branchRootMessageId: null,
+        };
+        setMessages((prev) => [...prev, userMessage]);
+
+        try {
+          // Generate assistant response
+          const allMessages = [...historyBeforeEdit, userMessage].map((m) => ({
+            role: m.role,
+            content: m.content,
+          }));
+
+          const chatRes = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ conversationId: newConvId, messages: allMessages }),
+          });
+
+          const chatData = (await chatRes.json()) as ChatResponse | ChatErrorResponse;
+          if (!chatRes.ok) throw new Error((chatData as ChatErrorResponse).error);
+
+          const assistantMessage: ChatMessage = {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: (chatData as ChatResponse).content,
+            parentNodeId: null,
+            branchRootMessageId: null,
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+
+          // Persist user + assistant in the NEW conversation
+          await fetch("/api/messages", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              conversationId: newConvId,
+              messages: [userMessage, assistantMessage],
+            }),
+          });
+
+          // Refetch using the NEW conversationId explicitly
+          const refetchRes = await fetch(`/api/conversation?id=${newConvId}`);
+          if (refetchRes.ok) {
+            const conv = (await refetchRes.json()) as ConversationRouteResponse;
+            setNodes(conv.nodes);
+            setSemanticEdges(conv.edges);
+          }
+        } catch (err) {
+          console.error("[edit] Branch send failed:", err);
+        } finally {
+          setIsAssistantResponding(false);
+        }
+
+        console.log("[edit] Branch path COMPLETE");
+
+      } catch (err) {
+        console.error("[edit] Branch path failed:", err);
       }
     }
   }

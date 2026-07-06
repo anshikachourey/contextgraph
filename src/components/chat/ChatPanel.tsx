@@ -46,15 +46,22 @@ export default function ChatPanel({
     <section className="mx-auto flex min-h-screen max-w-3xl flex-col justify-end px-6 pb-10 pt-24">
       {/* Message list */}
       <div className="mb-4 space-y-5">
-        {messages.map((message) => (
-          <ChatMessage
-            key={message.id}
-            message={message}
-            isSelected={false}
-            isHighlighted={highlightedMessageIds.includes(message.id)}
-            onEdit={onEditMessage}
-          />
-        ))}
+        {messages.map((message, idx) => {
+          // Determine if this is the latest user message (for edit branching info)
+          const userMessages = messages.filter((m) => m.role === "user");
+          const isLatestUser = message.role === "user" && userMessages.length > 0 && userMessages[userMessages.length - 1].id === message.id;
+
+          return (
+            <ChatMessage
+              key={message.id}
+              message={message}
+              isSelected={false}
+              isHighlighted={highlightedMessageIds.includes(message.id)}
+              onEdit={onEditMessage}
+              isLatestUserMessage={isLatestUser}
+            />
+          );
+        })}
 
         {/* Typing indicator */}
         {isAssistantResponding && (

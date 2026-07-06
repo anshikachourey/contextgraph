@@ -25,6 +25,19 @@ export async function POST(
 
   const b = body as Record<string, unknown>;
 
+  // Delete action
+  if (typeof b.messageId === "string" && b.action === "delete") {
+    const db = createServerSupabaseClient();
+    const { error } = await db.from("messages").delete().eq("id", b.messageId);
+    if (error) {
+      return NextResponse.json(
+        { error: `Failed to delete message: ${error.message}` },
+        { status: 500 },
+      );
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   if (typeof b.messageId !== "string" || typeof b.content !== "string") {
     return NextResponse.json(
       { error: "Request must include messageId (string) and content (string)." },
