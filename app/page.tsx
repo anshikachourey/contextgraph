@@ -46,6 +46,7 @@ export default function Home() {
         // Check URL for a specific conversation to open (used by branch-in-new-tab)
         const urlParams = new URLSearchParams(window.location.search);
         const urlConvId = urlParams.get("conversationId");
+        const shouldContinue = urlParams.get("continue") === "true";
 
         // Fetch conversation list
         const listRes = await fetch("/api/conversations");
@@ -63,6 +64,12 @@ export default function Home() {
           if (urlConvId) {
             // URL specifies a conversation — load it directly
             await loadConversation(urlConvId);
+
+            // If continue=true, auto-generate assistant for the last user message
+            if (shouldContinue) {
+              // Small delay to let state settle after loadConversation
+              setTimeout(() => continueBranch(urlConvId), 100);
+            }
           } else if (list.length > 0) {
             // Load the most recent conversation
             await loadConversation(list[0].id);
@@ -85,6 +92,60 @@ export default function Home() {
         // Network failure — UI remains usable but empty
       } finally {
         setIsLoadingConversation(false);
+      }
+    }
+
+    // Branch continuation: generate assistant for the last user message
+    async function continueBranch(branchConvId: string) {
+      try {
+        // Load the branch messages
+        const res = await fetch(`/api/conversation?id=${branchConvId}`);
+        if (!res.ok) return;
+        const conv = (await res.json()) as ConversationRouteResponse;
+        const branchMessages = conv.messages.filter((m) => !m.parentNodeId);
+
+        // Check if the last message is a user message (needs assistant response)
+        const lastMsg = branchMessages[branchMessages.length - 1];
+        if (!lastMsg || lastMsg.role !== "user") return;
+
+        // Show loading state
+        setIsAssistantResponding(true);
+
+        // Generate assistant response
+        const chatContext = branchMessages.map((m) => ({ role: m.role, content: m.content }));
+        const chatRes = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId: branchConvId, messages: chatContext }),
+        });
+
+        if (chatRes.ok) {
+          const chatData = (await chatRes.json()) as ChatResponse;
+          const assistantMessage: ChatMessage = {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: chatData.content,
+            parentNodeId: null,
+            branchRootMessageId: null,
+          };
+
+          // Add to UI immediately
+          setMessages((prev) => [...prev, assistantMessage]);
+
+          // Persist
+          await fetch("/api/messages", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              conversationId: branchConvId,
+              messages: [assistantMessage],
+            }),
+          });
+        }
+      } catch {
+        // Non-fatal
+      } finally {
+        setIsAssistantResponding(false);
       }
     }
 
@@ -373,6 +434,8 @@ export default function Home() {
 
     } else {
       // ─── Case 2: Edit earlier message → branch into new tab ────────────────
+      // Original conversation is NEVER modified.
+      // Optimized: open tab immediately after persist, generate assistant in new tab.
       console.log("[edit] Taking BRANCH path");
 
       const editIdx = mainThreadMessages.findIndex((m) => m.id === messageId);
@@ -381,89 +444,52 @@ export default function Home() {
         return;
       }
 
-      const historyBeforeEdit = mainThreadMessages.slice(0, editIdx);
-      console.log("[edit] History before edit:", historyBeforeEdit.length, "messages");
+      // Build branch messages from visible order
+      const prefix = mainThreadMessages.slice(0, editIdx);
+      const editedUserMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: newContent,
+        parentNodeId: null,
+        branchRootMessageId: null,
+      };
+      const branchMessages = [...prefix, editedUserMessage];
+
+      console.table(branchMessages.map((m, i) => ({
+        i,
+        role: m.role,
+        content: m.content.slice(0, 80),
+      })));
 
       try {
-        // Derive branch title from current conversation
+        // Derive branch title
         const currentConv = conversations.find((c) => c.id === conversationId);
         const originalTitle = currentConv?.title ?? "Conversation";
         const branchTitle = `Branch · ${originalTitle.slice(0, 50)}`;
 
         // Create new conversation
-        console.log("[edit] Creating branched conversation...");
         const createRes = await fetch("/api/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title: branchTitle }),
         });
-        if (!createRes.ok) {
-          console.error("[edit] Failed to create conversation:", createRes.status);
-          return;
-        }
+        if (!createRes.ok) return;
         const { id: newConvId } = (await createRes.json()) as { id: string; title: string };
-        console.log("[edit] Branched conversation created:", newConvId);
 
-        // Seed with history before edit
-        if (historyBeforeEdit.length > 0) {
-          console.log("[edit] Seeding history...");
-          await fetch("/api/messages", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              conversationId: newConvId,
-              messages: historyBeforeEdit,
-              freshIds: true,
-            }),
-          });
-        }
-
-        // Send the edited message + generate assistant response in the new conversation
-        const userMessage: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: "user",
-          content: newContent,
-          parentNodeId: null,
-          branchRootMessageId: null,
-        };
-
-        const allMessages = [...historyBeforeEdit, userMessage].map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
-
-        console.log("[edit] Generating assistant response for branch...");
-        const chatRes = await fetch("/api/chat", {
+        // Persist prefix + edited user message with fresh IDs
+        await fetch("/api/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ conversationId: newConvId, messages: allMessages }),
+          body: JSON.stringify({
+            conversationId: newConvId,
+            messages: branchMessages,
+            freshIds: true,
+          }),
         });
 
-        if (chatRes.ok) {
-          const chatData = (await chatRes.json()) as ChatResponse;
-          const assistantMessage: ChatMessage = {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: chatData.content,
-            parentNodeId: null,
-            branchRootMessageId: null,
-          };
-
-          // Persist user + assistant in the branch conversation
-          await fetch("/api/messages", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              conversationId: newConvId,
-              messages: [userMessage, assistantMessage],
-            }),
-          });
-        }
-
-        // Open the branched conversation in a new tab
-        console.log("[edit] Opening branch in new tab...");
-        window.open(`/?conversationId=${newConvId}`, "_blank");
-        console.log("[edit] Branch path COMPLETE");
+        // Open branch tab immediately — it will see the user message and generate assistant
+        window.open(`/?conversationId=${newConvId}&continue=true`, "_blank");
+        console.log("[edit] Branch tab opened — assistant will generate in new tab");
 
       } catch (err) {
         console.error("[edit] Branch path failed:", err);
