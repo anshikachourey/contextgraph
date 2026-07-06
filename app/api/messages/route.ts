@@ -34,9 +34,10 @@ export async function POST(
 
   const conversationId = b.conversationId as string;
   const messages = b.messages as ChatMessage[];
+  const freshIds = b.freshIds === true;
 
   try {
-    await persistMessages(conversationId, messages);
+    await persistMessages(conversationId, messages, { freshIds });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(

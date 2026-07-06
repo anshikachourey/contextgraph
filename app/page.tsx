@@ -413,6 +413,7 @@ export default function Home() {
             body: JSON.stringify({
               conversationId: newConvId,
               messages: historyBeforeEdit,
+              freshIds: true,
             }),
           });
         }
