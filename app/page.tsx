@@ -43,6 +43,10 @@ export default function Home() {
   useEffect(() => {
     async function init() {
       try {
+        // Check URL for a specific conversation to open (used by branch-in-new-tab)
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlConvId = urlParams.get("conversationId");
+
         // Fetch conversation list
         const listRes = await fetch("/api/conversations");
         if (listRes.ok) {
@@ -56,7 +60,10 @@ export default function Home() {
             setArchivedConversations(archived);
           }
 
-          if (list.length > 0) {
+          if (urlConvId) {
+            // URL specifies a conversation — load it directly
+            await loadConversation(urlConvId);
+          } else if (list.length > 0) {
             // Load the most recent conversation
             await loadConversation(list[0].id);
           } else {
@@ -365,7 +372,7 @@ export default function Home() {
       }
 
     } else {
-      // ─── Case 2: Edit earlier message → branch into new conversation ───────
+      // ─── Case 2: Edit earlier message → branch into new tab ────────────────
       console.log("[edit] Taking BRANCH path");
 
       const editIdx = mainThreadMessages.findIndex((m) => m.id === messageId);
@@ -378,24 +385,29 @@ export default function Home() {
       console.log("[edit] History before edit:", historyBeforeEdit.length, "messages");
 
       try {
+        // Derive branch title from current conversation
+        const currentConv = conversations.find((c) => c.id === conversationId);
+        const originalTitle = currentConv?.title ?? "Conversation";
+        const branchTitle = `Branch · ${originalTitle.slice(0, 50)}`;
+
         // Create new conversation
-        console.log("[edit] Creating new conversation...");
+        console.log("[edit] Creating branched conversation...");
         const createRes = await fetch("/api/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: newContent.slice(0, 40) + (newContent.length > 40 ? "…" : "") }),
+          body: JSON.stringify({ title: branchTitle }),
         });
         if (!createRes.ok) {
           console.error("[edit] Failed to create conversation:", createRes.status);
           return;
         }
         const { id: newConvId } = (await createRes.json()) as { id: string; title: string };
-        console.log("[edit] New conversation created:", newConvId);
+        console.log("[edit] Branched conversation created:", newConvId);
 
         // Seed with history before edit
         if (historyBeforeEdit.length > 0) {
           console.log("[edit] Seeding history...");
-          const seedRes = await fetch("/api/messages", {
+          await fetch("/api/messages", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -403,30 +415,9 @@ export default function Home() {
               messages: historyBeforeEdit,
             }),
           });
-          console.log("[edit] Seed response:", seedRes.status);
         }
 
-        // Add new conversation to list
-        const newItem = {
-          id: newConvId,
-          title: newContent.slice(0, 40) + (newContent.length > 40 ? "…" : ""),
-          createdAt: new Date().toISOString(),
-          updatedAt: null,
-        };
-        setConversations((prev) => [newItem, ...prev]);
-
-        // Switch to the new conversation
-        console.log("[edit] Switching to new conversation...");
-        resetConversationState();
-        setConversationId(newConvId);
-        setMessages(historyBeforeEdit);
-        setIsLoadingConversation(false);
-
-        // Send the edited message directly in the new conversation
-        // (Cannot use handleSendMessage — it reads stale conversationId from state)
-        console.log("[edit] Sending edited message in new conversation...");
-        setIsAssistantResponding(true);
-
+        // Send the edited message + generate assistant response in the new conversation
         const userMessage: ChatMessage = {
           id: crypto.randomUUID(),
           role: "user",
@@ -434,34 +425,30 @@ export default function Home() {
           parentNodeId: null,
           branchRootMessageId: null,
         };
-        setMessages((prev) => [...prev, userMessage]);
 
-        try {
-          // Generate assistant response
-          const allMessages = [...historyBeforeEdit, userMessage].map((m) => ({
-            role: m.role,
-            content: m.content,
-          }));
+        const allMessages = [...historyBeforeEdit, userMessage].map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
 
-          const chatRes = await fetch("/api/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ conversationId: newConvId, messages: allMessages }),
-          });
+        console.log("[edit] Generating assistant response for branch...");
+        const chatRes = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId: newConvId, messages: allMessages }),
+        });
 
-          const chatData = (await chatRes.json()) as ChatResponse | ChatErrorResponse;
-          if (!chatRes.ok) throw new Error((chatData as ChatErrorResponse).error);
-
+        if (chatRes.ok) {
+          const chatData = (await chatRes.json()) as ChatResponse;
           const assistantMessage: ChatMessage = {
             id: crypto.randomUUID(),
             role: "assistant",
-            content: (chatData as ChatResponse).content,
+            content: chatData.content,
             parentNodeId: null,
             branchRootMessageId: null,
           };
-          setMessages((prev) => [...prev, assistantMessage]);
 
-          // Persist user + assistant in the NEW conversation
+          // Persist user + assistant in the branch conversation
           await fetch("/api/messages", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -470,20 +457,11 @@ export default function Home() {
               messages: [userMessage, assistantMessage],
             }),
           });
-
-          // Refetch using the NEW conversationId explicitly
-          const refetchRes = await fetch(`/api/conversation?id=${newConvId}`);
-          if (refetchRes.ok) {
-            const conv = (await refetchRes.json()) as ConversationRouteResponse;
-            setNodes(conv.nodes);
-            setSemanticEdges(conv.edges);
-          }
-        } catch (err) {
-          console.error("[edit] Branch send failed:", err);
-        } finally {
-          setIsAssistantResponding(false);
         }
 
+        // Open the branched conversation in a new tab
+        console.log("[edit] Opening branch in new tab...");
+        window.open(`/?conversationId=${newConvId}`, "_blank");
         console.log("[edit] Branch path COMPLETE");
 
       } catch (err) {
