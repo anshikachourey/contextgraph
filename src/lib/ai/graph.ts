@@ -19,11 +19,16 @@ export type MaterializeNodeResult = {
 export async function materializeNode(
   formattedMessages: string,
   neighborContext: string,
+  insightSeed?: string | null,
 ): Promise<MaterializeNodeResult | null> {
+  const insightGuidance = insightSeed
+    ? `\nINSIGHT SEED (use this as the foundation — the conversation produced this specific realization):\n"${insightSeed}"\nBuild the title and summary around this insight. Do not ignore it.\n`
+    : "";
+
   const systemPrompt = `You are synthesizing a knowledge graph node from a conversation segment. This node will represent what was REALIZED, LEARNED, or EMOTIONALLY UNDERSTOOD — not merely what was discussed.
 
 Your job is to capture the INSIGHT — the underlying realization, emotional truth, or conceptual breakthrough that emerged from this exchange. Think of it as writing the title and abstract of an essay that captures the core idea.
-
+${insightGuidance}
 ${neighborContext ? `EXISTING NEARBY NODES (differentiate from these — capture what's unique about THIS segment):\n${neighborContext}\n` : ""}Return JSON:
 {
   "title": "<the core insight, realization, or emotional theme — max 80 chars — NOT a topic label>",

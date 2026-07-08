@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import { complete } from "@/src/lib/ai";
+import { NODE_MODEL } from "@/src/lib/ai/models";
 import { parseJsonFromLLM, isTitleSummaryResponse } from "@/src/lib/llmJson";
 import type {
   GenerateNodeSuggestionRequest,
@@ -8,10 +9,6 @@ import type {
 } from "@/src/types/ai";
 
 // Initialised once per cold start — Next.js caches module-level values.
-// The key is read server-side only and never reaches the client bundle.
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 const SYSTEM_PROMPT = `You are a helpful assistant that analyzes conversation excerpts and produces structured metadata.
 
@@ -66,31 +63,30 @@ export async function POST(
     );
   }
 
-  // --- Call OpenAI ---
+  // --- Call AI ---
   let rawContent: string | null;
   try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+    const result = await complete({
+      model: NODE_MODEL,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: buildUserPrompt(messages) },
       ],
       temperature: 0.4,
-      max_tokens: 150,
+      maxTokens: 150,
     });
-
-    rawContent = completion.choices[0]?.message?.content ?? null;
+    rawContent = result.content;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(
-      { error: `OpenAI request failed: ${message}` },
+      { error: `AI request failed: ${message}` },
       { status: 500 },
     );
   }
 
   if (!rawContent) {
     return NextResponse.json(
-      { error: "OpenAI returned an empty response." },
+      { error: "AI returned an empty response." },
       { status: 500 },
     );
   }

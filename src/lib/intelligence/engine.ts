@@ -15,7 +15,7 @@ import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { generateEmbedding } from "@/src/lib/embeddings";
 import { cosineSimilarity } from "@/src/lib/cosineSimilarity";
 import { parseJsonFromLLM, isTitleSummaryResponse } from "@/src/lib/llmJson";
-import OpenAI from "openai";
+import { materializeNode as aiMaterializeNode, generateSemanticEdge as aiGenerateSemanticEdge, synthesizeLocalGraph as aiSynthesizeLocalGraph } from "@/src/lib/ai";
 import {
   STALE_PROMOTION_THRESHOLD,
   STALE_PROMOTION_RUNS,
@@ -34,6 +34,7 @@ import {
   computeCentroid,
 } from "./stages";
 import { assignNodeToNeighborhood } from "./neighborhoods";
+import { evaluateMaterializationReadiness, MAX_LAYER_WAIT } from "./materialization-pipeline";
 import { debugLog, infoLog, errorLog, emitPipelineLog } from "./logger";
 import type { ChatMessage } from "@/src/types/message";
 import type {
@@ -47,8 +48,6 @@ import type {
   GraphMutation,
   EngineResult,
 } from "./types";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // ─── Structured Pipeline Log ────────────────────────────────────────────────
 
@@ -344,7 +343,7 @@ export async function runIntelligenceEngine(
             confidence,
           });
 
-          // ─── Stage 4: MATERIALIZE check ─────────────────────────────
+          // ─── Stage 4: MATERIALIZE check (three-layer pipeline) ──────
           const updatedCandidate: CandidateState = {
             ...candidate, segments: newSegments, embedding: newEmbedding, confidence,
           };
@@ -363,16 +362,36 @@ export async function runIntelligenceEngine(
               reason: blockCheck.reason,
             });
           } else if (shouldMaterialize(updatedCandidate, ctx.nodes)) {
-            (log as any).accumulation.materializeResult = "APPROVED";
-            const node = await materializeToNode(conversationId, updatedCandidate, ctx);
-            if (node) {
-              result.mutations.push(node.mutation);
-              result.nodesCreated++;
-              affectedNodeId = node.nodeId;
-              affectedNodeEmbedding = node.embedding;
-              log.stages.materialization.materialized = true;
-              log.stages.materialization.nodeId = node.nodeId;
-              log.stages.materialization.nodeTitle = (node.mutation as any).title;
+            // Three-layer pipeline: only materialize if insight has crystallized
+            const candidateMessages = await loadCandidateMessages(updatedCandidate);
+            const runsSinceCreation = ctx.engineState.totalRuns - (candidate.lastTouchedRun ?? 0);
+            const pipelineResult = await evaluateMaterializationReadiness(candidateMessages, runsSinceCreation);
+
+            (log as any).materializationPipeline = {
+              layer1State: pipelineResult.layer1.state,
+              layer1Reason: pipelineResult.layer1.reason,
+              insightDetected: pipelineResult.layer2?.hasInsight ?? false,
+              insightStatement: pipelineResult.insightSeed,
+              forcedByMaxWait: pipelineResult.forcedByMaxWait,
+              shouldMaterialize: pipelineResult.shouldMaterialize,
+            };
+
+            if (pipelineResult.shouldMaterialize) {
+              (log as any).accumulation.materializeResult = "APPROVED";
+              const node = await materializeToNode(conversationId, updatedCandidate, ctx, pipelineResult.insightSeed);
+              if (node) {
+                result.mutations.push(node.mutation);
+                result.nodesCreated++;
+                affectedNodeId = node.nodeId;
+                affectedNodeEmbedding = node.embedding;
+                log.stages.materialization.materialized = true;
+                log.stages.materialization.nodeId = node.nodeId;
+                log.stages.materialization.nodeTitle = (node.mutation as any).title;
+              }
+            } else {
+              log.stages.materialization.blocked = true;
+              log.stages.materialization.blockReason = `Pipeline: ${pipelineResult.layer1.state} — ${pipelineResult.layer2?.reason ?? pipelineResult.layer1.reason}`;
+              (log as any).accumulation.materializeResult = `PIPELINE_BLOCKED: state=${pipelineResult.layer1.state}`;
             }
           } else {
             log.stages.materialization.blocked = true;
@@ -403,16 +422,29 @@ export async function runIntelligenceEngine(
         log.stages.materialization.linkedMessageCount = totalMsgs;
 
         if (shouldMaterialize(tempCandidate, ctx.nodes)) {
-          log.stages.materialization.attempted = true;
-          const node = await materializeToNode(conversationId, tempCandidate, ctx);
-          if (node) {
-            result.mutations.push(node.mutation);
-            result.nodesCreated++;
-            affectedNodeId = node.nodeId;
-            affectedNodeEmbedding = node.embedding;
-            log.stages.materialization.materialized = true;
-            log.stages.materialization.nodeId = node.nodeId;
-            log.stages.materialization.nodeTitle = (node.mutation as any).title;
+          // Three-layer pipeline for immediate materialization
+          const candidateMessages = await loadCandidateMessages(tempCandidate);
+          const pipelineResult = await evaluateMaterializationReadiness(candidateMessages, 0);
+
+          (log as any).materializationPipeline = {
+            layer1State: pipelineResult.layer1.state,
+            insightDetected: pipelineResult.layer2?.hasInsight ?? false,
+            insightStatement: pipelineResult.insightSeed,
+            shouldMaterialize: pipelineResult.shouldMaterialize,
+          };
+
+          if (pipelineResult.shouldMaterialize) {
+            log.stages.materialization.attempted = true;
+            const node = await materializeToNode(conversationId, tempCandidate, ctx, pipelineResult.insightSeed);
+            if (node) {
+              result.mutations.push(node.mutation);
+              result.nodesCreated++;
+              affectedNodeId = node.nodeId;
+              affectedNodeEmbedding = node.embedding;
+              log.stages.materialization.materialized = true;
+              log.stages.materialization.nodeId = node.nodeId;
+              log.stages.materialization.nodeTitle = (node.mutation as any).title;
+            }
           }
         }
       }
@@ -746,6 +778,7 @@ async function materializeToNode(
   conversationId: string,
   candidate: CandidateState,
   ctx: PipelineContext,
+  insightSeed?: string | null,
 ): Promise<{ mutation: GraphMutation; nodeId: string; embedding: number[] } | null> {
   const messageIds = [...new Set(candidate.segments.flatMap((s) => s.messageIds))];
 
@@ -786,45 +819,10 @@ async function materializeToNode(
     }
   }
 
-  // ─── Insight-synthesis prompt ─────────────────────────────────────
-  const systemPrompt = `You are synthesizing a knowledge graph node from a conversation segment. This node will represent what was REALIZED, LEARNED, or EMOTIONALLY UNDERSTOOD — not merely what was discussed.
-
-Your job is to capture the INSIGHT — the underlying realization, emotional truth, or conceptual breakthrough that emerged from this exchange. Think of it as writing the title and abstract of an essay that captures the core idea.
-
-${neighborContext ? `EXISTING NEARBY NODES (differentiate from these — capture what's unique about THIS segment):\n${neighborContext}\n` : ""}Return JSON:
-{
-  "title": "<the core insight, realization, or emotional theme — max 80 chars — NOT a topic label>",
-  "summary": "<what was concluded, learned, or understood — max 300 chars — answer 'What insight emerged?' not 'What was discussed?'>"
-}
-
-RULES:
-- Titles should read like essay titles or personal realizations, not topic categories
-- Summaries should articulate conclusions, not replay the conversation
-- Capture emotional themes and personal reflections when present
-- Focus on WHY something matters to the person, not just WHAT was said
-
-BAD (topic labels): "Exploring Rock Music", "Discussion About Art Decline", "Understanding Personal Growth"
-GOOD (insights): "Searching for Art That Feels Exciting Again", "Rock as the Sound of Authentic Emotion", "Building an Interesting Persona Through Distinct Taste"
-
-BAD (summaries that replay): "They discussed how art has declined and talked about rock music"
-GOOD (summaries that conclude): "A realization that mainstream art lost its emotional charge, leading to rock music as an art form that still provokes genuine feeling and becomes a foundation for personal identity"`;
-
+  // ─── Generate node title/summary via AI abstraction ────────────────
   try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: `CONVERSATION SEGMENT:\n\n${formatted}\n\nSynthesize the core insight into a knowledge graph node. Return JSON only.` },
-      ],
-      temperature: 0.6,
-      max_tokens: 300,
-    });
-
-    const raw = completion.choices[0]?.message?.content;
-    if (!raw) return null;
-
-    const parsed = parseJsonFromLLM(raw);
-    if (!isTitleSummaryResponse(parsed)) return null;
+    const result = await aiMaterializeNode(formatted, neighborContext, insightSeed);
+    if (!result) return null;
 
     const nodeId = crypto.randomUUID();
     const embedding = candidate.embedding ?? [];
@@ -834,18 +832,39 @@ GOOD (summaries that conclude): "A realization that mainstream art lost its emot
       type: "materialize",
       candidateId: candidate.id,
       nodeId,
-      title: parsed.title,
-      summary: parsed.summary,
+      title: result.title,
+      summary: result.summary,
       messageIds,
       embedding,
       position,
     };
 
-    infoLog("[engine] Node materialized", { title: parsed.title, nodeId });
+    infoLog("[engine] Node materialized", { title: result.title, nodeId });
     return { mutation, nodeId, embedding };
   } catch {
     return null;
   }
+}
+
+// ─── Helper: load formatted messages for a candidate ────────────────────────
+
+async function loadCandidateMessages(candidate: CandidateState): Promise<string> {
+  const messageIds = [...new Set(candidate.segments.flatMap((s) => s.messageIds))];
+  if (messageIds.length === 0) return "";
+
+  const db = createServerSupabaseClient();
+  const { data: msgData } = await db
+    .from("messages")
+    .select("role, content")
+    .in("id", messageIds)
+    .order("created_at", { ascending: true });
+
+  if (!msgData || msgData.length === 0) return "";
+
+  return (msgData as Array<{ role: string; content: string }>)
+    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+    .join("\n")
+    .slice(0, 4000);
 }
 
 // ─── Semantic Edge Generation ───────────────────────────────────────────────
@@ -854,56 +873,12 @@ async function generateSemanticEdge(
   sourceNode: NodeState,
   targetNode: NodeState,
 ): Promise<{ relationship_type: string; explanation: string; direction: string } | null> {
-  try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: `Two nodes in a knowledge graph represent ideas from the same conversation. Determine how they are conceptually related.
-
-Return JSON:
-{
-  "relationship_type": "<verb phrase describing the relationship, e.g. 'led to exploration of', 'evolved into', 'emotionally connected to', 'inspired', 'contrasts with', 'became foundation for', 'deepened understanding of'>",
-  "explanation": "<one sentence explaining the conceptual connection>",
-  "direction": "a_to_b" | "b_to_a" | "bidirectional"
-}
-
-Rules:
-- relationship_type should be a short verb phrase (2-5 words)
-- explanation should be one clear sentence
-- direction indicates flow: did A lead to B, or B to A, or mutual?
-- Focus on conceptual/emotional evolution, not surface similarity`,
-        },
-        {
-          role: "user",
-          content: `Node A: "${sourceNode.title}" — ${sourceNode.summary}\n\nNode B: "${targetNode.title}" — ${targetNode.summary}\n\nHow are these ideas connected? Return JSON only.`,
-        },
-      ],
-      temperature: 0.5,
-      max_tokens: 150,
-    });
-
-    const raw = completion.choices[0]?.message?.content;
-    if (!raw) return null;
-
-    const parsed = parseJsonFromLLM(raw) as Record<string, unknown> | null;
-    if (
-      !parsed ||
-      typeof parsed.relationship_type !== "string" ||
-      typeof parsed.explanation !== "string"
-    ) {
-      return null;
-    }
-
-    return {
-      relationship_type: parsed.relationship_type as string,
-      explanation: parsed.explanation as string,
-      direction: (parsed.direction as string) ?? "a_to_b",
-    };
-  } catch {
-    return null;
-  }
+  return aiGenerateSemanticEdge(
+    sourceNode.title,
+    sourceNode.summary,
+    targetNode.title,
+    targetNode.summary,
+  );
 }
 
 // ─── Graph Synthesis Pass ───────────────────────────────────────────────────
@@ -958,88 +933,45 @@ async function runGraphSynthesisPass(
     : "None yet";
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: `You are reviewing a local section of a knowledge graph that represents how someone's ideas evolved during a conversation. Your goal: make it read like an externalized memory — capturing what was learned, realized, and how ideas evolved.
+    const synthesisResult = await aiSynthesizeLocalGraph(
+      newNodeFormatted,
+      neighborsFormatted,
+      edgesFormatted,
+      { newNodeId, neighborIds: neighbors.map((n) => n.id) },
+    );
 
-Return JSON:
-{
-  "nodeImprovements": [
-    { "nodeId": "...", "improvedTitle": "...", "improvedSummary": "..." }
-  ],
-  "newEdges": [
-    { "sourceNodeId": "...", "targetNodeId": "...", "relationship_type": "...", "explanation": "..." }
-  ],
-  "removeEdgeIds": []
-}
-
-Rules:
-- Only improve nodes that are clearly shallow (topic labels, message replays, generic descriptions)
-- Only add edges that explain meaningful conceptual evolution between ideas
-- Do NOT improve nodes that already capture genuine insight
-- If everything looks good, return empty arrays
-- relationship_type should be a verb phrase (e.g., "led to", "evolved into", "became foundation for")
-- Keep improvements concise — better titles max 80 chars, better summaries max 300 chars`,
-        },
-        {
-          role: "user",
-          content: `${newNodeFormatted}\n\nNEARBY EXISTING NODES:\n${neighborsFormatted}\n\nEXISTING EDGES:\n${edgesFormatted}\n\nThe new node ID is: "${newNodeId}"\nNeighbor IDs: ${neighbors.map((n) => `"${n.id}"`).join(", ")}\n\nReview this subgraph. Return JSON only.`,
-        },
-      ],
-      temperature: 0.5,
-      max_tokens: 500,
-    });
-
-    const raw = completion.choices[0]?.message?.content;
-    if (!raw) return mutations;
-
-    const parsed = parseJsonFromLLM(raw) as Record<string, unknown> | null;
-    if (!parsed) return mutations;
+    if (!synthesisResult) return mutations;
 
     // Process node improvements
-    if (Array.isArray(parsed.nodeImprovements)) {
-      for (const imp of parsed.nodeImprovements as Array<Record<string, unknown>>) {
-        if (imp.nodeId && imp.improvedTitle && imp.improvedSummary) {
-          // Only allow improvements to nodes in our subgraph
-          if (subgraphNodeIds.has(imp.nodeId as string)) {
-            mutations.push({
-              type: "update_node_content",
-              nodeId: imp.nodeId as string,
-              title: (imp.improvedTitle as string).slice(0, 80),
-              summary: (imp.improvedSummary as string).slice(0, 300),
-            });
-          }
-        }
+    for (const imp of synthesisResult.nodeImprovements) {
+      if (subgraphNodeIds.has(imp.nodeId)) {
+        mutations.push({
+          type: "update_node_content",
+          nodeId: imp.nodeId,
+          title: imp.improvedTitle,
+          summary: imp.improvedSummary,
+        });
       }
     }
 
     // Process new edges
-    if (Array.isArray(parsed.newEdges)) {
-      for (const edge of parsed.newEdges as Array<Record<string, unknown>>) {
-        if (edge.sourceNodeId && edge.targetNodeId && edge.relationship_type) {
-          if (subgraphNodeIds.has(edge.sourceNodeId as string) && subgraphNodeIds.has(edge.targetNodeId as string)) {
-            mutations.push({
-              type: "add_edge",
-              sourceNodeId: edge.sourceNodeId as string,
-              targetNodeId: edge.targetNodeId as string,
-              similarity: 0.5, // synthesis-generated, not embedding-based
-              relationship_type: edge.relationship_type as string,
-              explanation: (edge.explanation as string) ?? "",
-            });
-          }
-        }
+    for (const edge of synthesisResult.newEdges) {
+      if (subgraphNodeIds.has(edge.sourceNodeId) && subgraphNodeIds.has(edge.targetNodeId)) {
+        mutations.push({
+          type: "add_edge",
+          sourceNodeId: edge.sourceNodeId,
+          targetNodeId: edge.targetNodeId,
+          similarity: 0.5,
+          relationship_type: edge.relationship_type,
+          explanation: edge.explanation,
+        });
       }
     }
 
     // Process edge removals
-    if (Array.isArray(parsed.removeEdgeIds)) {
-      for (const edgeId of parsed.removeEdgeIds as string[]) {
-        if (typeof edgeId === "string" && localEdges.some((e) => e.id === edgeId)) {
-          mutations.push({ type: "remove_edge", edgeId });
-        }
+    for (const edgeId of synthesisResult.removeEdgeIds) {
+      if (localEdges.some((e) => e.id === edgeId)) {
+        mutations.push({ type: "remove_edge", edgeId });
       }
     }
 
@@ -1087,15 +1019,27 @@ async function promoteStaleCandidates(
     const blockCheck = checkMaterializationBlock(candidate);
     if (blockCheck.blocked) continue;
 
-    // Promote this candidate
+    // Promote this candidate — run pipeline first
+    const candidateMessages = await loadCandidateMessages(candidate);
+    const pipelineResult = await evaluateMaterializationReadiness(candidateMessages, runsSinceTouch);
+
+    if (!pipelineResult.shouldMaterialize) {
+      debugLog("[engine] Stale candidate pipeline blocked", {
+        candidateId: candidate.id,
+        state: pipelineResult.layer1.state,
+      });
+      continue;
+    }
+
     infoLog("[engine] Stale promotion", {
       candidateId: candidate.id,
       confidence: parseFloat(candidate.confidence.toFixed(3)),
       messages: totalMessages,
       staleRuns: runsSinceTouch,
+      insightSeed: pipelineResult.insightSeed,
     });
 
-    const node = await materializeToNode(conversationId, candidate, ctx);
+    const node = await materializeToNode(conversationId, candidate, ctx, pipelineResult.insightSeed);
     if (node) {
       result.mutations.push(node.mutation);
       result.nodesCreated++;

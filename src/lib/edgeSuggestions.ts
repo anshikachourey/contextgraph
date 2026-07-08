@@ -1,6 +1,7 @@
-import OpenAI from "openai";
 import { cosineSimilarity } from "./cosineSimilarity";
 import { POSSIBLY_RELATED_THRESHOLD } from "./similarityThresholds";
+import { complete } from "@/src/lib/ai";
+import { EDGE_MODEL } from "@/src/lib/ai/models";
 import type { SuggestedEdge } from "@/src/types/edge";
 
 const MAX_CANDIDATES_PER_NODE = 3;
@@ -97,13 +98,8 @@ export function selectCandidates(nodes: NodeForSuggestion[]): Candidate[] {
 
 // ─── LLM explanation ────────────────────────────────────────────────────────
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 /**
  * Generate a one-sentence explanation of why two nodes are semantically related.
- * The LLM does NOT decide whether they are related — that was already determined
- * by the embedding threshold. Its only job is articulating the nature of the
- * relationship in human-readable form.
  */
 export async function generateEdgeExplanation(
   nodeA: Pick<NodeForSuggestion, "title" | "summary" | "evidenceSummary">,
@@ -124,7 +120,6 @@ They have already been identified as semantically related via embedding similari
 Your job is to explain HOW they are related in exactly one concise sentence.
 
 Do NOT say whether they are related — that is already known.
-Do NOT start with "Both nodes" if you can avoid it.
 Focus on the specific conceptual connection.
 
 ${formatNode("Node A", nodeA)}
@@ -133,16 +128,14 @@ ${formatNode("Node B", nodeB)}
 
 Write one sentence explaining the relationship:`;
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+  const result = await complete({
+    model: EDGE_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.4,
-    max_tokens: 100,
+    maxTokens: 100,
   });
 
-  const raw = completion.choices[0]?.message?.content;
-  if (!raw) throw new Error("Empty explanation from OpenAI");
-  return raw.trim();
+  return result.content.trim();
 }
 
 // ─── Full suggestion pipeline ───────────────────────────────────────────────

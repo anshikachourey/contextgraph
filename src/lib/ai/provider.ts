@@ -53,7 +53,6 @@ async function openaiComplete(options: CompletionOptions): Promise<CompletionRes
 }
 
 async function anthropicComplete(options: CompletionOptions): Promise<CompletionResult> {
-  // @ts-expect-error — Anthropic SDK is optional; install with: npm i @anthropic-ai/sdk
   const Anthropic = (await import("@anthropic-ai/sdk")).default;
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 

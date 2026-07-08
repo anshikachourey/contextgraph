@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import { complete } from "@/src/lib/ai";
+import { NODE_MODEL } from "@/src/lib/ai/models";
 import { generateEmbedding } from "@/src/lib/embeddings";
 import { cosineSimilarity } from "@/src/lib/cosineSimilarity";
 import { DRAFT_SUPPRESS_THRESHOLD } from "@/src/lib/aiDraftConfig";
 import { loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
 import { parseJsonFromLLM, isTitleSummaryResponse } from "@/src/lib/llmJson";
 import type { ChatMessage } from "@/src/types/message";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 type DraftRequest = {
   conversationId: string;
@@ -172,32 +171,32 @@ export async function POST(
   let summary: string;
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+    const result = await complete({
+      model: NODE_MODEL,
       messages: [
         {
           role: "system",
-          content: `You analyze conversation excerpts and produce structured metadata for a knowledge graph node.
+          content: `You synthesize knowledge graph nodes from conversation segments. Each node captures what was REALIZED, LEARNED, or EMOTIONALLY UNDERSTOOD.
 
-Given a list of chat messages, return a JSON object with exactly two fields:
-- "title": a concise noun-phrase label for the topic discussed, max 60 characters
-- "summary": a brief description of what the messages discuss, max 200 characters
+Given a list of chat messages, return a JSON object:
+- "title": the core insight or realization — max 80 chars — NOT a topic label
+- "summary": what was concluded or learned — max 300 chars
 
-Respond with raw JSON only — no markdown, no code fences, no explanation.`,
+Respond with raw JSON only.`,
         },
         {
           role: "user",
           content: `Here are the messages:\n\n${formatted}\n\nReturn a JSON object with "title" and "summary".`,
         },
       ],
-      temperature: 0.4,
-      max_tokens: 150,
+      temperature: 0.5,
+      maxTokens: 300,
     });
 
-    const raw = completion.choices[0]?.message?.content;
+    const raw = result.content;
     if (!raw) {
       return NextResponse.json(
-        { error: "OpenAI returned empty response for draft generation." },
+        { error: "AI returned empty response for draft generation." },
         { status: 500 },
       );
     }

@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import { generateChatResponse } from "@/src/lib/ai";
 import type { ChatResponse, ChatErrorResponse } from "@/src/types/ai";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 const SYSTEM_PROMPT = `You are ContextGraph Assistant — a thoughtful AI that helps users think through ideas, plans, and problems in long conversations.
 
@@ -94,28 +90,14 @@ export async function POST(
     ];
   }
 
-  // Call OpenAI for assistant response
+  // Generate assistant response
   let content: string;
   try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: llmMessages,
-      temperature: 0.7,
-      max_tokens: 512,
-    });
-
-    const raw = completion.choices[0]?.message?.content;
-    if (!raw) {
-      return NextResponse.json(
-        { error: "OpenAI returned an empty response." },
-        { status: 500 },
-      );
-    }
-    content = raw;
+    content = await generateChatResponse(llmMessages);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(
-      { error: `OpenAI request failed: ${message}` },
+      { error: `AI request failed: ${message}` },
       { status: 500 },
     );
   }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import { complete } from "@/src/lib/ai";
+import { STRUCTURE_MODEL } from "@/src/lib/ai/models";
 import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { persistNode, loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
 import { persistEdges } from "@/src/lib/db/edges";
@@ -13,7 +14,6 @@ import type { ChatMessage } from "@/src/types/message";
 import type { ContextNode } from "@/src/types/node";
 import type { DbMessage } from "@/src/types/db";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL ?? "http://127.0.0.1:8000";
 
 // Minimum messages in a cluster to be worth creating a node
@@ -224,8 +224,8 @@ export async function POST(
         .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
         .join("\n");
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+      const completionResult = await complete({
+        model: STRUCTURE_MODEL,
         messages: [
           {
             role: "system",
@@ -249,10 +249,10 @@ Respond with raw JSON only.`,
           },
         ],
         temperature: 0.6,
-        max_tokens: 300,
+        maxTokens: 300,
       });
 
-      const raw = completion.choices[0]?.message?.content;
+      const raw = completionResult.content;
       if (!raw) throw new Error("Empty response");
 
       const parsed = parseJsonFromLLM(raw);

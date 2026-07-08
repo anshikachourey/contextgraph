@@ -7,6 +7,18 @@
 NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
 OPENAI_API_KEY=<openai-key>
+ANTHROPIC_API_KEY=<anthropic-key>
+
+# AI Provider config (premium)
+AI_PROVIDER=anthropic
+CHAT_MODEL=claude-sonnet-4-6
+NODE_MODEL=claude-sonnet-4-6
+GRAPH_SYNTHESIS_MODEL=claude-sonnet-4-6
+STRUCTURE_MODEL=claude-sonnet-4-6
+EDGE_MODEL=claude-sonnet-4-6
+SUMMARY_MODEL=claude-sonnet-4-6
+EMBEDDING_PROVIDER=openai
+EMBEDDING_MODEL=text-embedding-3-large
 ```
 
 ### Optional
@@ -72,10 +84,39 @@ npm run build    # Should complete without errors
 - [ ] `npx tsc --noEmit` passes
 - [ ] All SQL migrations applied to Supabase
 - [ ] Environment variables set in Vercel
+- [ ] `ANTHROPIC_API_KEY` is a real key from console.anthropic.com (not the placeholder)
+- [ ] `OPENAI_API_KEY` is valid (still needed for embeddings)
 - [ ] `DEBUG_GRAPH_PIPELINE` is NOT set in production
 - [ ] Test: create new chat → send messages → graph updates
 - [ ] Test: switch between conversations
 - [ ] Test: candidate materializes into node after topic recurrence or stale promotion
+
+## Smoke Test Checklist (After Provider Switch)
+
+⚠️ **IMPORTANT: Embedding Dimension Change**
+
+We switched from `text-embedding-3-small` (1536 dims) to `text-embedding-3-large` (3072 dims).
+Old nodes and engine state may still contain 1536-dim embeddings. Comparing old embeddings
+against new ones will throw a **dimension mismatch error**.
+
+**For first smoke test:**
+1. Start a **fresh new conversation** (do NOT test with old conversations)
+2. Send 4-6 messages on a topic
+3. Verify the graph engine creates candidates and materializes nodes
+4. Verify edges have semantic relationship types (not "related")
+5. Verify graph synthesis pass runs
+
+**After fresh test passes:**
+- Either run `/api/debug/reembed-nodes` on each existing conversation to update embeddings
+- Or reset existing local data (delete all nodes/edges/candidates/engine state for old conversations)
+- Old conversations with 1536-dim embeddings will error until re-embedded
+
+**Re-embedding command:**
+```
+POST /api/debug/reembed-nodes
+```
+This regenerates embeddings for all nodes in the latest conversation using the current model.
+For other conversations, repeat with conversation-specific endpoints or reset data.
 
 ## What's NOT included in MVP
 
