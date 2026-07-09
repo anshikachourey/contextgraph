@@ -2,16 +2,15 @@
  * Compute the cosine similarity between two vectors.
  * Returns a value in [-1, 1] where 1 = identical direction, 0 = orthogonal.
  *
- * OpenAI embeddings are already unit-normalized, so this is equivalent to
- * a dot product — but we compute it explicitly for correctness and testability.
- *
- * Throws if vectors have different lengths or are zero-length.
+ * If vectors have different lengths (dimension mismatch from model switch),
+ * returns 0 instead of throwing — treats mismatched vectors as unrelated.
  */
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length) {
-    throw new Error(
-      `Vector length mismatch: ${a.length} vs ${b.length}`,
-    );
+    // Dimension mismatch — likely old vs new embedding model
+    // Return 0 (unrelated) instead of crashing the pipeline
+    console.warn(`[cosineSimilarity] Dimension mismatch: ${a.length} vs ${b.length} — returning 0`);
+    return 0;
   }
   if (a.length === 0) {
     throw new Error("Cannot compute similarity of empty vectors");

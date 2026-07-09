@@ -20,6 +20,7 @@ import {
   STALE_PROMOTION_THRESHOLD,
   STALE_PROMOTION_RUNS,
   MIN_EVIDENCE_MESSAGES,
+  MAX_SEGMENT_EXCHANGES,
 } from "./config";
 import {
   checkSegmentBoundary,
@@ -141,6 +142,8 @@ export async function runIntelligenceEngine(
   conversationId: string,
   newMessageIds?: { userMessageId: string; assistantMessageId: string },
 ): Promise<EngineResult> {
+  console.log(">>> ENTER runIntelligenceEngine", { conversationId });
+
   const result: EngineResult = {
     mutations: [],
     nodesExtended: 0,
@@ -152,10 +155,16 @@ export async function runIntelligenceEngine(
   const log = createEmptyLog(conversationId);
 
   try {
-    debugLog("[engine] run", { conversationId, newMessageIds: newMessageIds ?? "none" });
-
     // ─── Load context ───────────────────────────────────────────────────
+    console.log(">>> Before loadPipelineContext");
     const ctx = await loadPipelineContext(conversationId, newMessageIds);
+    console.log(">>> After loadPipelineContext:", {
+      hasNewExchange: !!ctx.newExchange,
+      openSegExchanges: ctx.engineState.openSegment?.exchangeCount ?? 0,
+      cursor: ctx.engineState.cursor?.slice(0, 8) ?? null,
+      nodes: ctx.nodes.length,
+      candidates: ctx.candidates.length,
+    });
 
     log.stages.conversation = {
       existingNodes: ctx.nodes.length,
@@ -167,12 +176,15 @@ export async function runIntelligenceEngine(
     };
 
     if (!ctx.newExchange) {
+      console.log(">>> EARLY RETURN: No new exchange found after cursor");
       log.earlyExit = "No new exchange found after cursor";
       emitPipelineLog(log);
       return result;
     }
 
     const { user, assistant } = ctx.newExchange;
+    console.log(">>> Exchange found:", { userSnippet: user.content.slice(0, 40), assistantSnippet: assistant.content.slice(0, 40) });
+
     log.exchange = {
       userSnippet: user.content.slice(0, 80),
       assistantSnippet: assistant.content.slice(0, 80),
@@ -180,9 +192,11 @@ export async function runIntelligenceEngine(
     };
 
     // ─── Stage 1: EMBED the exchange ────────────────────────────────────
+    console.log(">>> Before embedding generation");
     const exchangeText = `User: ${user.content}\nAssistant: ${assistant.content}`;
     const exchangeEmbedding = await generateEmbedding(exchangeText.slice(0, 7000));
     const userEmbedding = await generateEmbedding(user.content.slice(0, 3000));
+    console.log(">>> After embedding generation:", { exchangeDim: exchangeEmbedding.length, userDim: userEmbedding.length });
     log.exchange.embedding = true;
 
     // ─── Stage 2: SEGMENT — decide if open segment should close ─────────
@@ -193,10 +207,15 @@ export async function runIntelligenceEngine(
     let frozenSegmentEmbedding: number[] = [];
     let newOpenSegment: OpenSegmentState;
 
-    debugLog("[engine] segmentation", { openSegIsNull: !openSeg });
+    console.log(">>> Before segmentation decision");
+    console.log("[engine] Segmentation:", {
+      openSegIsNull: !openSeg,
+      openSegExchangeCount: openSeg?.exchangeCount ?? 0,
+    });
 
     if (!openSeg) {
       // No open segment — start one with this exchange
+      console.log("[engine] → Starting fresh segment (no open segment)");
       newOpenSegment = {
         startMessageId: user.id,
         endMessageId: assistant.id,
@@ -207,10 +226,42 @@ export async function runIntelligenceEngine(
         exchangeCount: 1,
       };
       log.stages.segmentation.reason = "No open segment — started new one";
+    } else if (openSeg.exchangeCount >= MAX_SEGMENT_EXCHANGES) {
+      // Max segment length reached — soft chapter boundary
+      segmentFrozen = true;
+      console.log("[engine] → SEGMENT FROZEN (max_segment_length):", { exchangeCount: openSeg.exchangeCount });
+
+      frozenSegmentMessageIds = await getSegmentMessageIds(
+        conversationId, openSeg.startMessageId, openSeg.endMessageId,
+      );
+      frozenSegmentEmbedding = openSeg.embedding;
+
+      console.log("[engine] → Frozen segment:", { messageCount: frozenSegmentMessageIds.length, closeReason: "max_segment_length" });
+
+      newOpenSegment = {
+        startMessageId: user.id,
+        endMessageId: assistant.id,
+        embedding: exchangeEmbedding,
+        userEmbedding,
+        lastUserEmbedding: userEmbedding,
+        lastExchangeEmbedding: exchangeEmbedding,
+        exchangeCount: 1,
+      };
+      log.stages.segmentation.reason = `max_segment_length (${openSeg.exchangeCount} exchanges)`;
     } else {
-      debugLog("[engine] boundary check", { exchangeCount: openSeg.exchangeCount });
       // Compare new user message against open segment's user centroid
       const boundary = checkSegmentBoundary(openSeg, userEmbedding);
+
+      console.log("[engine] Boundary check:", {
+        exchangeCountBefore: openSeg.exchangeCount,
+        centroidUserSim: parseFloat(boundary.centroidUserSim.toFixed(4)),
+        localUserSim: boundary.localUserSim !== null ? parseFloat(boundary.localUserSim.toFixed(4)) : null,
+        centroidThreshold: boundary.centroidThreshold,
+        localThreshold: boundary.localThreshold,
+        shouldClose: boundary.shouldClose,
+        reason: boundary.reason,
+      });
+
       log.stages.segmentation.similarity = boundary.centroidUserSim;
       log.stages.segmentation.threshold = boundary.centroidThreshold;
       log.stages.segmentation.shouldClose = boundary.shouldClose;
@@ -234,12 +285,15 @@ export async function runIntelligenceEngine(
       if (boundary.shouldClose) {
         // FREEZE the open segment
         segmentFrozen = true;
+        console.log("[engine] → SEGMENT FROZEN. Collecting message IDs...");
 
         // Collect message IDs from the frozen segment
         frozenSegmentMessageIds = await getSegmentMessageIds(
           conversationId, openSeg.startMessageId, openSeg.endMessageId,
         );
         frozenSegmentEmbedding = openSeg.embedding;
+
+        console.log("[engine] → Frozen segment:", { messageCount: frozenSegmentMessageIds.length });
 
         // Start a NEW open segment with the current exchange
         newOpenSegment = {
@@ -288,6 +342,28 @@ export async function runIntelligenceEngine(
     let affectedNodeId: string | null = null;
     let affectedNodeEmbedding: number[] | null = null;
 
+    console.log("[engine] Post-segmentation:", {
+      segmentFrozen,
+      frozenMessageCount: frozenSegmentMessageIds.length,
+      willRoute: segmentFrozen && frozenSegmentMessageIds.length >= 2,
+      activeCandidates: ctx.candidates.length,
+    });
+
+    // Log stuck candidates
+    for (const cand of ctx.candidates) {
+      const candMsgs = cand.segments.reduce((s, seg) => s + seg.messageIds.length, 0);
+      const runsSinceTouch = ctx.engineState.totalRuns - (cand.lastTouchedRun ?? 0);
+      if (runsSinceTouch >= 2) {
+        console.log(`[candidate-lifecycle] ${cand.id} STUCK`, {
+          runsWithoutProgress: runsSinceTouch,
+          segmentCount: cand.segments.length,
+          messageCount: candMsgs,
+          confidence: parseFloat(cand.confidence.toFixed(3)),
+          embeddingDim: Array.isArray(cand.embedding) ? cand.embedding.length : 0,
+        });
+      }
+    }
+
     if (segmentFrozen && frozenSegmentMessageIds.length >= 2) {
       log.stages.routing.segmentMessageCount = frozenSegmentMessageIds.length;
 
@@ -297,6 +373,12 @@ export async function runIntelligenceEngine(
         ctx.nodes,
         ctx.candidates,
       );
+
+      console.log("[engine] Routing decision:", {
+        type: decision.type,
+        candidateId: decision.type === "accumulate" ? decision.candidateId : null,
+        nodeId: decision.type === "extend_node" ? decision.nodeId : null,
+      });
 
       log.stages.routing.decision = decision.type;
 
@@ -324,6 +406,15 @@ export async function runIntelligenceEngine(
             { ...candidate, segments: newSegments, embedding: newEmbedding },
             ctx.nodes,
           );
+          const totalMsgs = newSegments.reduce((s, seg) => s + seg.messageIds.length, 0);
+
+          console.log(`[candidate-lifecycle] ${decision.candidateId} ACCUMULATED`, {
+            segmentCount: newSegments.length,
+            messageCount: totalMsgs,
+            oldConfidence: parseFloat(oldConfidence.toFixed(3)),
+            newConfidence: parseFloat(confidence.toFixed(3)),
+          });
+
           log.stages.routing.confidence = confidence;
 
           // Detailed accumulation logging
@@ -347,12 +438,16 @@ export async function runIntelligenceEngine(
           const updatedCandidate: CandidateState = {
             ...candidate, segments: newSegments, embedding: newEmbedding, confidence,
           };
-          const totalMsgs = newSegments.reduce((s, seg) => s + seg.messageIds.length, 0);
           log.stages.materialization.linkedMessageCount = totalMsgs;
           log.stages.materialization.attempted = true;
 
           const blockCheck = checkMaterializationBlock(updatedCandidate);
           if (blockCheck.blocked) {
+            console.log(`[candidate-lifecycle] ${decision.candidateId} EVALUATED`, {
+              shouldMaterializeBasic: true,
+              blocked: true,
+              blockReason: blockCheck.reason,
+            });
             log.stages.materialization.blocked = true;
             log.stages.materialization.blockReason = blockCheck.reason;
             (log as any).accumulation.materializeResult = `BLOCKED: ${blockCheck.reason}`;
@@ -377,6 +472,12 @@ export async function runIntelligenceEngine(
             };
 
             if (pipelineResult.shouldMaterialize) {
+              console.log(`[candidate-lifecycle] ${decision.candidateId} EVALUATED`, {
+                shouldMaterializeBasic: true,
+                layer1State: pipelineResult.layer1.state,
+                insightDetected: pipelineResult.layer2?.hasInsight ?? false,
+                finalDecision: "MATERIALIZE",
+              });
               (log as any).accumulation.materializeResult = "APPROVED";
               const node = await materializeToNode(conversationId, updatedCandidate, ctx, pipelineResult.insightSeed);
               if (node) {
@@ -389,11 +490,24 @@ export async function runIntelligenceEngine(
                 log.stages.materialization.nodeTitle = (node.mutation as any).title;
               }
             } else {
+              console.log(`[candidate-lifecycle] ${decision.candidateId} EVALUATED`, {
+                shouldMaterializeBasic: true,
+                layer1State: pipelineResult.layer1.state,
+                insightDetected: pipelineResult.layer2?.hasInsight ?? false,
+                finalDecision: "PIPELINE_BLOCKED",
+                blockReason: pipelineResult.layer2?.reason ?? pipelineResult.layer1.reason,
+              });
               log.stages.materialization.blocked = true;
               log.stages.materialization.blockReason = `Pipeline: ${pipelineResult.layer1.state} — ${pipelineResult.layer2?.reason ?? pipelineResult.layer1.reason}`;
               (log as any).accumulation.materializeResult = `PIPELINE_BLOCKED: state=${pipelineResult.layer1.state}`;
             }
           } else {
+            console.log(`[candidate-lifecycle] ${decision.candidateId} EVALUATED`, {
+              shouldMaterializeBasic: false,
+              confidence: parseFloat(confidence.toFixed(3)),
+              totalMessages: totalMsgs,
+              reason: `confidence ${confidence.toFixed(3)} < 0.72 or messages ${totalMsgs} < ${MIN_EVIDENCE_MESSAGES}`,
+            });
             log.stages.materialization.blocked = true;
             log.stages.materialization.blockReason = `Confidence ${confidence.toFixed(3)} below threshold (0.72) or messages ${totalMsgs} < ${MIN_EVIDENCE_MESSAGES}`;
             (log as any).accumulation.materializeResult = `NOT_READY: confidence=${confidence.toFixed(3)}, threshold=0.72, messages=${totalMsgs}, minRequired=${MIN_EVIDENCE_MESSAGES}`;
@@ -406,6 +520,14 @@ export async function runIntelligenceEngine(
           ctx.nodes,
         );
         log.stages.routing.confidence = confidence;
+
+        const newCandidateMsgCount = decision.segment.messageIds.length;
+        console.log(`[candidate-lifecycle] NEW CREATED`, {
+          segmentCount: 1,
+          messageCount: newCandidateMsgCount,
+          confidence: parseFloat(confidence.toFixed(3)),
+          embeddingDim: frozenSegmentEmbedding.length,
+        });
 
         result.mutations.push({
           type: "create_candidate",
@@ -540,7 +662,76 @@ export async function runIntelligenceEngine(
       }
     }
 
+    // ─── Stage 8: GRAPH BOOTSTRAP FALLBACK ─────────────────────────────
+    // Safety net: if no nodes exist after 4+ substantive messages, create one.
+    // Idempotent: re-queries DB immediately before creating to prevent race conditions.
+    if (result.nodesCreated === 0 && ctx.nodes.length === 0) {
+      const db2 = createServerSupabaseClient();
+
+      // Re-query ground truth — another concurrent run may have already created a node
+      const { data: existingNodes } = await db2
+        .from("nodes")
+        .select("id")
+        .eq("conversation_id", conversationId)
+        .limit(1);
+
+      if (existingNodes && existingNodes.length > 0) {
+        console.log("[graph-bootstrap] skipped: node already exists (concurrent run)");
+      } else {
+        const { data: allMsgs } = await db2
+          .from("messages")
+          .select("id, role, content")
+          .eq("conversation_id", conversationId)
+          .is("parent_node_id", null)
+          .order("created_at", { ascending: true });
+
+        const substantiveUserMsgs = (allMsgs ?? []).filter(
+          (m: any) => m.role === "user" && m.content.length > 20,
+        );
+
+        if (substantiveUserMsgs.length >= 4) {
+          const recentMsgs = (allMsgs ?? []).slice(-10) as Array<{ id: string; role: string; content: string }>;
+          const formatted = recentMsgs
+            .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+            .join("\n")
+            .slice(0, 4000);
+
+          const nodeResult = await aiMaterializeNode(formatted, "");
+          if (nodeResult) {
+            const nodeId = crypto.randomUUID();
+            const nodeEmbedding = await generateEmbedding(
+              `Title: ${nodeResult.title}\nSummary: ${nodeResult.summary}`,
+            ).catch(() => [] as number[]);
+
+            result.mutations.push({
+              type: "materialize",
+              candidateId: "",
+              nodeId,
+              title: nodeResult.title,
+              summary: nodeResult.summary,
+              messageIds: recentMsgs.map((m) => m.id),
+              embedding: nodeEmbedding,
+              position: { x: 0, y: 0 },
+            });
+            result.nodesCreated++;
+            console.log("[graph-bootstrap] created initial node:", nodeResult.title);
+          } else {
+            console.log("[graph-bootstrap] skipped: AI node generation returned null");
+          }
+        } else {
+          console.log("[graph-bootstrap] skipped: only", substantiveUserMsgs.length, "substantive user messages (need 4+)");
+        }
+      }
+    }
+
     // ─── Stage 9: PERSIST ───────────────────────────────────────────────
+    console.log(">>> Pre-persist summary:", {
+      mutationCount: result.mutations.length,
+      mutationTypes: result.mutations.map((m) => m.type),
+      nodesCreated: result.nodesCreated,
+      nodesExtended: result.nodesExtended,
+      edgesAdded: result.edgesAdded,
+    });
     log.stages.persistence.mutationsApplied = result.mutations.length;
     log.stages.persistence.totalNodesAfter = ctx.nodes.length + result.nodesCreated;
     log.stages.persistence.totalEdgesAfter = ctx.edges.length + result.edgesAdded - result.edgesRemoved;
@@ -548,6 +739,7 @@ export async function runIntelligenceEngine(
 
   } catch (err) {
     log.error = err instanceof Error ? err.message : String(err);
+    console.error(">>> ENGINE CAUGHT ERROR:", err);
     errorLog("[engine] Engine failed (non-fatal):", err);
   }
 

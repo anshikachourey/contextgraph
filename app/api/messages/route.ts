@@ -66,11 +66,17 @@ export async function POST(
       engineRan = true;
       nodesCreated = engineResult.nodesCreated;
       nodesExtended = engineResult.nodesExtended;
-      if (nodesCreated > 0 || nodesExtended > 0) {
-        console.log(
-          `[messages] Intelligence engine: ${nodesCreated} created, ${nodesExtended} extended, +${engineResult.edgesAdded}/-${engineResult.edgesRemoved} edges`,
-        );
-      }
+
+      // Always log engine result for debugging
+      console.log("[messages] Engine result:", {
+        engineRan: true,
+        nodesCreated: engineResult.nodesCreated,
+        nodesExtended: engineResult.nodesExtended,
+        edgesAdded: engineResult.edgesAdded,
+        edgesRemoved: engineResult.edgesRemoved,
+        mutationCount: engineResult.mutations.length,
+        mutationTypes: engineResult.mutations.map((m) => m.type),
+      });
     } catch (err) {
       console.error("[messages] Intelligence engine failed (non-fatal):", err);
     }

@@ -79,10 +79,12 @@ Return JSON:
         return { state, reason: parsed.reason as string };
       }
     }
-    // Default to developing if parsing fails
-    return { state: "developing", reason: "Could not classify — defaulting to developing" };
-  } catch {
-    return { state: "developing", reason: "Classification failed — defaulting to developing" };
+    // Default to concluded if parsing fails (don't block materialization)
+    return { state: "concluded", reason: "Could not classify — defaulting to concluded (fail-open)" };
+  } catch (err) {
+    console.error("[materialization-pipeline] Layer 1 API error:", err instanceof Error ? err.message : err);
+    // Fail-open: if the API is unreachable, don't block materialization
+    return { state: "concluded", reason: "API error — fail-open to concluded" };
   }
 }
 
@@ -140,9 +142,12 @@ Return JSON:
         reason: parsed.reason as string,
       };
     }
-    return { hasInsight: false, insightStatement: null, confidence: 0, reason: "Detection failed" };
-  } catch {
-    return { hasInsight: false, insightStatement: null, confidence: 0, reason: "Detection error" };
+    // Fail-open: if parsing fails, assume insight exists (don't block materialization)
+    return { hasInsight: true, insightStatement: null, confidence: 0.5, reason: "Parse failed — fail-open" };
+  } catch (err) {
+    console.error("[materialization-pipeline] Layer 2 API error:", err instanceof Error ? err.message : err);
+    // Fail-open: if the API is unreachable, don't block materialization
+    return { hasInsight: true, insightStatement: null, confidence: 0.5, reason: "API error — fail-open" };
   }
 }
 
@@ -161,7 +166,7 @@ export async function evaluateMaterializationReadiness(
 ): Promise<PipelineResult> {
   // Force materialization if candidate has waited too long
   if (runsSinceCreation >= MAX_LAYER_WAIT) {
-    infoLog("[materialization-pipeline] Forced by MAX_LAYER_WAIT", { runsSinceCreation });
+    console.log("[materialization-pipeline] Forced by MAX_LAYER_WAIT", { runsSinceCreation });
     return {
       shouldMaterialize: true,
       layer1: { state: "concluded", reason: `Forced after ${runsSinceCreation} runs (MAX_LAYER_WAIT=${MAX_LAYER_WAIT})` },
@@ -172,10 +177,12 @@ export async function evaluateMaterializationReadiness(
   }
 
   // Layer 1: Classify conversation state
+  console.log("[materialization-pipeline] Running Layer 1 (state classification)...");
   const layer1 = await classifyConversationState(formattedMessages);
-  debugLog("[materialization-pipeline] Layer 1", layer1);
+  console.log("[materialization-pipeline] Layer 1 result:", layer1);
 
   if (layer1.state === "exploring") {
+    console.log("[materialization-pipeline] BLOCKED by Layer 1: still exploring");
     return {
       shouldMaterialize: false,
       layer1,
@@ -186,10 +193,12 @@ export async function evaluateMaterializationReadiness(
   }
 
   // Layer 2: Detect insight (only if developing or concluded)
+  console.log("[materialization-pipeline] Running Layer 2 (insight detection)...");
   const layer2 = await detectInsight(formattedMessages);
-  debugLog("[materialization-pipeline] Layer 2", layer2);
+  console.log("[materialization-pipeline] Layer 2 result:", layer2);
 
   if (!layer2.hasInsight) {
+    console.log("[materialization-pipeline] BLOCKED by Layer 2: no insight detected");
     return {
       shouldMaterialize: false,
       layer1,
@@ -200,11 +209,7 @@ export async function evaluateMaterializationReadiness(
   }
 
   // Layer 3: Ready to materialize — pass insight as seed
-  infoLog("[materialization-pipeline] Insight crystallized", {
-    state: layer1.state,
-    insight: layer2.insightStatement,
-    confidence: layer2.confidence,
-  });
+  console.log("[materialization-pipeline] APPROVED — insight crystallized:", layer2.insightStatement);
 
   return {
     shouldMaterialize: true,

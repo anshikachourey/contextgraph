@@ -42,6 +42,15 @@ export const USER_LOCAL_THRESHOLD = 0.45;
 export const USER_CENTROID_THRESHOLD_EARLY = 0.35;
 export const USER_LOCAL_THRESHOLD_EARLY = 0.35;
 
+/**
+ * Maximum exchanges before forcing a segment freeze.
+ * Prevents the open segment from growing indefinitely in long
+ * conversations where similarity stays high (centroid dilution).
+ * After this many exchanges, the segment freezes and becomes a candidate
+ * regardless of similarity scores.
+ */
+export const MAX_SEGMENT_EXCHANGES = 5;
+
 // ─── Routing ────────────────────────────────────────────────────────────────
 
 /** Match above this → extend existing node silently. */
