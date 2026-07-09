@@ -16,8 +16,8 @@ export { AI_PROVIDER, EMBEDDING_PROVIDER, CHAT_MODEL, NODE_MODEL, EDGE_MODEL, GR
 export { generateChatResponse } from "./chat";
 
 // Domain functions — Graph
-export { materializeNode, generateSemanticEdge, synthesizeLocalGraph, generateEvidenceSummary, generateGraphSummary } from "./graph";
-export type { MaterializeNodeResult, SemanticEdgeResult, SynthesisResult } from "./graph";
+export { materializeNode, generateSemanticEdge, synthesizeLocalGraph, generateEvidenceSummary, generateGraphSummary, checkExtendOrNewNode } from "./graph";
+export type { MaterializeNodeResult, SemanticEdgeResult, SynthesisResult, ExtendCheckResult } from "./graph";
 
 // Domain functions — Embeddings
 export { buildNodeEmbeddingText } from "./embeddings";

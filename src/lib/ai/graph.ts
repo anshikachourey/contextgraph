@@ -254,3 +254,72 @@ export async function generateGraphSummary(
     return null;
   }
 }
+
+// ─── Extend vs. New Node Differentiation ────────────────────────────────────
+
+export type ExtendCheckResult = {
+  decision: "extend" | "new_node";
+  reason: string;
+  relationship_type?: string;
+  edge_explanation?: string;
+};
+
+export async function checkExtendOrNewNode(
+  existingNodeTitle: string,
+  existingNodeSummary: string,
+  newSegmentText: string,
+): Promise<ExtendCheckResult> {
+  try {
+    const result = await complete({
+      model: NODE_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: `You decide whether a new conversation segment belongs to an existing knowledge graph node or represents a distinct new idea.
+
+EXISTING NODE:
+Title: "${existingNodeTitle}"
+Summary: "${existingNodeSummary}"
+
+Decide:
+- "extend": the segment is genuinely the SAME durable idea being refined, deepened, or continued. Same core insight, same realization.
+- "new_node": the segment is a DIFFERENT but related idea. It may share context or vocabulary, but represents a distinct realization, perspective, or theme.
+
+Prefer "new_node" when:
+- The emotional tone or personal meaning is different
+- A new conclusion or realization emerged
+- The focus shifted to a different aspect of the topic
+- A cause/effect/evolution relationship exists (idea A led to idea B)
+
+Return JSON:
+{
+  "decision": "extend" | "new_node",
+  "reason": "<one sentence>",
+  "relationship_type": "<if new_node: verb phrase like 'led to', 'deepened into', 'reframed as', 'contrasts with', 'practical application of'>",
+  "edge_explanation": "<if new_node: one sentence explaining how these ideas connect>"
+}`,
+        },
+        {
+          role: "user",
+          content: `NEW SEGMENT:\n${newSegmentText.slice(0, 2000)}\n\nIs this the same idea as the existing node, or a new related idea? Return JSON only.`,
+        },
+      ],
+      temperature: 0.3,
+      maxTokens: 200,
+    });
+
+    const parsed = parseJsonFromLLM(result.content) as Record<string, unknown> | null;
+    if (parsed && (parsed.decision === "extend" || parsed.decision === "new_node")) {
+      return {
+        decision: parsed.decision as "extend" | "new_node",
+        reason: (parsed.reason as string) ?? "",
+        relationship_type: parsed.decision === "new_node" ? (parsed.relationship_type as string) ?? "related to" : undefined,
+        edge_explanation: parsed.decision === "new_node" ? (parsed.edge_explanation as string) ?? "" : undefined,
+      };
+    }
+    // Default to new_node if parsing fails — prefer graph diversity
+    return { decision: "new_node", reason: "Parse failed — defaulting to new_node" };
+  } catch {
+    return { decision: "new_node", reason: "API error — defaulting to new_node" };
+  }
+}

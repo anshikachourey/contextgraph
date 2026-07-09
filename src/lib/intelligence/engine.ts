@@ -15,7 +15,7 @@ import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { generateEmbedding } from "@/src/lib/embeddings";
 import { cosineSimilarity } from "@/src/lib/cosineSimilarity";
 import { parseJsonFromLLM, isTitleSummaryResponse } from "@/src/lib/llmJson";
-import { materializeNode as aiMaterializeNode, generateSemanticEdge as aiGenerateSemanticEdge, synthesizeLocalGraph as aiSynthesizeLocalGraph } from "@/src/lib/ai";
+import { materializeNode as aiMaterializeNode, generateSemanticEdge as aiGenerateSemanticEdge, synthesizeLocalGraph as aiSynthesizeLocalGraph, checkExtendOrNewNode as aiCheckExtendOrNew } from "@/src/lib/ai";
 import {
   STALE_PROMOTION_THRESHOLD,
   STALE_PROMOTION_RUNS,
@@ -383,14 +383,81 @@ export async function runIntelligenceEngine(
       log.stages.routing.decision = decision.type;
 
       if (decision.type === "extend_node") {
-        result.mutations.push({
-          type: "extend_node",
-          nodeId: decision.nodeId,
-          messageIds: decision.messageIds,
-        });
-        result.nodesExtended++;
-        affectedNodeId = decision.nodeId;
-        affectedNodeEmbedding = ctx.nodes.find((n) => n.id === decision.nodeId)?.embedding ?? null;
+        // LLM check: is this genuinely the same idea, or a new related idea?
+        const existingNode = ctx.nodes.find((n) => n.id === decision.nodeId);
+        if (existingNode) {
+          const segmentText = await loadSegmentText(frozenSegmentMessageIds);
+          const extendCheck = await aiCheckExtendOrNew(
+            existingNode.title,
+            existingNode.summary,
+            segmentText,
+          );
+
+          console.log("[engine] Extend check:", {
+            existingNode: existingNode.title,
+            decision: extendCheck.decision,
+            reason: extendCheck.reason,
+          });
+
+          if (extendCheck.decision === "extend") {
+            // Genuinely the same idea — extend normally
+            result.mutations.push({
+              type: "extend_node",
+              nodeId: decision.nodeId,
+              messageIds: decision.messageIds,
+            });
+            result.nodesExtended++;
+            affectedNodeId = decision.nodeId;
+            affectedNodeEmbedding = existingNode.embedding;
+            log.stages.routing.nodeId = decision.nodeId;
+          } else {
+            // New related idea — create a new node and connect with edge
+            console.log("[engine] → Creating new node instead of extending:", extendCheck.reason);
+
+            const nodeResult = await aiMaterializeNode(segmentText, `• "${existingNode.title}" — ${existingNode.summary}`);
+            if (nodeResult) {
+              const nodeId = crypto.randomUUID();
+              const nodeEmbedding = await generateEmbedding(
+                `Title: ${nodeResult.title}\nSummary: ${nodeResult.summary}`,
+              ).catch(() => frozenSegmentEmbedding);
+
+              result.mutations.push({
+                type: "materialize",
+                candidateId: "",
+                nodeId,
+                title: nodeResult.title,
+                summary: nodeResult.summary,
+                messageIds: frozenSegmentMessageIds,
+                embedding: nodeEmbedding,
+                position: computeNewNodePosition(nodeEmbedding, ctx.nodes),
+              });
+              result.nodesCreated++;
+              affectedNodeId = nodeId;
+              affectedNodeEmbedding = nodeEmbedding;
+
+              // Create semantic edge between old and new node
+              result.mutations.push({
+                type: "add_edge",
+                sourceNodeId: decision.nodeId,
+                targetNodeId: nodeId,
+                similarity: 0.7,
+                relationship_type: extendCheck.relationship_type ?? "related to",
+                explanation: extendCheck.edge_explanation ?? "",
+              });
+              result.edgesAdded++;
+
+              console.log("[engine] → New node created:", nodeResult.title, "edge:", extendCheck.relationship_type);
+            }
+          }
+        } else {
+          // Node not found — fall through to extend anyway
+          result.mutations.push({
+            type: "extend_node",
+            nodeId: decision.nodeId,
+            messageIds: decision.messageIds,
+          });
+          result.nodesExtended++;
+        }
         log.stages.routing.nodeId = decision.nodeId;
 
       } else if (decision.type === "accumulate") {
@@ -1039,6 +1106,21 @@ async function materializeToNode(
 }
 
 // ─── Helper: load formatted messages for a candidate ────────────────────────
+
+async function loadSegmentText(messageIds: string[]): Promise<string> {
+  if (messageIds.length === 0) return "";
+  const db = createServerSupabaseClient();
+  const { data: msgData } = await db
+    .from("messages")
+    .select("role, content")
+    .in("id", messageIds)
+    .order("created_at", { ascending: true });
+  if (!msgData || msgData.length === 0) return "";
+  return (msgData as Array<{ role: string; content: string }>)
+    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+    .join("\n")
+    .slice(0, 4000);
+}
 
 async function loadCandidateMessages(candidate: CandidateState): Promise<string> {
   const messageIds = [...new Set(candidate.segments.flatMap((s) => s.messageIds))];
