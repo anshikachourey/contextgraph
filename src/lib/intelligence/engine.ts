@@ -730,20 +730,20 @@ export async function runIntelligenceEngine(
     }
 
     // ─── Stage 8: GRAPH BOOTSTRAP FALLBACK ─────────────────────────────
-    // Safety net: if no nodes exist after 4+ substantive messages, create one.
-    // Idempotent: re-queries DB immediately before creating to prevent race conditions.
-    if (result.nodesCreated === 0 && ctx.nodes.length === 0) {
+    // Truly idempotent: uses INSERT placeholder to claim, then populates.
+    // Also skips if this run already created a node.
+    if (result.nodesCreated === 0 && ctx.nodes.length === 0 &&
+        !result.mutations.some((m) => m.type === "materialize")) {
       const db2 = createServerSupabaseClient();
 
-      // Re-query ground truth — another concurrent run may have already created a node
-      const { data: existingNodes } = await db2
+      // Count existing nodes (fresh DB query)
+      const { count } = await db2
         .from("nodes")
-        .select("id")
-        .eq("conversation_id", conversationId)
-        .limit(1);
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", conversationId);
 
-      if (existingNodes && existingNodes.length > 0) {
-        console.log("[graph-bootstrap] skipped: node already exists (concurrent run)");
+      if ((count ?? 0) > 0) {
+        console.log("[graph-bootstrap] skipped: node already exists in DB");
       } else {
         const { data: allMsgs } = await db2
           .from("messages")
@@ -757,36 +757,119 @@ export async function runIntelligenceEngine(
         );
 
         if (substantiveUserMsgs.length >= 4) {
-          const recentMsgs = (allMsgs ?? []).slice(-10) as Array<{ id: string; role: string; content: string }>;
-          const formatted = recentMsgs
-            .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
-            .join("\n")
-            .slice(0, 4000);
+          // Claim bootstrap slot with placeholder (blocks concurrent runs)
+          const nodeId = crypto.randomUUID();
+          const { error: claimErr } = await db2.from("nodes").insert({
+            id: nodeId,
+            conversation_id: conversationId,
+            title: "__bootstrap_pending__",
+            summary: "",
+          });
 
-          const nodeResult = await aiMaterializeNode(formatted, "");
-          if (nodeResult) {
-            const nodeId = crypto.randomUUID();
-            const nodeEmbedding = await generateEmbedding(
-              `Title: ${nodeResult.title}\nSummary: ${nodeResult.summary}`,
-            ).catch(() => [] as number[]);
-
-            result.mutations.push({
-              type: "materialize",
-              candidateId: "",
-              nodeId,
-              title: nodeResult.title,
-              summary: nodeResult.summary,
-              messageIds: recentMsgs.map((m) => m.id),
-              embedding: nodeEmbedding,
-              position: { x: 0, y: 0 },
-            });
-            result.nodesCreated++;
-            console.log("[graph-bootstrap] created initial node:", nodeResult.title);
+          if (claimErr) {
+            console.log("[graph-bootstrap] skipped: claim failed (concurrent run)");
           } else {
-            console.log("[graph-bootstrap] skipped: AI node generation returned null");
+            const recentMsgs = (allMsgs ?? []).slice(-10) as Array<{ id: string; role: string; content: string }>;
+            const formatted = recentMsgs
+              .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+              .join("\n")
+              .slice(0, 4000);
+
+            const nodeResult = await aiMaterializeNode(formatted, "");
+            if (nodeResult) {
+              const nodeEmbedding = await generateEmbedding(
+                `Title: ${nodeResult.title}\nSummary: ${nodeResult.summary}`,
+              ).catch(() => [] as number[]);
+
+              // Populate the placeholder
+              await db2.from("nodes").update({
+                title: nodeResult.title,
+                summary: nodeResult.summary,
+                embedding: nodeEmbedding,
+              }).eq("id", nodeId);
+
+              // Link messages
+              const links = recentMsgs.map((m) => ({ node_id: nodeId, message_id: m.id }));
+              await db2.from("node_messages").insert(links);
+
+              result.nodesCreated++;
+              affectedNodeId = nodeId;
+              affectedNodeEmbedding = nodeEmbedding;
+              console.log("[graph-bootstrap] created initial node:", nodeResult.title);
+            } else {
+              await db2.from("nodes").delete().eq("id", nodeId);
+              console.log("[graph-bootstrap] skipped: AI returned null");
+            }
           }
         } else {
-          console.log("[graph-bootstrap] skipped: only", substantiveUserMsgs.length, "substantive user messages (need 4+)");
+          console.log("[graph-bootstrap] skipped:", substantiveUserMsgs.length, "msgs (need 4+)");
+        }
+      }
+    }
+
+    // ─── Stage 8b: PROACTIVE EDGE CREATION ───────────────────────────────
+    // After any node is created/extended, connect it to related existing nodes
+    if (affectedNodeId && affectedNodeEmbedding && affectedNodeEmbedding.length > 0) {
+      const db3 = createServerSupabaseClient();
+      const { data: allNodes } = await db3
+        .from("nodes")
+        .select("id, title, summary, embedding")
+        .eq("conversation_id", conversationId)
+        .neq("title", "__bootstrap_pending__");
+
+      const otherNodes = (allNodes ?? [])
+        .filter((n: any) => n.id !== affectedNodeId && Array.isArray(n.embedding) && n.embedding.length > 0);
+
+      if (otherNodes.length > 0) {
+        // Check existing edges
+        const { data: existEdges } = await db3
+          .from("edges")
+          .select("source_node_id, target_node_id")
+          .eq("conversation_id", conversationId);
+        const edgeSet = new Set(
+          (existEdges ?? []).map((e: any) => `${e.source_node_id}:${e.target_node_id}`),
+        );
+
+        // Get affected node's title/summary
+        const affectedMutation = result.mutations.find(
+          (m) => m.type === "materialize" && m.nodeId === affectedNodeId,
+        ) as any;
+        const affectedInfo = affectedMutation
+          ? { title: affectedMutation.title, summary: affectedMutation.summary }
+          : (allNodes ?? []).find((n: any) => n.id === affectedNodeId) as any ?? { title: "", summary: "" };
+
+        // Top 2 neighbors by similarity
+        const neighbors = otherNodes
+          .map((n: any) => ({ ...n, sim: cosineSimilarity(affectedNodeEmbedding!, n.embedding) }))
+          .sort((a: any, b: any) => b.sim - a.sim)
+          .slice(0, 2);
+
+        for (const nb of neighbors) {
+          const pairA = `${affectedNodeId}:${nb.id}`;
+          const pairB = `${nb.id}:${affectedNodeId}`;
+          if (edgeSet.has(pairA) || edgeSet.has(pairB)) continue;
+
+          const edgeResult = await aiGenerateSemanticEdge(
+            affectedInfo.title, affectedInfo.summary,
+            nb.title, nb.summary,
+          );
+
+          if (edgeResult && edgeResult.relationship_type && edgeResult.relationship_type !== "related") {
+            const [src, tgt] = edgeResult.direction === "b_to_a"
+              ? [nb.id, affectedNodeId]
+              : [affectedNodeId, nb.id];
+
+            result.mutations.push({
+              type: "add_edge",
+              sourceNodeId: src,
+              targetNodeId: tgt,
+              similarity: nb.sim,
+              relationship_type: edgeResult.relationship_type,
+              explanation: edgeResult.explanation,
+            });
+            result.edgesAdded++;
+            console.log("[engine] Proactive edge:", affectedInfo.title, "→", nb.title, ":", edgeResult.relationship_type);
+          }
         }
       }
     }
