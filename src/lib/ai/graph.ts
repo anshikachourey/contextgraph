@@ -35,13 +35,22 @@ ${neighborContext ? `EXISTING NEARBY NODES (differentiate from these — capture
   "summary": "<what was concluded, learned, or understood — max 300 chars — answer 'What insight emerged?' not 'What was discussed?'>"
 }
 
-RULES:
+PROVENANCE RULES (CRITICAL):
+- Every claim about the user's emotions, motivations, coping mechanisms, or beliefs MUST be directly supported by what the USER said.
+- Do NOT infer psychological connections the user did not explicitly make.
+- If the user discussed anxiety and then separately requested a translation, do NOT claim "music is a coping mechanism" unless the user explicitly stated that connection.
+- Assistant interpretations or suggestions are NOT evidence of user intent.
+- Temporal adjacency is NOT evidence of causal relationship.
+- If the content contains unrelated requests (translations, lookups), IGNORE them — they are not part of any insight.
+
+STYLE RULES:
 - Titles should read like essay titles or personal realizations, not topic categories
 - Summaries should articulate conclusions, not replay the conversation
 - Capture emotional themes and personal reflections when present
 - Focus on WHY something matters to the person, not just WHAT was said
 
 BAD (topic labels): "Exploring Rock Music", "Discussion About Art Decline", "Understanding Personal Growth"
+BAD (hallucinated): "Music as Emotional Anchor", "Songs as Coping When Words Fail"
 GOOD (insights): "Searching for Art That Feels Exciting Again", "Rock as the Sound of Authentic Emotion", "Building an Interesting Persona Through Distinct Taste"
 
 BAD (summaries that replay): "They discussed how art has declined and talked about rock music"

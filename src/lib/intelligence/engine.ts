@@ -36,6 +36,7 @@ import {
 } from "./stages";
 import { assignNodeToNeighborhood } from "./neighborhoods";
 import { evaluateMaterializationReadiness, MAX_LAYER_WAIT } from "./materialization-pipeline";
+import { classifySegmentAction, checkTargetCompatibility } from "./action-classifier";
 import { debugLog, infoLog, errorLog, emitPipelineLog } from "./logger";
 import type { ChatMessage } from "@/src/types/message";
 import type {
@@ -367,263 +368,151 @@ export async function runIntelligenceEngine(
     if (segmentFrozen && frozenSegmentMessageIds.length >= 2) {
       log.stages.routing.segmentMessageCount = frozenSegmentMessageIds.length;
 
-      const decision = routeSegment(
-        frozenSegmentEmbedding,
-        frozenSegmentMessageIds,
-        ctx.nodes,
-        ctx.candidates,
-      );
+      // ─── Action Classification (replaces pure cosine routing) ─────────
+      const segmentText = await loadSegmentText(frozenSegmentMessageIds);
+      const graphContext = {
+        nodes: ctx.nodes.map((n) => ({ id: n.id, title: n.title, summary: n.summary })),
+        candidates: ctx.candidates.map((c) => ({
+          id: c.id,
+          segmentCount: c.segments.length,
+          messageCount: c.segments.reduce((s, seg) => s + seg.messageIds.length, 0),
+        })),
+      };
 
-      console.log("[engine] Routing decision:", {
-        type: decision.type,
-        candidateId: decision.type === "accumulate" ? decision.candidateId : null,
-        nodeId: decision.type === "extend_node" ? decision.nodeId : null,
+      const actionResult = await classifySegmentAction(segmentText, graphContext);
+
+      console.log("[engine] Action classification:", {
+        action: actionResult.action,
+        targetId: actionResult.targetId?.slice(0, 8) ?? null,
+        reasoning: actionResult.reasoning,
       });
+      log.stages.routing.decision = actionResult.action;
 
-      log.stages.routing.decision = decision.type;
+      // Execute the classified action
+      if (actionResult.action === "discard") {
+        // No graph value — skip entirely
+        console.log("[engine] → Segment discarded:", actionResult.reasoning);
 
-      if (decision.type === "extend_node") {
-        // LLM check: is this genuinely the same idea, or a new related idea?
-        const existingNode = ctx.nodes.find((n) => n.id === decision.nodeId);
-        if (existingNode) {
-          const segmentText = await loadSegmentText(frozenSegmentMessageIds);
-          const extendCheck = await aiCheckExtendOrNew(
-            existingNode.title,
-            existingNode.summary,
-            segmentText,
-          );
+      } else if (actionResult.action === "defer_decision") {
+        // Not enough info — skip for now
+        console.log("[engine] → Segment deferred:", actionResult.reasoning);
 
-          console.log("[engine] Extend check:", {
-            existingNode: existingNode.title,
-            decision: extendCheck.decision,
-            reason: extendCheck.reason,
+      } else if (actionResult.action === "extend_existing_node" || actionResult.action === "attach_as_supporting_evidence") {
+        // Compatibility gate: verify shared proposition before extending
+        const targetNode = actionResult.targetId
+          ? ctx.nodes.find((n) => n.id === actionResult.targetId)
+          : ctx.nodes[0];
+
+        if (targetNode) {
+          const targetDesc = `"${targetNode.title}" — ${targetNode.summary}`;
+          const compat = await checkTargetCompatibility(segmentText, targetDesc);
+
+          console.log("[engine] Compatibility gate (node):", {
+            target: targetNode.title,
+            compatible: compat.compatible,
+            sharedIdea: compat.sharedIdea,
+            reason: compat.reason,
           });
 
-          if (extendCheck.decision === "extend") {
-            // Genuinely the same idea — extend normally
+          if (compat.compatible) {
             result.mutations.push({
               type: "extend_node",
-              nodeId: decision.nodeId,
-              messageIds: decision.messageIds,
+              nodeId: targetNode.id,
+              messageIds: frozenSegmentMessageIds,
             });
             result.nodesExtended++;
-            affectedNodeId = decision.nodeId;
-            affectedNodeEmbedding = existingNode.embedding;
-            log.stages.routing.nodeId = decision.nodeId;
+            affectedNodeId = targetNode.id;
+            affectedNodeEmbedding = targetNode.embedding;
+            log.stages.routing.nodeId = targetNode.id;
+            console.log("[engine] → Extended node:", targetNode.title);
           } else {
-            // New related idea — create a new node and connect with edge
-            console.log("[engine] → Creating new node instead of extending:", extendCheck.reason);
-
-            const nodeResult = await aiMaterializeNode(segmentText, `• "${existingNode.title}" — ${existingNode.summary}`);
-            if (nodeResult) {
-              const nodeId = crypto.randomUUID();
-              const nodeEmbedding = await generateEmbedding(
-                `Title: ${nodeResult.title}\nSummary: ${nodeResult.summary}`,
-              ).catch(() => frozenSegmentEmbedding);
-
-              result.mutations.push({
-                type: "materialize",
-                candidateId: "",
-                nodeId,
-                title: nodeResult.title,
-                summary: nodeResult.summary,
-                messageIds: frozenSegmentMessageIds,
-                embedding: nodeEmbedding,
-                position: computeNewNodePosition(nodeEmbedding, ctx.nodes),
-              });
-              result.nodesCreated++;
-              affectedNodeId = nodeId;
-              affectedNodeEmbedding = nodeEmbedding;
-
-              // Create semantic edge between old and new node
-              result.mutations.push({
-                type: "add_edge",
-                sourceNodeId: decision.nodeId,
-                targetNodeId: nodeId,
-                similarity: 0.7,
-                relationship_type: extendCheck.relationship_type ?? "related to",
-                explanation: extendCheck.edge_explanation ?? "",
-              });
-              result.edgesAdded++;
-
-              console.log("[engine] → New node created:", nodeResult.title, "edge:", extendCheck.relationship_type);
-            }
+            // Incompatible — reclassify as discard or new candidate
+            console.log("[engine] → Compatibility REJECTED. Deferring segment.");
+            // Don't force a candidate — just discard or defer
           }
-        } else {
-          // Node not found — fall through to extend anyway
-          result.mutations.push({
-            type: "extend_node",
-            nodeId: decision.nodeId,
-            messageIds: decision.messageIds,
-          });
-          result.nodesExtended++;
         }
-        log.stages.routing.nodeId = decision.nodeId;
 
-      } else if (decision.type === "accumulate") {
-        const candidate = ctx.candidates.find((c) => c.id === decision.candidateId);
-        log.stages.routing.candidateId = decision.candidateId;
+      } else if (actionResult.action === "extend_existing_candidate") {
+        // Compatibility gate for candidate extension
+        const targetCandidate = actionResult.targetId
+          ? ctx.candidates.find((c) => c.id === actionResult.targetId)
+          : ctx.candidates[0];
 
-        if (candidate) {
-          const oldSegmentCount = candidate.segments.length;
-          const oldConfidence = candidate.confidence;
-          const newSegments = [...candidate.segments, decision.segment];
-          const newEmbedding = computeCentroid(newSegments);
-          const confidence = computeConfidence(
-            { ...candidate, segments: newSegments, embedding: newEmbedding },
-            ctx.nodes,
-          );
-          const totalMsgs = newSegments.reduce((s, seg) => s + seg.messageIds.length, 0);
+        if (targetCandidate) {
+          // Build target description from candidate's existing segments
+          const candidateDesc = targetCandidate.segments.length > 0
+            ? `Candidate with ${targetCandidate.segments.length} segments, ${targetCandidate.segments.reduce((s, seg) => s + seg.messageIds.length, 0)} messages`
+            : "Emerging candidate";
 
-          console.log(`[candidate-lifecycle] ${decision.candidateId} ACCUMULATED`, {
-            segmentCount: newSegments.length,
-            messageCount: totalMsgs,
-            oldConfidence: parseFloat(oldConfidence.toFixed(3)),
-            newConfidence: parseFloat(confidence.toFixed(3)),
+          const compat = await checkTargetCompatibility(segmentText, candidateDesc);
+
+          console.log("[engine] Compatibility gate (candidate):", {
+            targetId: targetCandidate.id.slice(0, 8),
+            compatible: compat.compatible,
+            reason: compat.reason,
           });
 
-          log.stages.routing.confidence = confidence;
-
-          // Detailed accumulation logging
-          (log as any).accumulation = {
-            candidateId: decision.candidateId,
-            oldSegmentCount,
-            newSegmentCount: newSegments.length,
-            oldConfidence: parseFloat(oldConfidence.toFixed(3)),
-            newConfidence: parseFloat(confidence.toFixed(3)),
-          };
-
-          result.mutations.push({
-            type: "update_candidate",
-            candidateId: decision.candidateId,
-            segments: newSegments,
-            embedding: newEmbedding,
-            confidence,
-          });
-
-          // ─── Stage 4: MATERIALIZE check (three-layer pipeline) ──────
-          const updatedCandidate: CandidateState = {
-            ...candidate, segments: newSegments, embedding: newEmbedding, confidence,
-          };
-          log.stages.materialization.linkedMessageCount = totalMsgs;
-          log.stages.materialization.attempted = true;
-
-          const blockCheck = checkMaterializationBlock(updatedCandidate);
-          if (blockCheck.blocked) {
-            console.log(`[candidate-lifecycle] ${decision.candidateId} EVALUATED`, {
-              shouldMaterializeBasic: true,
-              blocked: true,
-              blockReason: blockCheck.reason,
-            });
-            log.stages.materialization.blocked = true;
-            log.stages.materialization.blockReason = blockCheck.reason;
-            (log as any).accumulation.materializeResult = `BLOCKED: ${blockCheck.reason}`;
-            result.mutations.push({
-              type: "block_candidate",
-              candidateId: decision.candidateId,
-              reason: blockCheck.reason,
-            });
-          } else if (shouldMaterialize(updatedCandidate, ctx.nodes)) {
-            // Three-layer pipeline: only materialize if insight has crystallized
-            const candidateMessages = await loadCandidateMessages(updatedCandidate);
-            const runsSinceCreation = ctx.engineState.totalRuns - (candidate.lastTouchedRun ?? 0);
-            const pipelineResult = await evaluateMaterializationReadiness(candidateMessages, runsSinceCreation);
-
-            (log as any).materializationPipeline = {
-              layer1State: pipelineResult.layer1.state,
-              layer1Reason: pipelineResult.layer1.reason,
-              insightDetected: pipelineResult.layer2?.hasInsight ?? false,
-              insightStatement: pipelineResult.insightSeed,
-              forcedByMaxWait: pipelineResult.forcedByMaxWait,
-              shouldMaterialize: pipelineResult.shouldMaterialize,
+          if (compat.compatible) {
+            const segment: SegmentData = {
+              messageIds: frozenSegmentMessageIds,
+              embedding: frozenSegmentEmbedding,
+              completedAt: new Date().toISOString(),
             };
+            const newSegments = [...targetCandidate.segments, segment];
+            const newEmbedding = computeCentroid(newSegments);
+            const confidence = computeConfidence(
+              { ...targetCandidate, segments: newSegments, embedding: newEmbedding },
+              ctx.nodes,
+            );
 
-            if (pipelineResult.shouldMaterialize) {
-              console.log(`[candidate-lifecycle] ${decision.candidateId} EVALUATED`, {
-                shouldMaterializeBasic: true,
-                layer1State: pipelineResult.layer1.state,
-                insightDetected: pipelineResult.layer2?.hasInsight ?? false,
-                finalDecision: "MATERIALIZE",
-              });
-              (log as any).accumulation.materializeResult = "APPROVED";
-              const node = await materializeToNode(conversationId, updatedCandidate, ctx, pipelineResult.insightSeed);
-              if (node) {
-                result.mutations.push(node.mutation);
-                result.nodesCreated++;
-                affectedNodeId = node.nodeId;
-                affectedNodeEmbedding = node.embedding;
-                log.stages.materialization.materialized = true;
-                log.stages.materialization.nodeId = node.nodeId;
-                log.stages.materialization.nodeTitle = (node.mutation as any).title;
-              }
-            } else {
-              console.log(`[candidate-lifecycle] ${decision.candidateId} EVALUATED`, {
-                shouldMaterializeBasic: true,
-                layer1State: pipelineResult.layer1.state,
-                insightDetected: pipelineResult.layer2?.hasInsight ?? false,
-                finalDecision: "PIPELINE_BLOCKED",
-                blockReason: pipelineResult.layer2?.reason ?? pipelineResult.layer1.reason,
-              });
-              log.stages.materialization.blocked = true;
-              log.stages.materialization.blockReason = `Pipeline: ${pipelineResult.layer1.state} — ${pipelineResult.layer2?.reason ?? pipelineResult.layer1.reason}`;
-              (log as any).accumulation.materializeResult = `PIPELINE_BLOCKED: state=${pipelineResult.layer1.state}`;
-            }
-          } else {
-            console.log(`[candidate-lifecycle] ${decision.candidateId} EVALUATED`, {
-              shouldMaterializeBasic: false,
-              confidence: parseFloat(confidence.toFixed(3)),
-              totalMessages: totalMsgs,
-              reason: `confidence ${confidence.toFixed(3)} < 0.72 or messages ${totalMsgs} < ${MIN_EVIDENCE_MESSAGES}`,
+            result.mutations.push({
+              type: "update_candidate",
+              candidateId: targetCandidate.id,
+              segments: newSegments,
+              embedding: newEmbedding,
+              confidence,
             });
-            log.stages.materialization.blocked = true;
-            log.stages.materialization.blockReason = `Confidence ${confidence.toFixed(3)} below threshold (0.72) or messages ${totalMsgs} < ${MIN_EVIDENCE_MESSAGES}`;
-            (log as any).accumulation.materializeResult = `NOT_READY: confidence=${confidence.toFixed(3)}, threshold=0.72, messages=${totalMsgs}, minRequired=${MIN_EVIDENCE_MESSAGES}`;
+            console.log(`[candidate-lifecycle] ${targetCandidate.id} ACCUMULATED (compatible)`, { confidence: confidence.toFixed(3) });
+          } else {
+            console.log("[engine] → Candidate compatibility REJECTED. Segment not attached.");
           }
         }
 
-      } else if (decision.type === "new_candidate") {
+      } else if (actionResult.action === "create_new_candidate") {
+        // Only this path enters the materialization pipeline
+        // Fall through to existing routing logic for candidate creation + materialization check
         const confidence = computeConfidence(
-          { id: "", segments: [decision.segment], embedding: frozenSegmentEmbedding, confidence: 0, lastTouchedRun: null },
+          { id: "", segments: [{ messageIds: frozenSegmentMessageIds, embedding: frozenSegmentEmbedding, completedAt: new Date().toISOString() }], embedding: frozenSegmentEmbedding, confidence: 0, lastTouchedRun: null },
           ctx.nodes,
         );
-        log.stages.routing.confidence = confidence;
 
-        const newCandidateMsgCount = decision.segment.messageIds.length;
-        console.log(`[candidate-lifecycle] NEW CREATED`, {
-          segmentCount: 1,
-          messageCount: newCandidateMsgCount,
-          confidence: parseFloat(confidence.toFixed(3)),
-          embeddingDim: frozenSegmentEmbedding.length,
-        });
+        const segment: SegmentData = {
+          messageIds: frozenSegmentMessageIds,
+          embedding: frozenSegmentEmbedding,
+          completedAt: new Date().toISOString(),
+        };
 
         result.mutations.push({
           type: "create_candidate",
-          segment: decision.segment,
+          segment,
           embedding: frozenSegmentEmbedding,
           confidence,
         });
 
-        // Check immediate materialization
-        const tempCandidate: CandidateState = {
-          id: "", segments: [decision.segment], embedding: frozenSegmentEmbedding, confidence, lastTouchedRun: null,
-        };
-        const totalMsgs = decision.segment.messageIds.length;
-        log.stages.materialization.linkedMessageCount = totalMsgs;
+        console.log(`[candidate-lifecycle] NEW CREATED`, {
+          messageCount: frozenSegmentMessageIds.length,
+          confidence: confidence.toFixed(3),
+          reasoning: actionResult.reasoning,
+        });
 
+        // Immediate materialization check via three-layer pipeline
+        const tempCandidate: CandidateState = {
+          id: "", segments: [segment], embedding: frozenSegmentEmbedding, confidence, lastTouchedRun: null,
+        };
         if (shouldMaterialize(tempCandidate, ctx.nodes)) {
-          // Three-layer pipeline for immediate materialization
           const candidateMessages = await loadCandidateMessages(tempCandidate);
           const pipelineResult = await evaluateMaterializationReadiness(candidateMessages, 0);
-
-          (log as any).materializationPipeline = {
-            layer1State: pipelineResult.layer1.state,
-            insightDetected: pipelineResult.layer2?.hasInsight ?? false,
-            insightStatement: pipelineResult.insightSeed,
-            shouldMaterialize: pipelineResult.shouldMaterialize,
-          };
-
           if (pipelineResult.shouldMaterialize) {
-            log.stages.materialization.attempted = true;
             const node = await materializeToNode(conversationId, tempCandidate, ctx, pipelineResult.insightSeed);
             if (node) {
               result.mutations.push(node.mutation);
@@ -769,36 +658,63 @@ export async function runIntelligenceEngine(
           if (claimErr) {
             console.log("[graph-bootstrap] skipped: claim failed (concurrent run)");
           } else {
-            const recentMsgs = (allMsgs ?? []).slice(-10) as Array<{ id: string; role: string; content: string }>;
-            const formatted = recentMsgs
-              .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
-              .join("\n")
-              .slice(0, 4000);
+            // ─── USER-EVIDENCE-ONLY BOOTSTRAP ───────────────────────────
+            // Only user messages are ground truth. Assistant messages are excluded.
+            // Select a coherent cluster of user messages sharing one proposition.
+            const allUserMsgs = (allMsgs ?? [])
+              .filter((m: any) => m.role === "user" && m.content.length > 20) as Array<{ id: string; role: string; content: string }>;
 
-            const nodeResult = await aiMaterializeNode(formatted, "");
-            if (nodeResult) {
-              const nodeEmbedding = await generateEmbedding(
-                `Title: ${nodeResult.title}\nSummary: ${nodeResult.summary}`,
-              ).catch(() => [] as number[]);
+            // Find the dominant coherent user thread:
+            // Take the largest consecutive run of user messages that share a topic.
+            // Exclude utility requests (translations, lookups, commands).
+            const UTILITY_PATTERN = /^(translate|can you translate|look up|search|what is|find me|play|show me|open|send)/i;
 
-              // Populate the placeholder
-              await db2.from("nodes").update({
-                title: nodeResult.title,
-                summary: nodeResult.summary,
-                embedding: nodeEmbedding,
-              }).eq("id", nodeId);
+            const substantiveUserMsgs = allUserMsgs.filter(
+              (m) => !UTILITY_PATTERN.test(m.content.trim()),
+            );
 
-              // Link messages
-              const links = recentMsgs.map((m) => ({ node_id: nodeId, message_id: m.id }));
-              await db2.from("node_messages").insert(links);
-
-              result.nodesCreated++;
-              affectedNodeId = nodeId;
-              affectedNodeEmbedding = nodeEmbedding;
-              console.log("[graph-bootstrap] created initial node:", nodeResult.title);
-            } else {
+            if (substantiveUserMsgs.length < 2) {
+              // Not enough substantive user content for a coherent node
               await db2.from("nodes").delete().eq("id", nodeId);
-              console.log("[graph-bootstrap] skipped: AI returned null");
+              console.log("[graph-bootstrap] skipped: insufficient substantive user messages after filtering");
+            } else {
+              // Format ONLY substantive user messages — no assistant text
+              const userFormatted = substantiveUserMsgs
+                .map((m) => `User: ${m.content}`)
+                .join("\n")
+                .slice(0, 3000);
+
+              // Materialize with explicit user-provenance constraint
+              const nodeResult = await aiMaterializeNode(
+                userFormatted,
+                "",
+                null, // no insight seed
+              );
+
+              if (nodeResult) {
+                const nodeEmbedding = await generateEmbedding(
+                  `Title: ${nodeResult.title}\nSummary: ${nodeResult.summary}`,
+                ).catch(() => [] as number[]);
+
+                // Populate the placeholder
+                await db2.from("nodes").update({
+                  title: nodeResult.title,
+                  summary: nodeResult.summary,
+                  embedding: nodeEmbedding,
+                }).eq("id", nodeId);
+
+                // Link ONLY the substantive user messages (not assistant responses)
+                const links = substantiveUserMsgs.map((m) => ({ node_id: nodeId, message_id: m.id }));
+                await db2.from("node_messages").insert(links);
+
+                result.nodesCreated++;
+                affectedNodeId = nodeId;
+                affectedNodeEmbedding = nodeEmbedding;
+                console.log("[graph-bootstrap] created initial node:", nodeResult.title, "from", substantiveUserMsgs.length, "user messages");
+              } else {
+                await db2.from("nodes").delete().eq("id", nodeId);
+                console.log("[graph-bootstrap] skipped: AI returned null");
+              }
             }
           }
         } else {
