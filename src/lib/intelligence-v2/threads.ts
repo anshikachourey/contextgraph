@@ -7,7 +7,7 @@
 
 import { complete } from "@/src/lib/ai";
 import { NODE_MODEL } from "@/src/lib/ai/models";
-import { parseJsonFromLLM } from "@/src/lib/llmJson";
+import { parseJsonArrayFromLLM } from "./json-parse";
 import type { Utterance, Proposition, Thread, ThreadStatus } from "./schemas";
 
 export interface ThreadDiagnostics {
@@ -62,16 +62,16 @@ export async function formThreads(
     maxTokens: 2500,
   });
 
-  const parsed = parseJsonFromLLM(result.content);
-  if (!Array.isArray(parsed)) {
-    throw new Error(`Thread formation returned non-array: ${typeof parsed}`);
+  const parsed = parseJsonArrayFromLLM(result.content);
+  if (!parsed.success) {
+    throw new Error(`Thread formation parse failed: ${parsed.error}`);
   }
 
-  diag.rawCount = parsed.length;
+  diag.rawCount = parsed.data.length;
 
   const threads: Thread[] = [];
-  for (let i = 0; i < parsed.length; i++) {
-    const t = parsed[i] as Record<string, unknown>;
+  for (let i = 0; i < parsed.data.length; i++) {
+    const t = parsed.data[i] as Record<string, unknown>;
     if (!t.subject || (typeof t.subject === "string" && t.subject.trim().length === 0)) {
       diag.rejectedCount++;
       diag.rejectionReasons.push(`thread-${i}: empty subject`);

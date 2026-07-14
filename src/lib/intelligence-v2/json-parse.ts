@@ -1,8 +1,11 @@
 /**
- * Robust JSON array parser for LLM responses.
+ * Robust JSON array parser for V2 pipeline LLM responses.
+ *
+ * Wraps the shared parseJsonFromLLM with array-specific validation
+ * and returns a typed result (never throws).
  *
  * Handles:
- * - Markdown code fences (```json ... ```)
+ * - Markdown code fences (```json ... ```, ```JSON ... ```, ``` ... ```)
  * - Leading/trailing whitespace
  * - Detects truncated arrays (incomplete JSON)
  *
@@ -11,6 +14,8 @@
  * - Silently fix malformed data
  * - Accept non-array responses as arrays
  */
+
+import { parseJsonFromLLM, LLMParseError } from "@/src/lib/llmJson";
 
 export interface ParseSuccess {
   success: true;
@@ -31,67 +36,21 @@ export type ParseResult = ParseSuccess | ParseFailure;
  * Returns a typed result — never throws.
  */
 export function parseJsonArrayFromLLM(raw: string): ParseResult {
-  if (!raw || raw.trim().length === 0) {
-    return { success: false, data: null, error: "Empty response" };
-  }
-
-  let cleaned = raw.trim();
-
-  // Strip markdown code fences: ```json ... ``` or ``` ... ```
-  const fencedMatch = cleaned.match(
-    /^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/,
-  );
-  if (fencedMatch) {
-    cleaned = fencedMatch[1].trim();
-  }
-
-  // If fenced match failed but response starts with ``` try to extract content between fences
-  if (!fencedMatch && cleaned.startsWith("```")) {
-    const openEnd = cleaned.indexOf("\n");
-    if (openEnd !== -1) {
-      const closeIdx = cleaned.lastIndexOf("```");
-      if (closeIdx > openEnd) {
-        cleaned = cleaned.slice(openEnd + 1, closeIdx).trim();
-      } else {
-        // No closing fence — truncated response inside a fence
-        cleaned = cleaned.slice(openEnd + 1).trim();
-      }
-    }
-  }
-
-  // Locate the outer array brackets
-  const arrayStart = cleaned.indexOf("[");
-  if (arrayStart === -1) {
-    return { success: false, data: null, error: "No JSON array found — no opening bracket" };
-  }
-
-  // Find the matching closing bracket
-  const arrayEnd = cleaned.lastIndexOf("]");
-
-  if (arrayEnd === -1 || arrayEnd <= arrayStart) {
-    // Truncated — array was started but never closed
-    return {
-      success: false,
-      data: null,
-      error: `Truncated JSON array — opening bracket at position ${arrayStart}, no matching closing bracket. Response length: ${raw.length} chars`,
-    };
-  }
-
-  const jsonCandidate = cleaned.slice(arrayStart, arrayEnd + 1);
-
-  // Attempt strict parse
   try {
-    const parsed = JSON.parse(jsonCandidate);
+    const parsed = parseJsonFromLLM(raw);
     if (!Array.isArray(parsed)) {
       return { success: false, data: null, error: `Parsed value is ${typeof parsed}, not an array` };
     }
     return { success: true, data: parsed as Array<Record<string, unknown>>, error: null };
   } catch (e) {
+    if (e instanceof LLMParseError) {
+      return {
+        success: false,
+        data: null,
+        error: `[${e.category}] ${e.message}. Response length: ${e.rawLength} chars. Preview: "${e.preview.slice(0, 100)}"`,
+      };
+    }
     const msg = e instanceof Error ? e.message : "Unknown parse error";
-    return {
-      success: false,
-      data: null,
-      error: `JSON parse failed: ${msg}. Array candidate length: ${jsonCandidate.length} chars. Last 50 chars: "${jsonCandidate.slice(-50)}"`,
-    };
+    return { success: false, data: null, error: msg };
   }
 }

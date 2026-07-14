@@ -72,12 +72,12 @@ export async function runV2GraphPlan(conversationId: string): Promise<V2GraphPla
   // Layer 3: Form objects
   t0 = Date.now();
   const { objects, diagnostics: objDiag } = await formObjects(propositions, threads);
-  diagnostics.push({ layer: "objects", inputCount: propositions.length, outputCount: objects.length, rejectedCount: objDiag.rejectedCount, rejectionReasons: objDiag.rejectionReasons, elapsedMs: Date.now() - t0 });
+  diagnostics.push({ layer: "objects", inputCount: propositions.length, outputCount: objects.length, rejectedCount: objDiag.totalRejectedDrafts, rejectionReasons: objDiag.failedThreads.map((t) => `thread ${t} failed`), elapsedMs: Date.now() - t0 });
 
   // Layer 4a: Generate relationships
   t0 = Date.now();
   const { relationships: allRelationships, diagnostics: relDiag } = await generateRelationships(objects, propositions);
-  diagnostics.push({ layer: "relationships", inputCount: objects.length, outputCount: allRelationships.length, rejectedCount: relDiag.rejectedCount, rejectionReasons: relDiag.rejectionReasons, elapsedMs: Date.now() - t0 });
+  diagnostics.push({ layer: "relationships", inputCount: objects.length, outputCount: allRelationships.length, rejectedCount: relDiag.totalRejected, rejectionReasons: relDiag.rejectedReasons, elapsedMs: Date.now() - t0 });
 
   // Separate by family
   const semanticRelationships = allRelationships.filter((r) => r.family === "semantic");
@@ -86,8 +86,8 @@ export async function runV2GraphPlan(conversationId: string): Promise<V2GraphPla
 
   // Layer 4b: Derive hierarchy deterministically
   t0 = Date.now();
-  const { hierarchy: derivedHierarchy, trees } = deriveHierarchy(objects, allRelationships);
-  diagnostics.push({ layer: "hierarchy", inputCount: allRelationships.length, outputCount: derivedHierarchy.length, rejectedCount: 0, rejectionReasons: [], elapsedMs: Date.now() - t0 });
+  const { hierarchy: derivedHierarchy, trees, diagnostics: hierDiag } = deriveHierarchy(objects, allRelationships);
+  diagnostics.push({ layer: "hierarchy", inputCount: allRelationships.length, outputCount: derivedHierarchy.length, rejectedCount: hierDiag.childOfRejectedCycles + hierDiag.childOfRejectedInvalid, rejectionReasons: [], elapsedMs: Date.now() - t0 });
 
   // Collect metadata
   const unsupportedClaims = objects
