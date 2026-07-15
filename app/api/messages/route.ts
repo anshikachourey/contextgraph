@@ -1,10 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { persistMessages } from "@/src/lib/db/messages";
 import { runIntelligenceEngine } from "@/src/lib/intelligence";
 import type { ChatMessage } from "@/src/types/message";
 
 type ErrorResponse = { error: string };
 type SuccessResponse = { engineRan: boolean; nodesCreated: number; nodesExtended: number };
+
+/**
+ * GET /api/messages?conversationId=<id>&messageIds=<id1,id2,...>
+ * Fetch specific messages by ID for the node inspection panel.
+ */
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const { searchParams } = new URL(request.url);
+  const conversationId = searchParams.get("conversationId");
+  const messageIdsParam = searchParams.get("messageIds");
+
+  if (!conversationId || !messageIdsParam) {
+    return NextResponse.json([], { status: 200 });
+  }
+
+  const messageIds = messageIdsParam.split(",").filter(Boolean);
+  if (messageIds.length === 0) {
+    return NextResponse.json([]);
+  }
+
+  const db = createServerSupabaseClient();
+  const { data, error } = await db
+    .from("messages")
+    .select("id, role, content, created_at")
+    .eq("conversation_id", conversationId)
+    .in("id", messageIds)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    return NextResponse.json([], { status: 200 });
+  }
+
+  return NextResponse.json(data ?? []);
+}
 
 export async function POST(
   request: NextRequest,

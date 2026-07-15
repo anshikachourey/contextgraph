@@ -1,15 +1,16 @@
 /**
- * V2 Layer 3: Object Formation — Thread-Local Generation.
+ * V2 Layer 3: Object Formation — Entity-Centric Generation.
  *
- * Each thread is processed independently. Large threads are windowed.
- * The LLM returns minimal drafts; provenance is derived deterministically.
- * One thread failure does not zero the entire object layer.
+ * Each thread is processed independently.
+ * Step 1: Identify the distinct conversational entities in the thread.
+ * Step 2: Assign propositions to those entities.
+ * This produces fewer, richer objects that each represent a navigable discussion unit.
  */
 
 import { complete } from "@/src/lib/ai";
 import { NODE_MODEL } from "@/src/lib/ai/models";
 import { parseJsonArrayFromLLM } from "./json-parse";
-import type { Proposition, Thread, ConversationalObject, ObjectType, ObjectMaturity, ObjectStatus } from "./schemas";
+import type { Proposition, Thread, ConversationalObject, ObjectType, ObjectMaturity } from "./schemas";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -49,15 +50,15 @@ export interface ObjectResult {
   diagnostics: ObjectDiagnostics;
 }
 
-/** Maximum propositions per LLM window to avoid oversized responses. */
-const MAX_PROPS_PER_WINDOW = 40;
+/**
+ * Maximum propositions shown per LLM call.
+ * With entity-first approach, we show all props but in a compact format.
+ * For very large threads (>80 props), we split into windows.
+ */
+const MAX_PROPS_PER_WINDOW = 80;
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
-/**
- * Form objects from propositions grouped by threads.
- * Each thread is processed independently. Never crashes on one thread failure.
- */
 export async function formObjects(
   propositions: Proposition[],
   threads: Thread[],
@@ -83,7 +84,6 @@ export async function formObjects(
   const allObjects: ConversationalObject[] = [];
   let globalObjectIndex = 0;
 
-  // Process each thread independently
   for (const thread of threads) {
     const threadStart = Date.now();
     const threadProps = propositions.filter((p) => thread.propositionIds.includes(p.propositionId));
@@ -108,18 +108,16 @@ export async function formObjects(
       continue;
     }
 
-    // Window propositions by temporal order (source utterance position)
+    // For manageable threads, generate in one call. For large threads, window.
     const windows = buildPropositionWindows(threadProps, MAX_PROPS_PER_WINDOW);
     threadDiag.windowCount = windows.length;
 
-    // Generate drafts for each window
     const allDrafts: ObjectDraft[] = [];
     let threadFailed = false;
 
     for (const window of windows) {
-      const result = await generateDraftsForWindow(window, thread, threadDiag);
+      const result = await generateEntitiesForWindow(window, thread, threadDiag);
       if (result === null) {
-        // Window failed — mark but continue with other windows
         threadFailed = true;
       } else {
         allDrafts.push(...result);
@@ -135,24 +133,22 @@ export async function formObjects(
 
     threadDiag.parsedDraftCount = allDrafts.length;
 
-    // Validate drafts and build full objects
+    // Validate and build full objects
     for (const draft of allDrafts) {
-      // Validate propositionIds
       const validPropIds = draft.propositionIds.filter((pid) => realPropIds.has(pid));
 
       if (validPropIds.length === 0) {
         threadDiag.rejectedObjectCount++;
         threadDiag.rejectionReasons.push(
-          `"${draft.title.slice(0, 40)}": no valid propositionIds (raw: [${draft.propositionIds.join(", ")}])`,
+          `"${draft.title.slice(0, 40)}": no valid propositionIds`,
         );
         continue;
       }
 
-      // Reject thesis-like synthesis: title must not introduce unsupported claims
       if (isSynthesisTitle(draft.title, validPropIds, propMap)) {
         threadDiag.rejectedObjectCount++;
         threadDiag.rejectionReasons.push(
-          `"${draft.title.slice(0, 40)}": unsupported synthesis — title introduces claims not in propositions`,
+          `"${draft.title.slice(0, 40)}": unsupported synthesis`,
         );
         continue;
       }
@@ -168,23 +164,20 @@ export async function formObjects(
         .filter((p) => p.authoredBy === "assistant");
       const contextualAssistantUtteranceIds = [...new Set(contextProps.flatMap((p) => p.sourceUtteranceIds))];
 
-      const objectId = `obj-${globalObjectIndex}`;
-      globalObjectIndex++;
-
-      const objectType = normalizeObjectType(draft.objectType);
+      const objectId = `obj-${globalObjectIndex++}`;
 
       allObjects.push({
         objectId,
-        objectType,
+        objectType: normalizeObjectType(draft.objectType),
         title: draft.title,
         description: draft.description,
         propositionIds: validPropIds,
         threadIds: [thread.threadId],
         supportingUtteranceIds,
         contextualAssistantUtteranceIds,
-        maturity: deriveMaturiy(validPropIds.length),
+        maturity: deriveMaturity(validPropIds.length),
         status: "active",
-        provenanceSummary: `Derived from ${validPropIds.length} propositions in ${thread.threadId}`,
+        provenanceSummary: `${validPropIds.length} propositions, ${supportingUtteranceIds.length} user utterances`,
       });
 
       threadDiag.acceptedObjectCount++;
@@ -194,27 +187,20 @@ export async function formObjects(
     diag.threadDiagnostics.push(threadDiag);
   }
 
-  // Compute unassigned propositions
   const assignedPropIds = new Set(allObjects.flatMap((o) => o.propositionIds));
   diag.unassignedPropositionCount = propositions.filter((p) => !assignedPropIds.has(p.propositionId)).length;
-
   diag.totalAcceptedObjects = allObjects.length;
   diag.totalRejectedDrafts = diag.threadDiagnostics.reduce((sum, t) => sum + t.rejectedObjectCount, 0);
-  diag.returnPath = `RETURN_D: ${allObjects.length} objects from ${threads.length} threads. Failed threads: [${diag.failedThreads.join(", ")}]`;
+  diag.returnPath = `RETURN_D: ${allObjects.length} objects from ${threads.length} threads. Failed: [${diag.failedThreads.join(", ")}]`;
 
   return { objects: allObjects, diagnostics: diag };
 }
 
 // ─── Window Builder ─────────────────────────────────────────────────────────
 
-/**
- * Split propositions into bounded windows preserving temporal order.
- * Groups by source utterance first, then splits at MAX_PROPS_PER_WINDOW boundaries.
- */
 function buildPropositionWindows(props: Proposition[], maxPerWindow: number): Proposition[][] {
   if (props.length <= maxPerWindow) return [props];
 
-  // Sort by first source utterance ID to maintain temporal order
   const sorted = [...props].sort((a, b) => {
     const aId = a.sourceUtteranceIds[0] ?? "";
     const bId = b.sourceUtteranceIds[0] ?? "";
@@ -228,112 +214,83 @@ function buildPropositionWindows(props: Proposition[], maxPerWindow: number): Pr
   return windows;
 }
 
-// ─── LLM Draft Generation ───────────────────────────────────────────────────
+// ─── Entity-Centric LLM Generation ─────────────────────────────────────────
 
-async function generateDraftsForWindow(
+async function generateEntitiesForWindow(
   props: Proposition[],
   thread: Thread,
   threadDiag: ThreadObjectDiagnostic,
 ): Promise<ObjectDraft[] | null> {
-  const formatted = formatPropositionsForPrompt(props);
-  const userContent = `Thread: "${thread.subject}"\n\nPropositions:\n${formatted}\n\nForm object drafts. Return JSON array only.`;
+  // Format propositions showing temporal flow — numbered for arc visibility
+  const formatted = props.map((p, idx) => {
+    const author = p.authoredBy === "user" ? "U" : "A";
+    return `${idx + 1}. [${p.propositionId}] ${author}: "${p.normalizedContent}"`;
+  }).join("\n");
+
+  const userContent = `Thread: "${thread.subject}"
+${props.length} propositions in temporal order.
+
+Read the entire sequence first. Then identify what conversational entities emerged and how they evolved.
+
+Propositions:
+${formatted}
+
+Return JSON array of entities. Each entity should capture its full lifecycle.`;
 
   // Attempt 1
   threadDiag.attempts++;
-  const result1 = await callLLMForDrafts(userContent);
+  const result1 = await callLLM(ENTITY_PROMPT, userContent);
   threadDiag.rawResponseLength += result1.rawLength;
 
-  if (result1.drafts !== null) {
-    return result1.drafts;
-  }
+  if (result1.drafts !== null) return result1.drafts;
 
-  // Attempt 2: retry with repair prompt
+  // Attempt 2
   threadDiag.attempts++;
-  const result2 = await callLLMForDraftsRetry(userContent, result1.rawText);
+  const result2 = await callLLM(ENTITY_RETRY_PROMPT, userContent);
   threadDiag.rawResponseLength += result2.rawLength;
 
-  if (result2.drafts !== null) {
-    return result2.drafts;
-  }
+  if (result2.drafts !== null) return result2.drafts;
 
-  threadDiag.rejectionReasons.push(`parse failed after 2 attempts: ${result2.error}`);
+  threadDiag.rejectionReasons.push(`parse failed: ${result2.error}`);
   return null;
 }
 
-function formatPropositionsForPrompt(props: Proposition[]): string {
-  return props.map((p) => {
-    const author = p.authoredBy === "user" ? "USER" : "ASST";
-    const prov = p.provenance;
-    return `[${p.propositionId}] (${author}, ${prov}) "${p.normalizedContent}"`;
-  }).join("\n");
-}
-
-interface DraftParseResult {
+interface LLMResult {
   drafts: ObjectDraft[] | null;
   rawText: string;
   rawLength: number;
   error: string | null;
 }
 
-async function callLLMForDrafts(userContent: string): Promise<DraftParseResult> {
+async function callLLM(systemPrompt: string, userContent: string): Promise<LLMResult> {
   try {
     const result = await complete({
       model: NODE_MODEL,
       messages: [
-        { role: "system", content: DRAFT_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: userContent },
       ],
       temperature: 0.2,
-      maxTokens: 2000,
+      maxTokens: 2500,
     });
 
     const rawText = result.content;
     const parsed = parseJsonArrayFromLLM(rawText);
     if (parsed.success) {
-      const drafts = parseToDrafts(parsed.data);
+      const drafts = parsed.data
+        .filter((d) => d.objectType && d.title)
+        .map((d) => ({
+          objectType: (d.objectType as string) ?? "unresolved",
+          title: (d.title as string) ?? "",
+          description: (d.description as string) ?? "",
+          propositionIds: Array.isArray(d.propositionIds) ? (d.propositionIds as string[]) : [],
+        }));
       return { drafts, rawText, rawLength: rawText.length, error: null };
     }
     return { drafts: null, rawText, rawLength: rawText.length, error: parsed.error };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unknown error";
-    return { drafts: null, rawText: "", rawLength: 0, error: msg };
+    return { drafts: null, rawText: "", rawLength: 0, error: e instanceof Error ? e.message : "unknown" };
   }
-}
-
-async function callLLMForDraftsRetry(userContent: string, failedResponse: string): Promise<DraftParseResult> {
-  try {
-    const result = await complete({
-      model: NODE_MODEL,
-      messages: [
-        { role: "system", content: DRAFT_RETRY_PROMPT },
-        { role: "user", content: `Original request:\n${userContent}\n\nYour previous response was malformed JSON. Return ONLY a valid JSON array of object drafts. No markdown. No commentary.` },
-      ],
-      temperature: 0.1,
-      maxTokens: 2000,
-    });
-
-    const rawText = result.content;
-    const parsed = parseJsonArrayFromLLM(rawText);
-    if (parsed.success) {
-      const drafts = parseToDrafts(parsed.data);
-      return { drafts, rawText, rawLength: rawText.length, error: null };
-    }
-    return { drafts: null, rawText, rawLength: rawText.length, error: parsed.error };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unknown error";
-    return { drafts: null, rawText: "", rawLength: 0, error: msg };
-  }
-}
-
-function parseToDrafts(raw: Array<Record<string, unknown>>): ObjectDraft[] {
-  return raw
-    .filter((d) => d.objectType && d.title)
-    .map((d) => ({
-      objectType: (d.objectType as string) ?? "unresolved",
-      title: (d.title as string) ?? "",
-      description: (d.description as string) ?? "",
-      propositionIds: Array.isArray(d.propositionIds) ? (d.propositionIds as string[]) : [],
-    }));
 }
 
 // ─── Validation Helpers ─────────────────────────────────────────────────────
@@ -349,39 +306,26 @@ function normalizeObjectType(raw: string): ObjectType {
   return "unresolved";
 }
 
-function deriveMaturiy(propCount: number): ObjectMaturity {
-  if (propCount >= 5) return "stable";
-  if (propCount >= 2) return "developing";
+function deriveMaturity(propCount: number): ObjectMaturity {
+  if (propCount >= 8) return "stable";
+  if (propCount >= 3) return "developing";
   return "nascent";
 }
 
-/**
- * Reject titles that introduce unsupported thesis-style claims.
- * A title is synthetic if it uses language not grounded in any of its propositions.
- */
 function isSynthesisTitle(
   title: string,
   propIds: string[],
   propMap: Map<string, Proposition>,
 ): boolean {
   const titleLower = title.toLowerCase();
-
-  // Synthesis markers — language that implies conclusions beyond evidence
   const synthesisPatterns = [
-    "deep mutual alignment",
-    "profound connection",
-    "transformative journey",
-    "fundamental truth",
-    "core essence",
-    "ultimate meaning",
-    "deep-rooted",
-    "deeply held",
-    "reflected deep",
+    "deep mutual alignment", "profound connection", "transformative journey",
+    "fundamental truth", "core essence", "ultimate meaning",
+    "deep-rooted", "deeply held", "reflected deep",
   ];
 
   for (const pattern of synthesisPatterns) {
     if (titleLower.includes(pattern)) {
-      // Check if any proposition actually contains this language
       const anyPropHasIt = propIds.some((pid) => {
         const p = propMap.get(pid);
         return p && p.normalizedContent.toLowerCase().includes(pattern);
@@ -389,44 +333,74 @@ function isSynthesisTitle(
       if (!anyPropHasIt) return true;
     }
   }
-
   return false;
 }
 
 // ─── Prompts ────────────────────────────────────────────────────────────────
 
-const DRAFT_PROMPT = `Form conversational object drafts from the propositions below.
+const ENTITY_PROMPT = `You are constructing a map of evolving conversational entities from a thread's propositions.
 
-An object is a navigable conversational entity: an inquiry, insight, problem, task, decision, preference, explanation, plan, comparison, or unresolved concern.
+An entity is ONE coherent thing being discussed — a question being explored, a problem being worked through, an idea developing, a feeling being processed. It evolves as the conversation progresses.
 
-RULES:
-- Each object must reference specific proposition IDs from the input.
-- One thread may produce multiple objects (different sub-topics or inquiries).
-- A thread may produce zero objects if propositions are only noise or acknowledgements.
-- Faithfully represent conversational function: questions stay questions, tasks stay tasks.
-- Do NOT synthesize thesis-like conclusions, diagnoses, or motivational claims.
-- Do NOT combine unrelated propositions into one object.
-- Titles must name the specific conversational entity, not summarize an essay.
+YOUR PROCESS — you must follow this exactly:
+
+Step 1: Read all propositions from start to finish.
+
+Step 2: Walk through them SEQUENTIALLY. For each proposition, ask:
+  "Does this CONTINUE, DEEPEN, CHALLENGE, or RESOLVE an entity I've already identified?"
+  - If YES → attach it to that existing entity. The entity is evolving.
+  - If NO → only then create a new entity.
+
+Creating a new entity is the EXCEPTIONAL case. The default is that a proposition belongs to an existing entity that it develops further.
+
+Step 3: For each entity, determine its type based on what it BECAME:
+  - If it started as a question and got explored → inquiry (even if partially answered)
+  - If it produced a realization → insight
+  - If it identified and worked through a difficulty → problem
+  - If it explored a feeling → unresolved or insight
+  - If it explained something across exchanges → explanation
+  - If options were weighed → comparison or decision
+
+ATTACHMENT RULES — a proposition belongs to an EXISTING entity when it:
+  - Directly responds to a question the entity raised
+  - Provides evidence for or against a claim in the entity
+  - Reframes, deepens, or nuances the entity's central concern
+  - Expresses a feeling about the entity's subject
+  - Restates or summarizes the entity from a new angle
+  - Challenges or revises the entity's direction
+  - Partially or fully resolves the entity
+
+A proposition starts a NEW entity ONLY when it:
+  - Introduces a genuinely unrelated subject
+  - Asks a question that has no connection to any existing entity
+  - Begins a separate task or request
+
+CRITICAL:
+  - "New turn" does NOT mean "new entity." Most turns continue an existing entity.
+  - Assistant restatements, reframes, and probes belong to the entity they engage with.
+  - A typical 80-120 proposition thread should produce 4-8 entities.
+  - Each entity should span MANY propositions (typically 15-30) and MULTIPLE user utterances.
+  - If you find yourself creating an entity with fewer than 5 propositions, reconsider whether it's actually part of a larger entity.
 
 Object types: inquiry, insight, problem, task, project, goal, decision, preference, explanation, plan, comparison, unresolved, noise
 
-Return ONLY a JSON array of drafts:
+Return ONLY a JSON array:
 [{
-  "objectType": "<type>",
-  "title": "<faithful name for this conversational entity>",
-  "description": "<1-2 sentences grounded in the propositions>",
-  "propositionIds": ["prop-X", "prop-Y"]
+  "objectType": "<type based on what the entity BECAME>",
+  "title": "<what this evolving entity IS — name the central concern/question/process>",
+  "description": "<how this entity evolved: started as X, deepened through Y, reached state Z>",
+  "propositionIds": ["prop-X", "prop-Y", "prop-Z", ...]
 }]`;
 
-const DRAFT_RETRY_PROMPT = `Return a syntactically valid JSON array of conversational object drafts.
-Your entire response must be valid JSON. No markdown fences. No commentary. No trailing text.
+const ENTITY_RETRY_PROMPT = `Return a valid JSON array of evolving conversational entities.
+No markdown. No commentary.
+Each entity represents ONE evolving discussion that spans many propositions and multiple utterances.
+Default: attach propositions to existing entities. Only create new entities for genuinely unrelated subjects.
+Typical: 4-8 entities per thread, each with 15-30 propositions.
 
-Each draft:
-{
+[{
   "objectType": "<type>",
-  "title": "<name>",
-  "description": "<1-2 sentences>",
-  "propositionIds": ["prop-X"]
-}
-
-Return ONLY the JSON array:`;
+  "title": "<central concern>",
+  "description": "<how it evolved>",
+  "propositionIds": ["prop-X", "prop-Y", ...]
+}]`;

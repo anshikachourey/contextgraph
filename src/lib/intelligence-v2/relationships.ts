@@ -226,7 +226,7 @@ async function findCandidatePairs(
     }
   }
 
-  // Structural candidates: same-thread objects
+  // Structural candidates: same-thread objects within ±5 positional window
   const threadGroups = new Map<string, string[]>();
   for (const o of objects) {
     for (const tid of o.threadIds) {
@@ -235,9 +235,11 @@ async function findCandidatePairs(
       threadGroups.set(tid, group);
     }
   }
+  const STRUCTURAL_WINDOW = 5;
   for (const [, group] of threadGroups) {
     for (let i = 0; i < group.length; i++) {
-      for (let j = i + 1; j < group.length; j++) {
+      const windowEnd = Math.min(i + STRUCTURAL_WINDOW, group.length - 1);
+      for (let j = i + 1; j <= windowEnd; j++) {
         const key = canonicalPairKey(group[i], group[j]);
         if (!pairSet.has(key)) {
           pairSet.add(key);

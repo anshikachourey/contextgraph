@@ -210,8 +210,8 @@ describe("formObjects: thread-local generation", () => {
   });
 
   it("oversized threads are windowed without dropping propositions", async () => {
-    // Create 60 propositions (exceeds MAX_PROPS_PER_WINDOW of 40)
-    const props = Array.from({ length: 60 }, (_, i) =>
+    // Create 100 propositions (exceeds MAX_PROPS_PER_WINDOW of 80)
+    const props = Array.from({ length: 100 }, (_, i) =>
       makeProposition(`prop-${i}`, `Proposition content ${i}`),
     );
     const threads = [makeThread("thread-0", "big thread", props.map(p => p.propositionId))];
@@ -219,13 +219,12 @@ describe("formObjects: thread-local generation", () => {
     // Two windows → two LLM calls
     mockedComplete
       .mockResolvedValueOnce({ content: '[{"objectType":"claim","title":"Window 1 object","description":"D","propositionIds":["prop-0","prop-1"]}]' })
-      .mockResolvedValueOnce({ content: '[{"objectType":"claim","title":"Window 2 object","description":"D","propositionIds":["prop-40","prop-41"]}]' });
+      .mockResolvedValueOnce({ content: '[{"objectType":"claim","title":"Window 2 object","description":"D","propositionIds":["prop-80","prop-81"]}]' });
 
     const { objects, diagnostics } = await formObjects(props, threads);
 
     expect(objects.length).toBe(2);
     expect(diagnostics.threadDiagnostics[0].windowCount).toBe(2);
-    // Both calls were made
     expect(mockedComplete).toHaveBeenCalledTimes(2);
   });
 

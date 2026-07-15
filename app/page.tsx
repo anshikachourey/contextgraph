@@ -5,6 +5,7 @@ import Header from "@/src/components/layout/Header";
 import ConversationSidebar from "@/src/components/layout/ConversationSidebar";
 import ChatPanel from "@/src/components/chat/ChatPanel";
 import GraphDrawer from "@/src/components/graph/GraphDrawer";
+import V2GraphPreview from "@/src/components/graph-v2/V2GraphPreview";
 import type { ContextNode } from "@/src/types/node";
 import type { ChatMessage } from "@/src/types/message";
 import type { SemanticEdge } from "@/src/types/edge";
@@ -38,6 +39,9 @@ export default function Home() {
 
   // Branch mode state
   const [activeBranchNodeId, setActiveBranchNodeId] = useState<string | null>(null);
+
+  // V2 Graph Preview state
+  const [isV2PreviewOpen, setIsV2PreviewOpen] = useState(false);
 
   // ─── Load conversation list + initial conversation on mount ────────────────
   useEffect(() => {
@@ -736,7 +740,7 @@ export default function Home() {
 
   return (
     <main className="relative min-h-screen bg-white text-black">
-      <Header onShowGraph={() => setIsGraphOpen(true)} />
+      <Header onShowGraph={() => setIsGraphOpen(true)} onShowV2Preview={() => setIsV2PreviewOpen(true)} />
 
       <ConversationSidebar
         conversations={conversations}
@@ -784,6 +788,38 @@ export default function Home() {
         onEdgeClick={handleEdgeClick}
         onClearSelection={handleClearSelection}
       />
+
+      {conversationId && (
+        <V2GraphPreview
+          conversationId={conversationId}
+          isOpen={isV2PreviewOpen}
+          onClose={() => setIsV2PreviewOpen(false)}
+          onContinueFromNode={(ctx) => {
+            // Close preview and set up focused continuation context
+            setIsV2PreviewOpen(false);
+            // Store the continuation context so the chat panel can use it
+            const contextBlock = [
+              `Continuing from: "${ctx.objectTitle}" (${ctx.objectType})`,
+              "",
+              ctx.description,
+              "",
+              "Key points discussed:",
+              ...ctx.propositions.slice(0, 8).map((p) => `- ${p.content}`),
+            ].join("\n");
+            // Log for debugging
+            console.log("[V2 Continue]", { objectId: ctx.objectId, title: ctx.objectTitle, conversationId });
+            // For this milestone: set the continuation context as a system-level note
+            // by pre-filling the user's next message with contextual reference
+            // In a full implementation, this would inject into the chat system prompt
+            const textarea = document.querySelector("textarea") as HTMLTextAreaElement | null;
+            if (textarea) {
+              textarea.value = `[Continuing from: "${ctx.objectTitle}"]\n\n`;
+              textarea.focus();
+              textarea.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+          }}
+        />
+      )}
 
     </main>
   );
