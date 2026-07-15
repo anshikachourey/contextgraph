@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { persistMessages } from "@/src/lib/db/messages";
 import { runIntelligenceEngine } from "@/src/lib/intelligence";
+import { runIncrementalV2Update } from "@/src/lib/intelligence-v2/incremental";
+import type { V2Snapshot } from "@/src/lib/intelligence-v2/incremental";
 import type { ChatMessage } from "@/src/types/message";
 
 type ErrorResponse = { error: string };
@@ -116,5 +118,139 @@ export async function POST(
     }
   }
 
-  return NextResponse.json({ engineRan, nodesCreated, nodesExtended }, { status: 200 });
+  // ─── V2 Incremental Analysis ──────────────────────────────────────────────
+  // After V1 engine, also run V2 incremental analysis if a snapshot exists
+  let v2Updated = false;
+  const v2ContinuationObjectId = typeof b.v2ContinuationObjectId === "string" ? b.v2ContinuationObjectId : null;
+
+  try {
+    const db2 = createServerSupabaseClient();
+    const { data: snapRow } = await db2
+      .from("v2_graph_snapshots")
+      .select("graph_payload, diagnostics")
+      .eq("conversation_id", conversationId)
+      .eq("status", "ready")
+      .single();
+
+    if (snapRow?.graph_payload) {
+      const gp = snapRow.graph_payload as Record<string, unknown>;
+      const snapshot: V2Snapshot = {
+        conversationId,
+        objects: (gp.objects as V2Snapshot["objects"]) ?? [],
+        relationships: (gp.relationships as V2Snapshot["relationships"]) ?? [],
+        propositions: (gp.propositions as V2Snapshot["propositions"]) ?? [],
+        threads: ((gp.threads as Array<Record<string, unknown>>) ?? []).map((t) => ({
+          threadId: (t.threadId as string) ?? "",
+          utteranceIds: (t.utteranceIds as string[]) ?? [],
+          propositionIds: (t.propositionIds as string[]) ?? [],
+          subject: (t.subject as string) ?? "",
+          branchId: null,
+          originThreadId: null,
+          divergenceUtteranceId: null,
+          status: "active" as const,
+        })),
+        hierarchy: (gp.hierarchy as V2Snapshot["hierarchy"]) ?? [],
+        trees: (gp.trees as V2Snapshot["trees"]) ?? [],
+      };
+
+      // Build new message rows for the incremental engine
+      const newMsgRows = messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        conversation_id: conversationId,
+        created_at: new Date().toISOString(),
+        parent_node_id: m.parentNodeId ?? null,
+        branch_root_message_id: m.branchRootMessageId ?? null,
+      }));
+
+      const incrementalResult = await runIncrementalV2Update({
+        conversationId,
+        snapshot,
+        newMessages: newMsgRows,
+      });
+
+      // If mutations were accepted, update the snapshot
+      if (incrementalResult.acceptedMutations.length > 0) {
+        const updatedPayload = {
+          objects: incrementalResult.updatedGraph.objects,
+          relationships: incrementalResult.updatedGraph.relationships,
+          propositions: incrementalResult.updatedGraph.propositions,
+          threads: incrementalResult.updatedGraph.threads,
+          hierarchy: incrementalResult.updatedGraph.hierarchy,
+          trees: incrementalResult.updatedGraph.trees,
+        };
+
+        // Append continuation provenance if present
+        const existingDiag = (snapRow.diagnostics as Record<string, unknown>) ?? {};
+        if (v2ContinuationObjectId) {
+          // Persist to canonical continuation_provenance table
+          try {
+            await db2.from("continuation_provenance").insert({
+              conversation_id: conversationId,
+              origin_entity_id: v2ContinuationObjectId,
+              origin_graph_version: "v2",
+              origin_entity_type: "object",
+              message_ids: messages.map((m) => m.id),
+            });
+          } catch { /* table may not exist yet */ }
+        }
+
+        await db2
+          .from("v2_graph_snapshots")
+          .update({
+            graph_payload: updatedPayload,
+            diagnostics: {
+              ...existingDiag,
+              lastIncrementalUpdate: new Date().toISOString(),
+              lastIncrementalMutations: incrementalResult.acceptedMutations.length,
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq("conversation_id", conversationId);
+
+        v2Updated = true;
+        console.log("[messages] V2 incremental update:", {
+          mutations: incrementalResult.acceptedMutations.length,
+          decisions: Object.keys(incrementalResult.diagnostics.primaryDecisionsByType),
+          objectsCreated: incrementalResult.diagnostics.objectsCreated,
+          objectsUpdated: incrementalResult.diagnostics.objectsUpdated,
+          v2ContinuationObjectId,
+          runtimeMs: incrementalResult.diagnostics.runtimeMs,
+        });
+      } else {
+        // Still record continuation provenance even with no mutations
+        if (v2ContinuationObjectId) {
+          // Persist to canonical continuation_provenance table
+          try {
+            await db2.from("continuation_provenance").insert({
+              conversation_id: conversationId,
+              origin_entity_id: v2ContinuationObjectId,
+              origin_graph_version: "v2",
+              origin_entity_type: "object",
+              message_ids: messages.map((m) => m.id),
+            });
+          } catch {
+            // Table may not exist yet — fall back to snapshot diagnostics
+            const existingDiag = (snapRow.diagnostics as Record<string, unknown>) ?? {};
+            const continuationHistory = (existingDiag.continuationHistory as Array<unknown>) ?? [];
+            continuationHistory.push({
+              sourceObjectId: v2ContinuationObjectId,
+              messageIds: messages.map((m) => m.id),
+              timestamp: new Date().toISOString(),
+            });
+            await db2
+              .from("v2_graph_snapshots")
+              .update({ diagnostics: { ...existingDiag, continuationHistory }, updated_at: new Date().toISOString() })
+              .eq("conversation_id", conversationId);
+          }
+        }
+        console.log("[messages] V2 incremental: no mutations needed");
+      }
+    }
+  } catch (err) {
+    console.error("[messages] V2 incremental analysis failed (non-fatal):", err instanceof Error ? err.message : err);
+  }
+
+  return NextResponse.json({ engineRan, nodesCreated, nodesExtended, v2Updated }, { status: 200 });
 }

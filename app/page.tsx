@@ -12,6 +12,10 @@ import type { SemanticEdge } from "@/src/types/edge";
 import type { ChatResponse, ChatErrorResponse } from "@/src/types/ai";
 import type { ConversationRouteResponse } from "@/app/api/conversation/route";
 import type { ConversationListItem } from "@/src/lib/db/conversations";
+import type { V2ContinuationContext } from "@/src/types/v2-continuation";
+import { buildV2ContinuationPrompt } from "@/src/types/v2-continuation";
+import type { ContinuationOrigin } from "@/src/types/continuation";
+import { buildV2Origin } from "@/src/types/continuation";
 
 export default function Home() {
   // ─── Conversation list state ──────────────────────────────────────────────
@@ -42,6 +46,13 @@ export default function Home() {
 
   // V2 Graph Preview state
   const [isV2PreviewOpen, setIsV2PreviewOpen] = useState(false);
+
+  // V2 Continuation state
+  const [v2Continuation, setV2Continuation] = useState<V2ContinuationContext | null>(null);
+
+  // V2 Node Workspace state (separate from V1 because V2 objects are not in `nodes`)
+  const [v2WorkspaceNode, setV2WorkspaceNode] = useState<ContextNode | null>(null);
+  const [v2WorkspaceLinkedMessages, setV2WorkspaceLinkedMessages] = useState<ChatMessage[]>([]);
 
   // ─── Load conversation list + initial conversation on mount ────────────────
   useEffect(() => {
@@ -294,12 +305,14 @@ export default function Home() {
     : [];
   const highlightedMessageIds = activeNode?.messageIds ?? [];
 
-  // Branch mode derived
+  // Branch mode derived — supports both V1 nodes and V2 objects
   const activeBranchNode = activeBranchNodeId
-    ? (nodes.find((n) => n.id === activeBranchNodeId) ?? null)
+    ? (nodes.find((n) => n.id === activeBranchNodeId) ?? v2WorkspaceNode ?? null)
     : null;
-  const branchLinkedMessages = activeBranchNode
-    ? messages.filter((m) => activeBranchNode.messageIds.includes(m.id))
+  const branchLinkedMessages = activeBranchNodeId
+    ? (activeBranchNode && v2WorkspaceNode && activeBranchNode.id === v2WorkspaceNode.id
+        ? v2WorkspaceLinkedMessages
+        : (activeBranchNode ? messages.filter((m) => activeBranchNode.messageIds.includes(m.id)) : []))
     : [];
 
   // Messages to display — filtered by mode
@@ -503,6 +516,7 @@ export default function Home() {
 
   async function handleSendMessage(content: string) {
     const isBranching = activeBranchNodeId !== null && activeBranchNode !== null;
+    const isV2Continuing = v2Continuation !== null;
     const branchRootId = isBranching ? crypto.randomUUID() : undefined;
 
     const userMessage: ChatMessage = {
@@ -538,6 +552,21 @@ export default function Home() {
             nodeTitle: activeBranchNode!.title,
             nodeSummary: activeBranchNode!.summary,
             linkedMessages: linkedMsgs,
+          },
+        };
+      } else if (isV2Continuing) {
+        // V2 continuation mode — send ONLY focused node context + user's new message
+        // Do NOT include full conversation history
+        requestBody = {
+          messages: [{ role: "user", content }],
+          branchContext: {
+            nodeTitle: v2Continuation!.sourceObjectTitle,
+            nodeSummary: v2Continuation!.sourceObjectDescription,
+            evidenceSummary: buildV2ContinuationPrompt(v2Continuation!),
+            linkedMessages: v2Continuation!.sourceMessages.map((m) => ({
+              role: m.role as "user" | "assistant",
+              content: m.content,
+            })),
           },
         };
       } else {
@@ -591,6 +620,15 @@ export default function Home() {
       // Use async IIFE so we can properly await and catch errors
       (async () => {
         try {
+          // Log continuation provenance
+          if (isV2Continuing) {
+            console.log("[frontend] V2 continuation message persisted:", {
+              sourceObjectId: v2Continuation!.sourceObjectId,
+              sourceObjectTitle: v2Continuation!.sourceObjectTitle,
+              userMessageId: userMessage.id,
+            });
+          }
+
           // 1. Persist messages — engine runs inside this call
           const persistRes = await fetch("/api/messages", {
             method: "POST",
@@ -598,6 +636,8 @@ export default function Home() {
             body: JSON.stringify({
               conversationId,
               messages: [userMessage, assistantMessage!],
+              // V2 continuation provenance metadata
+              ...(isV2Continuing ? { v2ContinuationObjectId: v2Continuation!.sourceObjectId } : {}),
             }),
           });
 
@@ -755,6 +795,22 @@ export default function Home() {
 
       {/* Main content — offset for sidebar */}
       <div className="pl-64">
+        {/* V2 Continuation banner */}
+        {v2Continuation && (
+          <div className="sticky top-16 z-10 flex items-center justify-between border-b border-purple-200 bg-purple-50 px-6 py-2">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-purple-600 font-medium">Continuing from:</span>
+              <span className="text-purple-800">{v2Continuation.sourceObjectTitle}</span>
+            </div>
+            <button
+              onClick={() => setV2Continuation(null)}
+              className="rounded px-2 py-0.5 text-xs text-purple-600 hover:bg-purple-100"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         <ChatPanel
           messages={displayMessages}
           highlightedMessageIds={highlightedMessageIds}
@@ -794,29 +850,49 @@ export default function Home() {
           conversationId={conversationId}
           isOpen={isV2PreviewOpen}
           onClose={() => setIsV2PreviewOpen(false)}
-          onContinueFromNode={(ctx) => {
-            // Close preview and set up focused continuation context
+          onContinueFromNode={async (ctx) => {
+            // Close preview
             setIsV2PreviewOpen(false);
-            // Store the continuation context so the chat panel can use it
-            const contextBlock = [
-              `Continuing from: "${ctx.objectTitle}" (${ctx.objectType})`,
-              "",
-              ctx.description,
-              "",
-              "Key points discussed:",
-              ...ctx.propositions.slice(0, 8).map((p) => `- ${p.content}`),
-            ].join("\n");
-            // Log for debugging
-            console.log("[V2 Continue]", { objectId: ctx.objectId, title: ctx.objectTitle, conversationId });
-            // For this milestone: set the continuation context as a system-level note
-            // by pre-filling the user's next message with contextual reference
-            // In a full implementation, this would inject into the chat system prompt
-            const textarea = document.querySelector("textarea") as HTMLTextAreaElement | null;
-            if (textarea) {
-              textarea.value = `[Continuing from: "${ctx.objectTitle}"]\n\n`;
-              textarea.focus();
-              textarea.dispatchEvent(new Event("input", { bubbles: true }));
+
+            // Fetch actual source messages for the node
+            const allMsgIds = [...new Set([...ctx.supportingUtteranceIds, ...ctx.contextualAssistantUtteranceIds])];
+            let sourceMessages: Array<{ role: string; content: string }> = [];
+
+            if (allMsgIds.length > 0 && conversationId) {
+              try {
+                const res = await fetch(`/api/messages?conversationId=${conversationId}&messageIds=${allMsgIds.join(",")}`);
+                if (res.ok) {
+                  const msgs = await res.json();
+                  sourceMessages = (msgs as Array<{ role: string; content: string }>).map((m) => ({ role: m.role, content: m.content }));
+                }
+              } catch { /* fallback to proposition content */ }
             }
+
+            // Fallback: if no messages fetched, use proposition content
+            if (sourceMessages.length === 0) {
+              sourceMessages = ctx.propositions.slice(0, 10).map((p) => ({ role: p.authoredBy, content: p.content }));
+            }
+
+            // Build parent ancestry
+            const parentAncestry: Array<{ title: string; description: string }> = [];
+            if (ctx.parentTitle) {
+              parentAncestry.push({ title: ctx.parentTitle, description: "" });
+            }
+
+            // Build V2 continuation context
+            const continuationCtx: V2ContinuationContext = {
+              sourceConversationId: conversationId!,
+              sourceObjectId: ctx.objectId,
+              sourceObjectTitle: ctx.objectTitle,
+              sourceObjectType: ctx.objectType,
+              sourceObjectDescription: ctx.description,
+              sourceMessageIds: allMsgIds,
+              sourceMessages,
+              parentAncestry,
+              relevantRelationships: ctx.relationships,
+            };
+
+            setV2Continuation(continuationCtx);
           }}
         />
       )}

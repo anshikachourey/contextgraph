@@ -60,6 +60,14 @@ export async function POST(
   let llmMessages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
 
   if (branchContext) {
+    console.log("[chat] branchContext active:", {
+      nodeTitle: branchContext.nodeTitle,
+      nodeSummaryLength: branchContext.nodeSummary?.length ?? 0,
+      evidenceSummaryLength: branchContext.evidenceSummary?.length ?? 0,
+      linkedMessageCount: branchContext.linkedMessages?.length ?? 0,
+      userMessageCount: messages.length,
+    });
+
     const contextParts: string[] = [
       `Topic: ${branchContext.nodeTitle}`,
       `Summary: ${branchContext.nodeSummary}`,
@@ -84,6 +92,7 @@ export async function POST(
       })),
     ];
   } else {
+    console.log("[chat] normal mode, message count:", messages.length);
     llmMessages = [
       { role: "system", content: SYSTEM_PROMPT },
       ...messages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),

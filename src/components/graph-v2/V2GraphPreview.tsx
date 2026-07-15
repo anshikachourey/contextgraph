@@ -19,6 +19,10 @@ export type V2ContinueContext = {
   description: string;
   propositions: Array<{ content: string; authoredBy: string }>;
   threadSubject: string;
+  supportingUtteranceIds: string[];
+  contextualAssistantUtteranceIds: string[];
+  parentTitle: string | null;
+  relationships: Array<{ type: string; connectedTitle: string; explanation: string }>;
 };
 
 type SnapshotPayload = {
@@ -265,6 +269,11 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
                 if (!obj) return;
                 const objProps = gp.propositions.filter((p) => obj.propositionIds.includes(p.propositionId));
                 const thread = gp.threads?.find((t) => obj.threadIds.includes(t.threadId));
+                const hierNode = displayGraph?.nodes.find((n) => n.objectId === objectId);
+                const parentObj = hierNode?.parentId ? gp.objects.find((o) => o.objectId === hierNode.parentId) : null;
+                const connectedRels = gp.relationships.filter(
+                  (r) => r.sourceObjectId === objectId || r.targetObjectId === objectId,
+                ).slice(0, 5);
                 onContinueFromNode({
                   objectId: obj.objectId,
                   objectTitle: obj.title,
@@ -272,6 +281,14 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
                   description: obj.description,
                   propositions: objProps.map((p) => ({ content: p.normalizedContent, authoredBy: p.authoredBy })),
                   threadSubject: thread?.subject ?? "",
+                  supportingUtteranceIds: obj.supportingUtteranceIds ?? [],
+                  contextualAssistantUtteranceIds: obj.contextualAssistantUtteranceIds ?? [],
+                  parentTitle: parentObj?.title ?? null,
+                  relationships: connectedRels.map((r) => {
+                    const otherId = r.sourceObjectId === objectId ? r.targetObjectId : r.sourceObjectId;
+                    const other = gp.objects.find((o) => o.objectId === otherId);
+                    return { type: r.type, connectedTitle: other?.title ?? "", explanation: r.explanation };
+                  }),
                 });
               } : undefined}
             />
