@@ -1,0 +1,19 @@
+{
+  "id": "SMT-007-C",
+  "baseCaseId": "SMT-007",
+  "description": "Remove the phrase 'totally unrelated'; semantic identity must still be the laptop object based on content.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/newMessages",
+        "value": "Remove explicit unrelatedness marker; preserve laptop revisit meaning."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

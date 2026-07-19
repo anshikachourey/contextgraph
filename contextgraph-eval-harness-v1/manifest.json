@@ -1,0 +1,52 @@
+{
+  "name": "ContextGraph Semantic Mutation Benchmark Seed v1",
+  "goldenCases": [
+    "SMT-001",
+    "SMT-002",
+    "SMT-003",
+    "SMT-004",
+    "SMT-005",
+    "SMT-006",
+    "SMT-007",
+    "SMT-008",
+    "SMT-009",
+    "SMT-010"
+  ],
+  "variantCases": [
+    "SMT-001-A",
+    "SMT-001-B",
+    "SMT-001-C",
+    "SMT-002-A",
+    "SMT-002-B",
+    "SMT-002-C",
+    "SMT-003-A",
+    "SMT-003-B",
+    "SMT-003-C",
+    "SMT-004-A",
+    "SMT-004-B",
+    "SMT-004-C",
+    "SMT-005-A",
+    "SMT-005-B",
+    "SMT-005-C",
+    "SMT-006-A",
+    "SMT-006-B",
+    "SMT-006-C",
+    "SMT-007-A",
+    "SMT-007-B",
+    "SMT-007-C",
+    "SMT-008-A",
+    "SMT-008-B",
+    "SMT-008-C",
+    "SMT-009-A",
+    "SMT-009-B",
+    "SMT-009-C",
+    "SMT-010-A",
+    "SMT-010-B",
+    "SMT-010-C"
+  ],
+  "counts": {
+    "golden": 10,
+    "variants": 30,
+    "total": 40
+  }
+}

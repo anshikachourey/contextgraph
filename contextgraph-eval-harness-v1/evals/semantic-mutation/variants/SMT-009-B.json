@@ -1,0 +1,19 @@
+{
+  "id": "SMT-009-B",
+  "baseCaseId": "SMT-009",
+  "description": "Paraphrase every episode with different vocabulary; one persistent emerging concern must still accumulate.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/steps",
+        "value": "Paraphrase each episode without changing semantic trajectory."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

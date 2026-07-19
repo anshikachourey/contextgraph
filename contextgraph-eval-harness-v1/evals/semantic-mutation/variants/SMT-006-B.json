@@ -1,0 +1,22 @@
+{
+  "id": "SMT-006-B",
+  "baseCaseId": "SMT-006",
+  "description": "Randomize sibling ordering and retrieval ordering; canonical parent remains obj-110.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "add",
+        "path": "/metamorphicContext",
+        "value": {
+          "shuffleExistingChildren": true,
+          "shuffleRetrieval": true
+        }
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

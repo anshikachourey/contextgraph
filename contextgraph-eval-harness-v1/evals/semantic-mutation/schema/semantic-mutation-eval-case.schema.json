@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ContextGraph Semantic Mutation Eval Case v1",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "tags",
+    "executionMode",
+    "existingGraph",
+    "expectedTrace",
+    "expectedMutationSet",
+    "forbiddenOutcomes",
+    "criticalAssertions"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "executionMode": {
+      "enum": [
+        "SINGLE_STEP",
+        "SEQUENCE"
+      ]
+    },
+    "existingGraph": {
+      "type": "object"
+    },
+    "newMessages": {
+      "type": "array"
+    },
+    "semanticPacket": {
+      "type": "object"
+    },
+    "steps": {
+      "type": "array"
+    },
+    "retrieval": {
+      "type": "object"
+    },
+    "expectedTrace": {
+      "type": "object"
+    },
+    "expectedMutationSet": {
+      "type": "object"
+    },
+    "forbiddenOutcomes": {
+      "type": "array"
+    },
+    "criticalAssertions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

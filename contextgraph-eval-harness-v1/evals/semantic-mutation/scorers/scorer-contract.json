@@ -1,0 +1,134 @@
+{
+  "version": "1.0",
+  "individualCasePassRule": {
+    "allCriticalAssertionsMustPass": true,
+    "forbiddenOutcomeViolationsMustEqual": 0,
+    "structuralInvariantViolationsMustEqual": 0
+  },
+  "deterministicScorers": [
+    {
+      "name": "DurableSignificance",
+      "checks": [
+        "expected durableSemanticSignificance equals actual"
+      ]
+    },
+    {
+      "name": "IdentityResolution",
+      "checks": [
+        "initial SAME object where specified",
+        "finalPrimaryObjectId"
+      ]
+    },
+    {
+      "name": "IdentityWidening",
+      "checks": [
+        "identitySearchSufficient",
+        "mustWidenIdentitySearch"
+      ]
+    },
+    {
+      "name": "ParentRetrievalWidening",
+      "checks": [
+        "initialParentSearchSufficient",
+        "mustWidenParentSearch"
+      ]
+    },
+    {
+      "name": "CanonicalParent",
+      "checks": [
+        "canonicalParentId exact match",
+        "at most one structural parent"
+      ]
+    },
+    {
+      "name": "CrossObjectImpact",
+      "checks": [
+        "expected impacted object set equals actual impacted object set"
+      ]
+    },
+    {
+      "name": "RelationshipDecision",
+      "checks": [
+        "required endpoints present",
+        "semanticClass matches when fixture specifies one",
+        "no forbidden relationship"
+      ]
+    },
+    {
+      "name": "Supersession",
+      "checks": [
+        "expected superseded proposition IDs exact match",
+        "no destructive deletion when supersession expected"
+      ]
+    },
+    {
+      "name": "RestructuringSignal",
+      "checks": [
+        "expected signal type and targets exact match",
+        "signal does not auto-apply unless explicitly expected"
+      ]
+    },
+    {
+      "name": "MutationCompleteness",
+      "checks": [
+        "required mutation set is present with no missing critical mutation"
+      ]
+    },
+    {
+      "name": "ForbiddenOutcomeViolations",
+      "checks": [
+        "count matching forbidden outcome patterns"
+      ]
+    },
+    {
+      "name": "StructuralInvariantViolations",
+      "checks": [
+        "max one parent",
+        "no self-parent",
+        "no ancestry cycle",
+        "no duplicate edge",
+        "referenced IDs exist"
+      ]
+    },
+    {
+      "name": "SequenceEmergence",
+      "appliesTo": [
+        "SEQUENCE"
+      ],
+      "checks": [
+        "promotion step",
+        "no premature child",
+        "single promoted identity",
+        "historical evidence preserved"
+      ]
+    },
+    {
+      "name": "MetamorphicConsistency",
+      "appliesTo": [
+        "VARIANT"
+      ],
+      "checks": [
+        "critical semantic outcome preserved under declared transformation"
+      ]
+    }
+  ],
+  "reportingMetrics": [
+    "golden_case_pass_rate",
+    "variant_pass_rate",
+    "identity_accuracy",
+    "identity_widening_accuracy",
+    "parent_accuracy",
+    "parent_widening_accuracy",
+    "cross_object_impact_accuracy",
+    "relationship_precision",
+    "supersession_accuracy",
+    "restructuring_signal_accuracy",
+    "forbidden_outcome_rate",
+    "structural_invariant_violation_rate",
+    "repeat_run_consistency",
+    "latency_ms",
+    "input_tokens",
+    "output_tokens",
+    "estimated_cost"
+  ]
+}

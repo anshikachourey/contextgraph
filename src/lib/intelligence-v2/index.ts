@@ -29,17 +29,23 @@ export interface LayerDiagnostics {
  * Run the full V2 canonical pipeline on a conversation.
  * Returns the complete derivation chain + validated plan + layer diagnostics.
  */
-export async function runV2GraphPlan(conversationId: string): Promise<V2GraphPlan & { _diagnostics: LayerDiagnostics[] }> {
+export async function runV2GraphPlan(conversationId: string, options?: { maxMessageSeq?: number }): Promise<V2GraphPlan & { _diagnostics: LayerDiagnostics[] }> {
   const diagnostics: LayerDiagnostics[] = [];
   const db = createServerSupabaseClient();
 
-  // Load main-thread messages
-  const { data: msgData, error: dbError } = await db
+  // Load main-thread messages, optionally bounded by message_seq
+  let query = db
     .from("messages")
-    .select("id, role, content, conversation_id, created_at, parent_node_id, branch_root_message_id")
+    .select("id, role, content, conversation_id, created_at, parent_node_id, branch_root_message_id, message_seq")
     .eq("conversation_id", conversationId)
     .is("parent_node_id", null)
     .order("created_at", { ascending: true });
+
+  if (options?.maxMessageSeq !== undefined) {
+    query = query.lte("message_seq", options.maxMessageSeq);
+  }
+
+  const { data: msgData, error: dbError } = await query;
 
   if (dbError) {
     throw new Error(`Database query failed: ${dbError.message}`);

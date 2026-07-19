@@ -1,0 +1,172 @@
+{
+  "id": "SMT-002",
+  "title": "Correct SAME object is missing from initial retrieval and identity search must widen",
+  "tags": [
+    "identity-resolution",
+    "retrieval-sufficiency",
+    "search-widening",
+    "reopen",
+    "long-term-memory"
+  ],
+  "executionMode": "SINGLE_STEP",
+  "existingGraph": {
+    "objects": [
+      {
+        "objectId": "obj-090",
+        "title": "Potential Move to Mumbai",
+        "persistentConcern": "Whether the user should relocate to Mumbai considering career opportunities, lifestyle, practical constraints, and changing circumstances.",
+        "status": "dormant"
+      },
+      {
+        "objectId": "obj-210",
+        "title": "Job Search Strategy",
+        "persistentConcern": "How the user should approach finding suitable employment.",
+        "status": "active"
+      },
+      {
+        "objectId": "obj-220",
+        "title": "Career Development",
+        "persistentConcern": "The user's broader career development and professional trajectory.",
+        "status": "active"
+      },
+      {
+        "objectId": "obj-230",
+        "title": "Potential Move to New York",
+        "persistentConcern": "Whether the user should relocate to New York.",
+        "status": "active"
+      },
+      {
+        "objectId": "obj-240",
+        "title": "Netflix Marketing Roles",
+        "persistentConcern": "The user's exploration of marketing opportunities at Netflix.",
+        "status": "active"
+      },
+      {
+        "objectId": "obj-250",
+        "title": "Choosing Between Mumbai and Delhi",
+        "persistentConcern": "A comparative decision concerning Mumbai and Delhi.",
+        "status": "active"
+      }
+    ],
+    "relationships": []
+  },
+  "newMessages": [
+    {
+      "role": "assistant",
+      "messageId": "assistant-msg-002",
+      "content": "Getting a strong offer could change the calculation quite a bit. Are you mainly thinking about the role itself, or would you actually reconsider relocating for it?"
+    },
+    {
+      "role": "user",
+      "messageId": "user-msg-002",
+      "content": "Honestly, if the Netflix opportunity works out, I might actually give Bombay another shot. I had pretty much put that whole idea aside, but now I'm reconsidering it."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "packet-002",
+    "userEvidenceMessageIds": [
+      "user-msg-002"
+    ],
+    "assistantContextMessageIds": [
+      "assistant-msg-002"
+    ],
+    "conciseMeaning": "The user is reconsidering a previously set-aside move to Mumbai because a potential Netflix opportunity has changed the circumstances.",
+    "focalSubject": "Reconsidering relocation to Mumbai",
+    "operativeIntent": "UPDATE"
+  },
+  "retrieval": {
+    "initialIdentityCandidates": [
+      {
+        "objectId": "obj-240",
+        "rank": 1
+      },
+      {
+        "objectId": "obj-210",
+        "rank": 2
+      },
+      {
+        "objectId": "obj-220",
+        "rank": 3
+      },
+      {
+        "objectId": "obj-230",
+        "rank": 4
+      },
+      {
+        "objectId": "obj-250",
+        "rank": 5
+      }
+    ],
+    "widenedIdentityCandidates": [
+      {
+        "objectId": "obj-090",
+        "rank": 1
+      },
+      {
+        "objectId": "obj-250",
+        "rank": 2
+      },
+      {
+        "objectId": "obj-230",
+        "rank": 3
+      }
+    ]
+  },
+  "expectedTrace": {
+    "durableSemanticSignificance": true,
+    "identity": {
+      "initialSameObjectId": null,
+      "identitySearchSufficient": false,
+      "mustWidenIdentitySearch": true,
+      "finalPrimaryObjectId": "obj-090",
+      "primaryObjectDisposition": "EXISTING_DORMANT"
+    },
+    "crossObjectImpacts": []
+  },
+  "expectedMutationSet": {
+    "objectMutations": [
+      {
+        "type": "REOPEN_OBJECT",
+        "targetObjectId": "obj-090"
+      },
+      {
+        "type": "EXTEND_OBJECT",
+        "targetObjectId": "obj-090"
+      }
+    ],
+    "structuralMutations": [],
+    "relationshipMutations": [
+      {
+        "type": "ADD_RELATIONSHIP",
+        "sourceObjectId": "obj-090",
+        "targetObjectId": "obj-240",
+        "semanticClass": "DEPENDENCY"
+      }
+    ],
+    "propositionStateMutations": [],
+    "restructuringSignals": []
+  },
+  "forbiddenOutcomes": [
+    {
+      "type": "CREATE_OBJECT",
+      "semanticIdentity": "Potential Move to Mumbai"
+    },
+    {
+      "type": "EXTEND_OBJECT",
+      "targetObjectId": "obj-240"
+    },
+    {
+      "type": "EXTEND_OBJECT",
+      "targetObjectId": "obj-230"
+    },
+    {
+      "type": "IDENTITY_SEARCH_NOT_WIDENED"
+    }
+  ],
+  "criticalAssertions": [
+    "identity_widening=true",
+    "primary_object=obj-090",
+    "reopen=obj-090",
+    "no_duplicate_identity"
+  ]
+}

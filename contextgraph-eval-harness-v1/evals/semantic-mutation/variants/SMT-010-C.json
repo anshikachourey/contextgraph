@@ -1,0 +1,19 @@
+{
+  "id": "SMT-010-C",
+  "baseCaseId": "SMT-010",
+  "description": "State the broader concern through two shorter user turns instead of one long turn; expected new parent and reparent signals unchanged.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/newMessages",
+        "value": "Split same durable meaning across two user turns with assistant context."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

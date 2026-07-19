@@ -1,0 +1,28 @@
+{
+  "id": "SMT-005-A",
+  "baseCaseId": "SMT-005",
+  "description": "Reverse retrieval ranks so Enterprise Data Isolation is rank 1 and Semantic Model Architecture rank 2; result unchanged.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "replace",
+        "path": "/retrieval/initialParentCandidates",
+        "value": [
+          {
+            "objectId": "obj-121",
+            "rank": 1
+          },
+          {
+            "objectId": "obj-112",
+            "rank": 2
+          }
+        ]
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

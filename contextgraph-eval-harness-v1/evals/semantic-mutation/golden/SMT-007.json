@@ -1,0 +1,128 @@
+{
+  "id": "SMT-007",
+  "title": "Continuation originates from A but true semantic identity is dormant B",
+  "tags": [
+    "continuation-provenance",
+    "identity-resolution",
+    "reopen",
+    "origin-not-ownership"
+  ],
+  "executionMode": "SINGLE_STEP",
+  "existingGraph": {
+    "objects": [
+      {
+        "objectId": "obj-300",
+        "title": "Planning Japan Trip",
+        "persistentConcern": "Planning a trip to Japan, including hotels and transport.",
+        "status": "active"
+      },
+      {
+        "objectId": "obj-410",
+        "title": "Choosing a New Laptop",
+        "persistentConcern": "Deciding which laptop best fits the user's needs, including RAM, battery life, portability, performance, and budget.",
+        "status": "dormant"
+      },
+      {
+        "objectId": "obj-500",
+        "title": "Personal Budget Planning",
+        "persistentConcern": "Managing the user's personal budget and financial constraints.",
+        "status": "active"
+      }
+    ],
+    "relationships": []
+  },
+  "newMessages": [
+    {
+      "role": "assistant",
+      "messageId": "assistant-msg-007",
+      "content": "Picking up from your Japan trip planning\u2014do you want to continue with hotels or transport?"
+    },
+    {
+      "role": "user",
+      "messageId": "user-msg-007",
+      "content": "Actually totally unrelated, but I'm thinking about laptops again. My old one is finally dying and I remember we talked about whether I should get the MacBook with more RAM."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "packet-007",
+    "userEvidenceMessageIds": [
+      "user-msg-007"
+    ],
+    "assistantContextMessageIds": [
+      "assistant-msg-007"
+    ],
+    "conciseMeaning": "The user returns to a previously discussed laptop-purchase decision because their current laptop is failing and they are reconsidering the MacBook RAM choice.",
+    "focalSubject": "Revisiting laptop purchase decision",
+    "operativeIntent": "UPDATE",
+    "continuationOrigin": {
+      "objectId": "obj-300"
+    }
+  },
+  "retrieval": {
+    "initialIdentityCandidates": [
+      {
+        "objectId": "obj-300",
+        "rank": 1
+      },
+      {
+        "objectId": "obj-500",
+        "rank": 2
+      },
+      {
+        "objectId": "obj-410",
+        "rank": 4
+      }
+    ]
+  },
+  "expectedTrace": {
+    "durableSemanticSignificance": true,
+    "identity": {
+      "initialSameObjectId": "obj-410",
+      "identitySearchSufficient": true,
+      "mustWidenIdentitySearch": false,
+      "finalPrimaryObjectId": "obj-410",
+      "primaryObjectDisposition": "EXISTING_DORMANT"
+    },
+    "crossObjectImpacts": []
+  },
+  "expectedMutationSet": {
+    "objectMutations": [
+      {
+        "type": "REOPEN_OBJECT",
+        "targetObjectId": "obj-410"
+      },
+      {
+        "type": "EXTEND_OBJECT",
+        "targetObjectId": "obj-410"
+      }
+    ],
+    "structuralMutations": [],
+    "relationshipMutations": [],
+    "propositionStateMutations": [],
+    "restructuringSignals": []
+  },
+  "forbiddenOutcomes": [
+    {
+      "type": "EXTEND_OBJECT",
+      "targetObjectId": "obj-300"
+    },
+    {
+      "type": "ADD_CHILD_OF",
+      "parentObjectId": "obj-300"
+    },
+    {
+      "type": "ADD_RELATIONSHIP",
+      "sourceObjectId": "obj-300",
+      "targetObjectId": "obj-410"
+    },
+    {
+      "type": "CREATE_OBJECT",
+      "semanticIdentity": "Choosing a New Laptop"
+    }
+  ],
+  "criticalAssertions": [
+    "continuation_origin=obj-300",
+    "primary_object=obj-410",
+    "origin_does_not_imply_ownership"
+  ]
+}

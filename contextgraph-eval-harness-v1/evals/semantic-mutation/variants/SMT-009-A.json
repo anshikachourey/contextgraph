@@ -1,0 +1,21 @@
+{
+  "id": "SMT-009-A",
+  "baseCaseId": "SMT-009",
+  "description": "Insert 1,000 unrelated messages between every emergence episode; promotion point remains episode 4.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "add",
+        "path": "/metamorphicContext",
+        "value": {
+          "unrelatedMessagesBetweenEpisodes": 1000
+        }
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

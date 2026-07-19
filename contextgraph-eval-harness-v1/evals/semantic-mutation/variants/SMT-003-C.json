@@ -1,0 +1,21 @@
+{
+  "id": "SMT-003-C",
+  "baseCaseId": "SMT-003",
+  "description": "Add many recent propositions to the broad parent; evidence volume must not override exact persistent identity.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "add",
+        "path": "/metamorphicContext",
+        "value": {
+          "broadParentExtraRecentPropositions": 50
+        }
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

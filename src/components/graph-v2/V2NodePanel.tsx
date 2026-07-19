@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -57,6 +57,7 @@ type V2NodePanelProps = {
   allObjects: V2Object[];
   hasOverlap: boolean;
   conversationId: string;
+  refreshKey?: number; // Increment to force message refetch
   onClose: () => void;
   onContinue?: (objectId: string) => void;
   onSelectNode?: (objectId: string) => void;
@@ -99,6 +100,7 @@ export default function V2NodePanel({
   allObjects,
   hasOverlap,
   conversationId,
+  refreshKey,
   onClose,
   onContinue,
   onSelectNode,
@@ -108,7 +110,10 @@ export default function V2NodePanel({
   const [showAllRelationships, setShowAllRelationships] = useState(false);
   const [expandedExplanation, setExpandedExplanation] = useState<string | null>(null);
 
-  // Fetch source messages when object changes
+  // Fetch source messages + continuation messages when object changes
+  // Also refetchable via refetchKey
+  const [refetchKey, setRefetchKey] = useState(0);
+
   useEffect(() => {
     const allMessageIds = [
       ...(object.supportingUtteranceIds || []),
@@ -116,13 +121,15 @@ export default function V2NodePanel({
     ];
     const uniqueIds = [...new Set(allMessageIds)];
 
-    if (uniqueIds.length === 0) {
-      setMessages([]);
-      return;
-    }
-
     setLoadingMessages(true);
-    fetch(`/api/messages?conversationId=${conversationId}&messageIds=${uniqueIds.join(",")}`)
+
+    // Fetch: source messages by ID + continuation by parentNodeId + canonical provenance
+    const params = new URLSearchParams({ conversationId });
+    if (uniqueIds.length > 0) params.set("messageIds", uniqueIds.join(","));
+    params.set("parentNodeId", object.objectId);
+    params.set("continuationEntityId", object.objectId);
+
+    fetch(`/api/messages?${params.toString()}`)
       .then((r) => r.ok ? r.json() : [])
       .then((data) => {
         const msgs = (Array.isArray(data) ? data : []) as SourceMessage[];
@@ -131,7 +138,10 @@ export default function V2NodePanel({
       })
       .catch(() => setMessages([]))
       .finally(() => setLoadingMessages(false));
-  }, [object.objectId, object.supportingUtteranceIds, object.contextualAssistantUtteranceIds, conversationId]);
+  }, [object.objectId, object.supportingUtteranceIds, object.contextualAssistantUtteranceIds, conversationId, refetchKey, refreshKey]);
+
+  /** Call this to refresh messages without changing objectId */
+  const refetchMessages = useCallback(() => setRefetchKey((k) => k + 1), []);
 
   // Derive relationship groups
   const connectedRels = relationships.filter(

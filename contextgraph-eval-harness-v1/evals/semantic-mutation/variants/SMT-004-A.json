@@ -1,0 +1,19 @@
+{
+  "id": "SMT-004-A",
+  "baseCaseId": "SMT-004",
+  "description": "Place obj-121 at rank 12 in widened parent retrieval; canonical parent must still be obj-121.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/retrieval/widenedParentCandidates",
+        "value": "Include 11 distractors before obj-121."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

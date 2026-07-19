@@ -1,0 +1,19 @@
+{
+  "id": "SMT-007-B",
+  "baseCaseId": "SMT-007",
+  "description": "Push dormant laptop identity to retrieval rank 10; it must still win if retrieved.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/retrieval/initialIdentityCandidates",
+        "value": "Move obj-410 to rank 10."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

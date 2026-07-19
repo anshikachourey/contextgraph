@@ -1,0 +1,19 @@
+{
+  "id": "SMT-003-B",
+  "baseCaseId": "SMT-003",
+  "description": "Rewrite the packet with different vocabulary: 'confidence gate' and 'escalation threshold'; precise identity must still win.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/newMessages",
+        "value": "Paraphrase vocabulary only."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

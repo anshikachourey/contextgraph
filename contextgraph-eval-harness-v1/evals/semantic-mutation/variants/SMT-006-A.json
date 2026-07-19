@@ -1,0 +1,21 @@
+{
+  "id": "SMT-006-A",
+  "baseCaseId": "SMT-006",
+  "description": "Increase obj-110 child count from 6 to 20; new valid child must still be created under obj-110.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "add",
+        "path": "/metamorphicContext",
+        "value": {
+          "additionalSiblingChildren": 14
+        }
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "id": "SMT-001-A",
+  "baseCaseId": "SMT-001",
+  "description": "Move the correct identity from retrieval rank 5 to rank 2; expected semantic result unchanged.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "replace",
+        "path": "/retrieval/initialIdentityCandidates",
+        "value": [
+          {
+            "objectId": "obj-110",
+            "rank": 1
+          },
+          {
+            "objectId": "obj-112",
+            "rank": 2
+          },
+          {
+            "objectId": "obj-113",
+            "rank": 3
+          },
+          {
+            "objectId": "obj-200",
+            "rank": 4
+          },
+          {
+            "objectId": "obj-300",
+            "rank": 5
+          }
+        ]
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

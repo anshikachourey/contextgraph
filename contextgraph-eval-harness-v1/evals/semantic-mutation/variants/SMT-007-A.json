@@ -1,0 +1,19 @@
+{
+  "id": "SMT-007-A",
+  "baseCaseId": "SMT-007",
+  "description": "Change continuation origin from Japan Trip to Personal Budget Planning; true dormant laptop identity must still win.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "replace",
+        "path": "/semanticPacket/continuationOrigin/objectId",
+        "value": "obj-500"
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

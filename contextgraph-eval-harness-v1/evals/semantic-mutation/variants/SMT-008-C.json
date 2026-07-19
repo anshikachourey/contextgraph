@@ -1,0 +1,19 @@
+{
+  "id": "SMT-008-C",
+  "baseCaseId": "SMT-008",
+  "description": "Add unrelated sentence-level noise to the same message; required four semantic effects must still be produced.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/newMessages",
+        "value": "Append non-durable aside; durable packet meaning unchanged."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

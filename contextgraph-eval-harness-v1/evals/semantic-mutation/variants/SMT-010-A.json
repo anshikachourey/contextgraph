@@ -1,0 +1,19 @@
+{
+  "id": "SMT-010-A",
+  "baseCaseId": "SMT-010",
+  "description": "Call the broader concern 'Incremental Update System' instead of 'V2 Incremental Engine'; reparent signals remain.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/newMessages",
+        "value": "Paraphrase broader concern label only."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

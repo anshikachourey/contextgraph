@@ -11,6 +11,7 @@ export type V2NodeData = {
   propositionCount: number;
   depth: number;
   hasOverlap: boolean;
+  isSelected: boolean;
 };
 
 export type V2FlowNode = Node<V2NodeData, "v2Node">;
@@ -47,9 +48,10 @@ const TYPE_ICONS: Record<string, string> = {
   noise: "~",
 };
 
-export default function V2NodeCard({ data, selected }: NodeProps<V2FlowNode>) {
+export default function V2NodeCard({ data }: NodeProps<V2FlowNode>) {
   const color = TYPE_COLORS[data.objectType] ?? "#6b7280";
   const icon = TYPE_ICONS[data.objectType] ?? "•";
+  const isSelected = data.isSelected;
 
   return (
     <>
@@ -57,11 +59,11 @@ export default function V2NodeCard({ data, selected }: NodeProps<V2FlowNode>) {
 
       <div
         className={`relative w-64 overflow-hidden rounded-xl border transition-all ${
-          selected
+          isSelected
             ? "border-purple-600 ring-4 ring-purple-200 shadow-lg shadow-purple-100 scale-[1.02]"
             : "border-gray-200 shadow-sm hover:shadow-md"
         }`}
-        style={{ backgroundColor: selected ? "#faf5ff" : "white" }}
+        style={{ backgroundColor: isSelected ? "#faf5ff" : "white" }}
       >
         {/* Type accent bar */}
         <div className="h-1 w-full" style={{ backgroundColor: color }} />

@@ -1,0 +1,19 @@
+{
+  "id": "SMT-005-C",
+  "baseCaseId": "SMT-005",
+  "description": "Add a broad Enterprise AI Architecture candidate; it must not become canonical parent over the more specific valid container.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/retrieval/initialParentCandidates",
+        "value": "Add broad Enterprise AI Architecture distractor."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

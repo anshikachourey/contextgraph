@@ -1,0 +1,19 @@
+{
+  "id": "SMT-002-C",
+  "baseCaseId": "SMT-002",
+  "description": "Add recent high-similarity career and relocation distractors; initial retrieval still omits obj-090; widening must recover it.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/retrieval/initialIdentityCandidates",
+        "value": "Add more career/relocation distractors; keep obj-090 absent."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

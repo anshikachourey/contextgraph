@@ -1,0 +1,19 @@
+{
+  "id": "SMT-006-C",
+  "baseCaseId": "SMT-006",
+  "description": "Add a visually tidy umbrella candidate with no user-grounded persistent identity; it must be rejected.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/retrieval/initialParentCandidates",
+        "value": "Add synthetic Semantic Pipeline Components distractor; forbidden as artificial umbrella."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

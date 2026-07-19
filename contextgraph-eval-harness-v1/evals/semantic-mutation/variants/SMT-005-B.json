@@ -1,0 +1,19 @@
+{
+  "id": "SMT-005-B",
+  "baseCaseId": "SMT-005",
+  "description": "Rename the new concern 'Policy-Constrained Semantic Routing'; canonical parent remains obj-121.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/semanticPacket",
+        "value": "Paraphrase title/focal subject only; preserve privacy-first purpose."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

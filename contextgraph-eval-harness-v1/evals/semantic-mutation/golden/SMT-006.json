@@ -1,0 +1,178 @@
+{
+  "id": "SMT-006",
+  "title": "Parent already has several children and another valid sibling child is still allowed",
+  "tags": [
+    "hierarchy",
+    "sibling-creation",
+    "no-capacity-bias",
+    "no-artificial-balancing"
+  ],
+  "executionMode": "SINGLE_STEP",
+  "existingGraph": {
+    "objects": [
+      {
+        "objectId": "obj-110",
+        "title": "ContextGraph Semantic Intelligence",
+        "persistentConcern": "How ContextGraph interprets conversations and transforms them into persistent semantic structure.",
+        "status": "active",
+        "parentObjectId": "obj-100"
+      },
+      {
+        "objectId": "obj-111",
+        "title": "Object Decision Algorithm",
+        "persistentConcern": "How semantic material is assigned and mutated.",
+        "status": "active",
+        "parentObjectId": "obj-110"
+      },
+      {
+        "objectId": "obj-112",
+        "title": "Semantic Model Architecture",
+        "persistentConcern": "Which models perform semantic reasoning.",
+        "status": "active",
+        "parentObjectId": "obj-110"
+      },
+      {
+        "objectId": "obj-113",
+        "title": "Semantic Evaluation & Benchmarking",
+        "persistentConcern": "How semantic quality is tested.",
+        "status": "active",
+        "parentObjectId": "obj-110"
+      },
+      {
+        "objectId": "obj-114",
+        "title": "Proposition Extraction",
+        "persistentConcern": "How durable semantic propositions are extracted.",
+        "status": "active",
+        "parentObjectId": "obj-110"
+      },
+      {
+        "objectId": "obj-115",
+        "title": "Thread Formation",
+        "persistentConcern": "How local conversational continuity is represented.",
+        "status": "active",
+        "parentObjectId": "obj-110"
+      },
+      {
+        "objectId": "obj-116",
+        "title": "Relationship Ontology",
+        "persistentConcern": "How semantic relationships are represented.",
+        "status": "active",
+        "parentObjectId": "obj-110"
+      }
+    ],
+    "relationships": []
+  },
+  "newMessages": [
+    {
+      "role": "user",
+      "messageId": "user-msg-006a",
+      "content": "We haven't really defined how ContextGraph should decide whether a piece of conversation is worth remembering at all. Before SAME or CHILD, there probably needs to be some gate that filters out things like thanks, random acknowledgments, and low-value conversational noise."
+    },
+    {
+      "role": "assistant",
+      "messageId": "assistant-msg-006",
+      "content": "So you're proposing a semantic significance layer before object decisions."
+    },
+    {
+      "role": "user",
+      "messageId": "user-msg-006b",
+      "content": "Exactly. And I think that's important enough to have its own rules because otherwise the graph will accumulate junk before the object algorithm even runs."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "packet-006",
+    "userEvidenceMessageIds": [
+      "user-msg-006a",
+      "user-msg-006b"
+    ],
+    "assistantContextMessageIds": [
+      "assistant-msg-006"
+    ],
+    "conciseMeaning": "The user establishes durable semantic significance filtering as a distinct semantic-intelligence concern that determines whether material should affect persistent graph memory.",
+    "focalSubject": "Durable semantic significance filtering",
+    "operativeIntent": "PLAN"
+  },
+  "retrieval": {
+    "initialIdentityCandidates": [
+      {
+        "objectId": "obj-111",
+        "rank": 1
+      },
+      {
+        "objectId": "obj-114",
+        "rank": 2
+      },
+      {
+        "objectId": "obj-110",
+        "rank": 3
+      }
+    ],
+    "initialParentCandidates": [
+      {
+        "objectId": "obj-111",
+        "rank": 1
+      },
+      {
+        "objectId": "obj-114",
+        "rank": 2
+      },
+      {
+        "objectId": "obj-110",
+        "rank": 3
+      }
+    ]
+  },
+  "expectedTrace": {
+    "durableSemanticSignificance": true,
+    "identity": {
+      "initialSameObjectId": null,
+      "identitySearchSufficient": true,
+      "mustWidenIdentitySearch": false,
+      "finalPrimaryObjectId": "NEW_OBJECT",
+      "primaryObjectDisposition": "NEW"
+    },
+    "structural": {
+      "initialParentSearchSufficient": true,
+      "mustWidenParentSearch": false,
+      "canonicalParentId": "obj-110"
+    },
+    "crossObjectImpacts": []
+  },
+  "expectedMutationSet": {
+    "objectMutations": [
+      {
+        "type": "CREATE_OBJECT",
+        "proposedTitle": "Durable Semantic Significance"
+      }
+    ],
+    "structuralMutations": [
+      {
+        "type": "ADD_CHILD_OF",
+        "parentObjectId": "obj-110"
+      }
+    ],
+    "relationshipMutations": [],
+    "propositionStateMutations": [],
+    "restructuringSignals": []
+  },
+  "forbiddenOutcomes": [
+    {
+      "type": "CREATE_ROOT"
+    },
+    {
+      "type": "ADD_CHILD_OF",
+      "parentObjectId": "obj-111"
+    },
+    {
+      "type": "CREATE_ARTIFICIAL_UMBRELLA"
+    },
+    {
+      "type": "EXTEND_OBJECT",
+      "targetObjectId": "obj-110"
+    }
+  ],
+  "criticalAssertions": [
+    "child_count_does_not_block_new_child",
+    "canonical_parent=obj-110"
+  ]
+}

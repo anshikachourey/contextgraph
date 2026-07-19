@@ -1,0 +1,139 @@
+{
+  "id": "SMT-005",
+  "title": "Two plausible containing parents compete for one canonical structural parent",
+  "tags": [
+    "canonical-parent",
+    "multiple-valid-parents",
+    "single-parent",
+    "relationship-orthogonality"
+  ],
+  "executionMode": "SINGLE_STEP",
+  "existingGraph": {
+    "objects": [
+      {
+        "objectId": "obj-112",
+        "title": "Semantic Model Architecture",
+        "persistentConcern": "Which models perform semantic reasoning and how routing and escalation work.",
+        "status": "active",
+        "parentObjectId": "obj-110"
+      },
+      {
+        "objectId": "obj-121",
+        "title": "Enterprise Data Isolation",
+        "persistentConcern": "How enterprise conversations and semantic data remain inside authorized processing boundaries.",
+        "status": "active",
+        "parentObjectId": "obj-120"
+      }
+    ],
+    "relationships": []
+  },
+  "newMessages": [
+    {
+      "role": "user",
+      "messageId": "user-msg-005a",
+      "content": "For privacy-sensitive enterprise customers, maybe we should support a locally hosted small model that does the first-pass object classification inside their environment, then only send genuinely ambiguous cases to an external model if their policy allows it."
+    },
+    {
+      "role": "assistant",
+      "messageId": "assistant-msg-005",
+      "content": "So this combines model routing with privacy boundaries: local classification first, optional external escalation second."
+    },
+    {
+      "role": "user",
+      "messageId": "user-msg-005b",
+      "content": "Right. The whole point would be to keep as much semantic processing inside the customer's boundary as possible without giving up strong reasoning for hard cases."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "packet-005",
+    "userEvidenceMessageIds": [
+      "user-msg-005a",
+      "user-msg-005b"
+    ],
+    "assistantContextMessageIds": [
+      "assistant-msg-005"
+    ],
+    "conciseMeaning": "The user establishes privacy-aware semantic model routing that keeps first-pass inference inside the customer boundary and permits external escalation only when policy allows.",
+    "focalSubject": "Privacy-aware semantic model routing",
+    "operativeIntent": "PLAN"
+  },
+  "retrieval": {
+    "initialIdentityCandidates": [
+      {
+        "objectId": "obj-112",
+        "rank": 1
+      },
+      {
+        "objectId": "obj-121",
+        "rank": 2
+      }
+    ],
+    "initialParentCandidates": [
+      {
+        "objectId": "obj-112",
+        "rank": 1
+      },
+      {
+        "objectId": "obj-121",
+        "rank": 2
+      }
+    ]
+  },
+  "expectedTrace": {
+    "durableSemanticSignificance": true,
+    "identity": {
+      "initialSameObjectId": null,
+      "identitySearchSufficient": true,
+      "mustWidenIdentitySearch": false,
+      "finalPrimaryObjectId": "NEW_OBJECT",
+      "primaryObjectDisposition": "NEW"
+    },
+    "structural": {
+      "initialParentSearchSufficient": true,
+      "mustWidenParentSearch": false,
+      "canonicalParentId": "obj-121"
+    },
+    "crossObjectImpacts": []
+  },
+  "expectedMutationSet": {
+    "objectMutations": [
+      {
+        "type": "CREATE_OBJECT",
+        "proposedTitle": "Privacy-Aware Semantic Model Routing"
+      }
+    ],
+    "structuralMutations": [
+      {
+        "type": "ADD_CHILD_OF",
+        "parentObjectId": "obj-121"
+      }
+    ],
+    "relationshipMutations": [
+      {
+        "type": "ADD_RELATIONSHIP",
+        "sourceObjectId": "NEW_OBJECT",
+        "targetObjectId": "obj-112",
+        "semanticClass": "CONSTRAINT_OR_IMPLEMENTATION_LINK"
+      }
+    ],
+    "propositionStateMutations": [],
+    "restructuringSignals": []
+  },
+  "forbiddenOutcomes": [
+    {
+      "type": "MULTIPLE_STRUCTURAL_PARENTS"
+    },
+    {
+      "type": "ADD_CHILD_OF",
+      "parentObjectId": "obj-112"
+    },
+    {
+      "type": "CREATE_ARTIFICIAL_UMBRELLA"
+    }
+  ],
+  "criticalAssertions": [
+    "exactly_one_structural_parent",
+    "canonical_parent=obj-121",
+    "relationship_to=obj-112"
+  ]
+}

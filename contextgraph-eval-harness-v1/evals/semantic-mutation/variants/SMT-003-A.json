@@ -1,0 +1,24 @@
+{
+  "id": "SMT-003-A",
+  "baseCaseId": "SMT-003",
+  "description": "Make the precise child dormant while the broad parent is active; precise identity must still win and should REOPEN+EXTEND.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "replace",
+        "path": "/existingGraph/objects/1/status",
+        "value": "dormant"
+      },
+      {
+        "op": "note",
+        "path": "/expectedMutationSet",
+        "value": "Use REOPEN_OBJECT + EXTEND_OBJECT for obj-112."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

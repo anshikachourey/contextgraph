@@ -1,0 +1,19 @@
+{
+  "id": "SMT-004-C",
+  "baseCaseId": "SMT-004",
+  "description": "Add a highly similar deployment object to initial parent candidates; it must not steal canonical parenthood.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/retrieval/initialParentCandidates",
+        "value": "Add misleading Deployment Architecture at rank 1."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

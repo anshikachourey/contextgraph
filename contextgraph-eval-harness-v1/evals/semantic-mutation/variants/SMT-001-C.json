@@ -1,0 +1,19 @@
+{
+  "id": "SMT-001-C",
+  "baseCaseId": "SMT-001",
+  "description": "Paraphrase the user message to use 'cheap specialist model' and 'frontier fallback' instead of classifier/Claude; expected semantic result unchanged.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/newMessages",
+        "value": "Paraphrase wording only; preserve intent and persistent concern."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

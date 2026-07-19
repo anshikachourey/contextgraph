@@ -1,0 +1,19 @@
+{
+  "id": "SMT-001-B",
+  "baseCaseId": "SMT-001",
+  "description": "Move the correct identity to rank 8 behind additional misleading semantic candidates; expected semantic result unchanged.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/retrieval",
+        "value": "Insert three additional broadly relevant distractors before obj-112; obj-112 rank=8."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

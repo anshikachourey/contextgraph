@@ -1,0 +1,19 @@
+{
+  "id": "SMT-008-B",
+  "baseCaseId": "SMT-008",
+  "description": "Use 'I stay unless Netflix works out' instead of 'I move only if Netflix works out'; mutation set unchanged.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/newMessages",
+        "value": "Logical-equivalent paraphrase."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

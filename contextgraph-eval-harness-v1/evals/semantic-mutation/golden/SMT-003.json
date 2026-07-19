@@ -1,0 +1,128 @@
+{
+  "id": "SMT-003",
+  "title": "Broad parent and precise child both appear relevant; precise existing identity wins",
+  "tags": [
+    "identity-resolution",
+    "broad-vs-precise",
+    "recency-bias",
+    "evidence-volume-bias"
+  ],
+  "executionMode": "SINGLE_STEP",
+  "existingGraph": {
+    "objects": [
+      {
+        "objectId": "obj-110",
+        "title": "ContextGraph Semantic Intelligence",
+        "persistentConcern": "How ContextGraph understands conversations and transforms them into persistent semantic structure.",
+        "status": "active",
+        "parentObjectId": "obj-100"
+      },
+      {
+        "objectId": "obj-111",
+        "title": "Object Decision & Semantic Mutation Algorithm",
+        "persistentConcern": "How semantic packets mutate persistent objects, structure, relationships, and state.",
+        "status": "active",
+        "parentObjectId": "obj-110"
+      },
+      {
+        "objectId": "obj-112",
+        "title": "Semantic Model Architecture",
+        "persistentConcern": "Which models perform semantic reasoning and how routing, confidence escalation, specialization, and training should work.",
+        "status": "active",
+        "parentObjectId": "obj-110"
+      },
+      {
+        "objectId": "obj-113",
+        "title": "Semantic Evaluation & Benchmarking",
+        "persistentConcern": "How semantic-engine quality is evaluated.",
+        "status": "active",
+        "parentObjectId": "obj-110"
+      }
+    ],
+    "relationships": []
+  },
+  "newMessages": [
+    {
+      "role": "assistant",
+      "messageId": "assistant-msg-003",
+      "content": "One option would be to send every object decision to a frontier model, but that gives you maximum quality at maximum inference cost."
+    },
+    {
+      "role": "user",
+      "messageId": "user-msg-003",
+      "content": "I still think we should eventually route easy decisions to something smaller. The harder part is deciding how confident the smaller model needs to be before it hands the case to Claude."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "packet-003",
+    "userEvidenceMessageIds": [
+      "user-msg-003"
+    ],
+    "assistantContextMessageIds": [
+      "assistant-msg-003"
+    ],
+    "conciseMeaning": "The user is developing confidence-based routing where a smaller model handles easy semantic decisions and uncertain cases escalate to Claude.",
+    "focalSubject": "Confidence-based semantic model routing",
+    "operativeIntent": "PLAN"
+  },
+  "retrieval": {
+    "initialIdentityCandidates": [
+      {
+        "objectId": "obj-110",
+        "rank": 1
+      },
+      {
+        "objectId": "obj-113",
+        "rank": 2
+      },
+      {
+        "objectId": "obj-111",
+        "rank": 3
+      },
+      {
+        "objectId": "obj-112",
+        "rank": 4
+      }
+    ]
+  },
+  "expectedTrace": {
+    "durableSemanticSignificance": true,
+    "identity": {
+      "initialSameObjectId": "obj-112",
+      "identitySearchSufficient": true,
+      "mustWidenIdentitySearch": false,
+      "finalPrimaryObjectId": "obj-112",
+      "primaryObjectDisposition": "EXISTING_ACTIVE"
+    },
+    "crossObjectImpacts": []
+  },
+  "expectedMutationSet": {
+    "objectMutations": [
+      {
+        "type": "EXTEND_OBJECT",
+        "targetObjectId": "obj-112"
+      }
+    ],
+    "structuralMutations": [],
+    "relationshipMutations": [],
+    "propositionStateMutations": [],
+    "restructuringSignals": []
+  },
+  "forbiddenOutcomes": [
+    {
+      "type": "EXTEND_OBJECT",
+      "targetObjectId": "obj-110"
+    },
+    {
+      "type": "CREATE_OBJECT"
+    },
+    {
+      "type": "ADD_CHILD_OF",
+      "parentObjectId": "obj-112"
+    }
+  ],
+  "criticalAssertions": [
+    "precise_identity_beats_broad_parent",
+    "primary_object=obj-112"
+  ]
+}

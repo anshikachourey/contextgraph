@@ -293,6 +293,7 @@ export function buildFlowNodes(
         propositionCount: 0,
         depth: node.depth,
         hasOverlap: overlapIds.has(node.objectId),
+        isSelected,
       },
       style: isFaded ? { opacity: 0.3 } : undefined,
     };

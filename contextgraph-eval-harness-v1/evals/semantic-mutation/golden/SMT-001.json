@@ -1,0 +1,138 @@
+{
+  "id": "SMT-001",
+  "title": "Correct SAME object is not the highest-ranked retrieval candidate",
+  "tags": [
+    "identity-resolution",
+    "retrieval-ranking",
+    "exact-identity"
+  ],
+  "executionMode": "SINGLE_STEP",
+  "existingGraph": {
+    "objects": [
+      {
+        "objectId": "obj-110",
+        "title": "ContextGraph Semantic Intelligence",
+        "persistentConcern": "How ContextGraph interprets conversations and transforms them into persistent semantic structure.",
+        "status": "active",
+        "parentObjectId": "obj-100"
+      },
+      {
+        "objectId": "obj-112",
+        "title": "Semantic Model Architecture",
+        "persistentConcern": "Which models perform semantic reasoning and how selection, routing, escalation, specialization, and training should work.",
+        "status": "active",
+        "parentObjectId": "obj-110"
+      },
+      {
+        "objectId": "obj-113",
+        "title": "Semantic Evaluation & Benchmarking",
+        "persistentConcern": "How semantic-engine quality is evaluated through benchmarks, torture cases, and model comparison.",
+        "status": "active",
+        "parentObjectId": "obj-110"
+      },
+      {
+        "objectId": "obj-200",
+        "title": "ContextGraph Development Strategy",
+        "persistentConcern": "How the ContextGraph project should be developed efficiently.",
+        "status": "active"
+      },
+      {
+        "objectId": "obj-300",
+        "title": "V2 Incremental Performance",
+        "persistentConcern": "How to reduce latency and computational cost in incremental graph updates.",
+        "status": "active"
+      }
+    ],
+    "relationships": []
+  },
+  "newMessages": [
+    {
+      "role": "assistant",
+      "messageId": "assistant-msg-001",
+      "content": "One possibility is to use the strongest model for every semantic mutation decision, although that would maximize inference cost."
+    },
+    {
+      "role": "user",
+      "messageId": "user-msg-001",
+      "content": "I don't think every packet needs Claude. Once we have enough evaluation data, maybe a smaller classifier could handle the obvious same-object or child cases, and only ambiguous cases should get escalated to Claude. Claude could still be the fallback."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "packet-001",
+    "userEvidenceMessageIds": [
+      "user-msg-001"
+    ],
+    "assistantContextMessageIds": [
+      "assistant-msg-001"
+    ],
+    "conciseMeaning": "The user proposes tiered semantic-model routing where a smaller classifier handles obvious object decisions and ambiguous cases escalate to Claude.",
+    "focalSubject": "ContextGraph semantic model routing",
+    "operativeIntent": "PLAN"
+  },
+  "retrieval": {
+    "initialIdentityCandidates": [
+      {
+        "objectId": "obj-110",
+        "rank": 1
+      },
+      {
+        "objectId": "obj-113",
+        "rank": 2
+      },
+      {
+        "objectId": "obj-200",
+        "rank": 3
+      },
+      {
+        "objectId": "obj-300",
+        "rank": 4
+      },
+      {
+        "objectId": "obj-112",
+        "rank": 5
+      }
+    ]
+  },
+  "expectedTrace": {
+    "durableSemanticSignificance": true,
+    "identity": {
+      "initialSameObjectId": "obj-112",
+      "identitySearchSufficient": true,
+      "mustWidenIdentitySearch": false,
+      "finalPrimaryObjectId": "obj-112",
+      "primaryObjectDisposition": "EXISTING_ACTIVE"
+    },
+    "crossObjectImpacts": []
+  },
+  "expectedMutationSet": {
+    "objectMutations": [
+      {
+        "type": "EXTEND_OBJECT",
+        "targetObjectId": "obj-112"
+      }
+    ],
+    "structuralMutations": [],
+    "relationshipMutations": [],
+    "propositionStateMutations": [],
+    "restructuringSignals": []
+  },
+  "forbiddenOutcomes": [
+    {
+      "type": "EXTEND_OBJECT",
+      "targetObjectId": "obj-110"
+    },
+    {
+      "type": "CREATE_OBJECT"
+    },
+    {
+      "type": "ADD_CHILD_OF",
+      "parentObjectId": "obj-112"
+    }
+  ],
+  "criticalAssertions": [
+    "primary_object=obj-112",
+    "identity_widening=false",
+    "no_new_object",
+    "no_structural_mutation"
+  ]
+}

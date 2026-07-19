@@ -1,0 +1,168 @@
+{
+  "id": "SMT-004",
+  "title": "Correct structural parent is missing from initial retrieval and parent search must widen",
+  "tags": [
+    "new-identity",
+    "parent-retrieval",
+    "structural-widening",
+    "canonical-parent"
+  ],
+  "executionMode": "SINGLE_STEP",
+  "existingGraph": {
+    "objects": [
+      {
+        "objectId": "obj-110",
+        "title": "Semantic Intelligence",
+        "persistentConcern": "How ContextGraph performs semantic interpretation.",
+        "status": "active",
+        "parentObjectId": "obj-100"
+      },
+      {
+        "objectId": "obj-120",
+        "title": "Privacy Architecture",
+        "persistentConcern": "How ContextGraph protects conversation data and controls data exposure.",
+        "status": "active",
+        "parentObjectId": "obj-100"
+      },
+      {
+        "objectId": "obj-121",
+        "title": "Enterprise Data Isolation",
+        "persistentConcern": "How enterprise conversations and semantic data remain inside authorized processing boundaries.",
+        "status": "active",
+        "parentObjectId": "obj-120"
+      },
+      {
+        "objectId": "obj-140",
+        "title": "ContextGraph Infrastructure",
+        "persistentConcern": "Runtime, hosting, deployment, and operational infrastructure.",
+        "status": "active",
+        "parentObjectId": "obj-100"
+      }
+    ],
+    "relationships": []
+  },
+  "newMessages": [
+    {
+      "role": "user",
+      "messageId": "user-msg-004a",
+      "content": "We probably also need a separate way to run the semantic model entirely inside the customer's environment for companies that won't allow conversation data to leave their own infrastructure."
+    },
+    {
+      "role": "assistant",
+      "messageId": "assistant-msg-004",
+      "content": "That sounds like an on-premise or customer-hosted inference option rather than just normal API privacy controls."
+    },
+    {
+      "role": "user",
+      "messageId": "user-msg-004b",
+      "content": "Yeah, exactly. We should treat customer-hosted semantic inference as its own architecture problem."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "packet-004",
+    "userEvidenceMessageIds": [
+      "user-msg-004a",
+      "user-msg-004b"
+    ],
+    "assistantContextMessageIds": [
+      "assistant-msg-004"
+    ],
+    "conciseMeaning": "The user establishes customer-hosted semantic inference as a distinct architecture concern for enterprises that cannot allow conversation data to leave their infrastructure.",
+    "focalSubject": "Customer-hosted semantic inference",
+    "operativeIntent": "PLAN"
+  },
+  "retrieval": {
+    "initialIdentityCandidates": [
+      {
+        "objectId": "obj-140",
+        "rank": 1
+      },
+      {
+        "objectId": "obj-110",
+        "rank": 2
+      }
+    ],
+    "initialParentCandidates": [
+      {
+        "objectId": "obj-140",
+        "rank": 1
+      },
+      {
+        "objectId": "obj-110",
+        "rank": 2
+      },
+      {
+        "objectId": "obj-100",
+        "rank": 3
+      }
+    ],
+    "widenedParentCandidates": [
+      {
+        "objectId": "obj-121",
+        "rank": 1
+      },
+      {
+        "objectId": "obj-120",
+        "rank": 2
+      },
+      {
+        "objectId": "obj-140",
+        "rank": 3
+      }
+    ]
+  },
+  "expectedTrace": {
+    "durableSemanticSignificance": true,
+    "identity": {
+      "initialSameObjectId": null,
+      "identitySearchSufficient": true,
+      "mustWidenIdentitySearch": false,
+      "finalPrimaryObjectId": "NEW_OBJECT",
+      "primaryObjectDisposition": "NEW"
+    },
+    "structural": {
+      "initialParentSearchSufficient": false,
+      "mustWidenParentSearch": true,
+      "canonicalParentId": "obj-121"
+    },
+    "crossObjectImpacts": []
+  },
+  "expectedMutationSet": {
+    "objectMutations": [
+      {
+        "type": "CREATE_OBJECT",
+        "proposedTitle": "Customer-Hosted Semantic Inference"
+      }
+    ],
+    "structuralMutations": [
+      {
+        "type": "ADD_CHILD_OF",
+        "parentObjectId": "obj-121"
+      }
+    ],
+    "relationshipMutations": [],
+    "propositionStateMutations": [],
+    "restructuringSignals": []
+  },
+  "forbiddenOutcomes": [
+    {
+      "type": "CREATE_ROOT"
+    },
+    {
+      "type": "ADD_CHILD_OF",
+      "parentObjectId": "obj-140"
+    },
+    {
+      "type": "ADD_CHILD_OF",
+      "parentObjectId": "obj-110"
+    },
+    {
+      "type": "PARENT_SEARCH_NOT_WIDENED"
+    }
+  ],
+  "criticalAssertions": [
+    "new_identity=true",
+    "parent_widening=true",
+    "canonical_parent=obj-121"
+  ]
+}

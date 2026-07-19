@@ -1,0 +1,19 @@
+{
+  "id": "SMT-002-A",
+  "baseCaseId": "SMT-002",
+  "description": "Use Mumbai instead of Bombay and remove exact historical title wording elsewhere; widening and reopen must still occur.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/newMessages",
+        "value": "Replace Bombay with Mumbai; preserve revisit language."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

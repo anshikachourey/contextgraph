@@ -1,0 +1,19 @@
+{
+  "id": "SMT-009-C",
+  "baseCaseId": "SMT-009",
+  "description": "Change episode order between cost-routing and custom-classifier discussion; final promoted identity remains one Semantic Model Architecture child.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/steps",
+        "value": "Swap episode-2 and episode-3; preserve four-step cumulative trajectory."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

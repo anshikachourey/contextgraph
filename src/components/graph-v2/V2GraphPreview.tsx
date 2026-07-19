@@ -69,10 +69,13 @@ type SnapshotPayload = {
 };
 
 type SnapshotResponse = {
-  status: "none" | "generating" | "ready" | "failed";
+  status: "none" | "generating" | "generating_initial" | "ready" | "failed";
+  snapshotStatus?: "none" | "generating_initial" | "ready" | "failed";
+  updateStatus?: "idle" | "queued" | "updating" | "failed";
   graphPayload?: SnapshotPayload;
   diagnostics?: { objectCount: number; relationshipCount: number; treeCount: number; maxDepth: number };
   errorMessage?: string;
+  lastUpdateError?: string | null;
   generatedAt?: string;
   loadedFromSnapshot?: boolean;
 };
@@ -83,6 +86,8 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
   const [generating, setGenerating] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [edgeMode, setEdgeMode] = useState<EdgeMode>("structure");
+  const [panelWidth, setPanelWidth] = useState(320);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !conversationId) return;
@@ -215,7 +220,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
         <div className="flex-1">
           {loading && <div className="flex h-full items-center justify-center text-gray-400">Loading snapshot…</div>}
 
-          {!loading && snapshot?.status === "none" && (
+          {!loading && (snapshot?.snapshotStatus === "none" || snapshot?.status === "none") && (
             <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
               <div className="text-4xl opacity-30">🧪</div>
               <p className="text-sm text-gray-600">No V2 graph snapshot exists.</p>
@@ -226,35 +231,73 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
             </div>
           )}
 
-          {!loading && snapshot?.status === "generating" && (
+          {!loading && (snapshot?.snapshotStatus === "generating_initial" || snapshot?.status === "generating") && !snapshot?.graphPayload && (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-purple-300 border-t-purple-600" />
               <p className="text-sm text-gray-600">Generating V2 graph…</p>
             </div>
           )}
 
-          {!loading && snapshot?.status === "failed" && (
+          {!loading && snapshot?.snapshotStatus === "failed" && !snapshot?.graphPayload && (
             <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
               <p className="text-sm text-red-600">{snapshot.errorMessage ?? "Generation failed"}</p>
               <button onClick={generateSnapshot} disabled={generating} className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">Retry</button>
             </div>
           )}
 
-          {!loading && snapshot?.status === "ready" && displayGraph && (
-            <V2GraphCanvas
-              displayGraph={displayGraph}
-              overlapObjectIds={overlapObjectIds}
-              selectedNodeId={selectedNodeId}
-              edgeMode={edgeMode}
-              onNodeClick={handleNodeClick}
-            />
+          {!loading && (snapshot?.status === "ready" || snapshot?.snapshotStatus === "ready") && displayGraph && (
+            <div className="relative h-full">
+              <V2GraphCanvas
+                displayGraph={displayGraph}
+                overlapObjectIds={overlapObjectIds}
+                selectedNodeId={selectedNodeId}
+                edgeMode={edgeMode}
+                onNodeClick={handleNodeClick}
+              />
+              {/* Incremental update indicator */}
+              {(snapshot?.updateStatus === "queued" || snapshot?.updateStatus === "updating") && (
+                <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-lg bg-white/90 border border-gray-200 px-3 py-1.5 shadow-sm">
+                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-purple-300 border-t-purple-600" />
+                  <span className="text-xs text-gray-600">Updating graph…</span>
+                </div>
+              )}
+              {snapshot?.updateStatus === "failed" && (
+                <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-1.5">
+                  <span className="text-xs text-red-600">Update failed</span>
+                  <button onClick={loadSnapshot} className="text-xs text-red-500 underline">Retry</button>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
-        {/* Node panel */}
+        {/* Node panel with drag resize */}
         {selectedObject && gp && (
-          <div className="w-80 shrink-0 border-l border-gray-200 overflow-hidden">
-            <V2NodePanel
+          <>
+            {/* Resize handle */}
+            <div
+              className="w-1 shrink-0 cursor-col-resize bg-gray-200 hover:bg-purple-300 active:bg-purple-400 transition-colors"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+                const startX = e.clientX;
+                const startWidth = panelWidth;
+                const onMove = (ev: MouseEvent) => {
+                  const delta = startX - ev.clientX;
+                  const newWidth = Math.max(240, Math.min(600, startWidth + delta));
+                  setPanelWidth(newWidth);
+                };
+                const onUp = () => {
+                  setIsDragging(false);
+                  window.removeEventListener("mousemove", onMove);
+                  window.removeEventListener("mouseup", onUp);
+                };
+                window.addEventListener("mousemove", onMove);
+                window.addEventListener("mouseup", onUp);
+              }}
+            />
+            <div className="shrink-0 border-l border-gray-200 overflow-hidden" style={{ width: panelWidth }}>
+              <V2NodePanel
               object={selectedObject}
               propositions={gp.propositions}
               relationships={gp.relationships}
@@ -292,7 +335,8 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
                 });
               } : undefined}
             />
-          </div>
+            </div>
+          </>
         )}
       </div>
     </div>

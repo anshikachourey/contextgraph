@@ -1,0 +1,152 @@
+{
+  "id": "SMT-008",
+  "title": "One packet updates two existing objects, creates a relationship, and supersedes old state",
+  "tags": [
+    "multi-mutation",
+    "cross-object-impact",
+    "relationship",
+    "supersession"
+  ],
+  "executionMode": "SINGLE_STEP",
+  "existingGraph": {
+    "objects": [
+      {
+        "objectId": "obj-600",
+        "title": "Potential Move to Mumbai",
+        "persistentConcern": "Whether the user should move to Mumbai.",
+        "status": "active",
+        "propositions": [
+          {
+            "propositionId": "P600-1",
+            "content": "User wants to move to Mumbai.",
+            "state": "current"
+          },
+          {
+            "propositionId": "P600-2",
+            "content": "User will probably move even without a particular job offer.",
+            "state": "current"
+          }
+        ]
+      },
+      {
+        "objectId": "obj-610",
+        "title": "Netflix Marketing Opportunity",
+        "persistentConcern": "The user's exploration of a potential Netflix marketing role.",
+        "status": "active",
+        "propositions": [
+          {
+            "propositionId": "P610-1",
+            "content": "User is interested in the Netflix marketing opportunity.",
+            "state": "current"
+          }
+        ]
+      }
+    ],
+    "relationships": []
+  },
+  "newMessages": [
+    {
+      "role": "assistant",
+      "messageId": "assistant-msg-008",
+      "content": "It sounds like you were leaning toward Mumbai either way. Has that changed now that the Netflix opportunity is becoming more concrete?"
+    },
+    {
+      "role": "user",
+      "messageId": "user-msg-008",
+      "content": "Yeah, actually it has. I don't think I'd move just for the sake of moving anymore. At this point I'd probably only go if the Netflix role works out. If that falls through, I'd rather stay where I am for now."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "packet-008",
+    "userEvidenceMessageIds": [
+      "user-msg-008"
+    ],
+    "assistantContextMessageIds": [
+      "assistant-msg-008"
+    ],
+    "conciseMeaning": "The user's Mumbai relocation decision is now conditional on the Netflix opportunity succeeding; otherwise they plan to stay where they are.",
+    "focalSubject": "Conditional Mumbai relocation based on Netflix opportunity",
+    "operativeIntent": "UPDATE"
+  },
+  "retrieval": {
+    "initialIdentityCandidates": [
+      {
+        "objectId": "obj-600",
+        "rank": 1
+      },
+      {
+        "objectId": "obj-610",
+        "rank": 2
+      }
+    ]
+  },
+  "expectedTrace": {
+    "durableSemanticSignificance": true,
+    "identity": {
+      "initialSameObjectId": "obj-600",
+      "identitySearchSufficient": true,
+      "mustWidenIdentitySearch": false,
+      "finalPrimaryObjectId": "obj-600",
+      "primaryObjectDisposition": "EXISTING_ACTIVE"
+    },
+    "crossObjectImpacts": [
+      "obj-610"
+    ]
+  },
+  "expectedMutationSet": {
+    "objectMutations": [
+      {
+        "type": "EXTEND_OBJECT",
+        "targetObjectId": "obj-600"
+      },
+      {
+        "type": "EXTEND_OBJECT",
+        "targetObjectId": "obj-610"
+      }
+    ],
+    "structuralMutations": [],
+    "relationshipMutations": [
+      {
+        "type": "ADD_RELATIONSHIP",
+        "sourceObjectId": "obj-600",
+        "targetObjectId": "obj-610",
+        "semanticClass": "DEPENDENCY"
+      }
+    ],
+    "propositionStateMutations": [
+      {
+        "type": "SUPERSEDE_PROPOSITION",
+        "targetPropositionId": "P600-2",
+        "supersedingPropositionId": "prop-008-new"
+      }
+    ],
+    "restructuringSignals": []
+  },
+  "forbiddenOutcomes": [
+    {
+      "type": "CREATE_OBJECT"
+    },
+    {
+      "type": "ADD_CHILD_OF",
+      "parentObjectId": "obj-600",
+      "childObjectId": "obj-610"
+    },
+    {
+      "type": "DELETE_PROPOSITION",
+      "targetPropositionId": "P600-2"
+    },
+    {
+      "type": "OMIT_CROSS_OBJECT_IMPACT",
+      "targetObjectId": "obj-610"
+    },
+    {
+      "type": "OMIT_REQUIRED_RELATIONSHIP"
+    }
+  ],
+  "criticalAssertions": [
+    "primary_object=obj-600",
+    "cross_object_impact=obj-610",
+    "relationship_required",
+    "supersede=P600-2"
+  ]
+}

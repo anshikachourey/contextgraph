@@ -1,0 +1,147 @@
+{
+  "id": "SMT-009",
+  "title": "Emerging sub-concern develops across non-contiguous episodes",
+  "tags": [
+    "longitudinal-emergence",
+    "sub-concern",
+    "promotion",
+    "non-contiguous"
+  ],
+  "executionMode": "SEQUENCE",
+  "existingGraph": {
+    "objects": [
+      {
+        "objectId": "obj-110",
+        "title": "ContextGraph Semantic Intelligence",
+        "persistentConcern": "How ContextGraph interprets conversations and transforms them into persistent semantic structure.",
+        "status": "active",
+        "parentObjectId": "obj-100"
+      }
+    ],
+    "relationships": []
+  },
+  "steps": [
+    {
+      "stepId": "episode-1",
+      "userMessage": "Do you think Claude should make the SAME versus CHILD decisions, or would GPT be better at that?",
+      "expected": {
+        "objectMutations": [
+          {
+            "type": "EXTEND_OBJECT",
+            "targetObjectId": "obj-110"
+          }
+        ],
+        "mustNotCreateObject": true
+      }
+    },
+    {
+      "stepId": "episode-2",
+      "userMessage": "One thing I'm worried about is cost. Maybe we shouldn't send every semantic packet to Claude if simpler decisions could be handled by something cheaper.",
+      "expected": {
+        "objectMutations": [
+          {
+            "type": "EXTEND_OBJECT",
+            "targetObjectId": "obj-110"
+          }
+        ],
+        "mustNotCreateObject": true
+      }
+    },
+    {
+      "stepId": "episode-3",
+      "userMessage": "Eventually, once we have enough labeled decisions, couldn't we train our own classifier for SAME, CHILD, RELATED, and ROOT and only use a frontier model for ambiguous cases?",
+      "expected": {
+        "objectMutations": [
+          {
+            "type": "EXTEND_OBJECT",
+            "targetObjectId": "obj-110"
+          }
+        ],
+        "mustNotCreateObject": true
+      }
+    },
+    {
+      "stepId": "episode-4",
+      "userMessage": "We should compare Claude, GPT, and Gemini against the exact same Semantic Mutation Benchmark before we decide which model actually runs the engine.",
+      "expected": {
+        "objectMutations": [
+          {
+            "type": "CREATE_OBJECT",
+            "proposedTitle": "Semantic Model Architecture"
+          }
+        ],
+        "structuralMutations": [
+          {
+            "type": "ADD_CHILD_OF",
+            "parentObjectId": "obj-110"
+          }
+        ],
+        "restructuringSignals": [
+          {
+            "type": "REASSOCIATE_HISTORICAL_EVIDENCE",
+            "fromSteps": [
+              "episode-1",
+              "episode-2",
+              "episode-3"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "expectedTrace": {
+    "durableSemanticSignificance": true,
+    "longitudinalEmergence": {
+      "mustAccumulateAcrossNonContiguousEpisodes": true,
+      "promotionAtStep": "episode-4",
+      "promotedObjectTitle": "Semantic Model Architecture",
+      "canonicalParentId": "obj-110"
+    }
+  },
+  "expectedMutationSet": {
+    "objectMutations": [
+      {
+        "type": "CREATE_OBJECT",
+        "proposedTitle": "Semantic Model Architecture"
+      }
+    ],
+    "structuralMutations": [
+      {
+        "type": "ADD_CHILD_OF",
+        "parentObjectId": "obj-110"
+      }
+    ],
+    "relationshipMutations": [],
+    "propositionStateMutations": [],
+    "restructuringSignals": [
+      {
+        "type": "REASSOCIATE_HISTORICAL_EVIDENCE",
+        "fromSteps": [
+          "episode-1",
+          "episode-2",
+          "episode-3"
+        ]
+      }
+    ]
+  },
+  "forbiddenOutcomes": [
+    {
+      "type": "CREATE_OBJECT_AT_STEP",
+      "stepId": "episode-1"
+    },
+    {
+      "type": "CREATE_MULTIPLE_CHILD_OBJECTS_FOR_EPISODES"
+    },
+    {
+      "type": "RESET_EMERGENCE_ON_TOPIC_GAP"
+    },
+    {
+      "type": "DESTRUCTIVE_HISTORY_REWRITE"
+    }
+  ],
+  "criticalAssertions": [
+    "promotion_at=episode-4",
+    "single_promoted_child",
+    "historical_evidence_preserved"
+  ]
+}

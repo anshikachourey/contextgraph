@@ -1,0 +1,19 @@
+{
+  "id": "SMT-004-B",
+  "baseCaseId": "SMT-004",
+  "description": "Use 'data residency' and 'customer-controlled processing boundary' instead of 'data cannot leave'; parent widening must still occur.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/newMessages",
+        "value": "Paraphrase privacy constraint with data-residency terminology."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

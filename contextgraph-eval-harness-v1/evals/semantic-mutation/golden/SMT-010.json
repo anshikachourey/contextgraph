@@ -1,0 +1,137 @@
+{
+  "id": "SMT-010",
+  "title": "Legitimate broader parent emerges later and triggers possible reparenting",
+  "tags": [
+    "restructuring",
+    "reparent",
+    "broader-object-emergence",
+    "no-artificial-umbrella"
+  ],
+  "executionMode": "SINGLE_STEP",
+  "existingGraph": {
+    "objects": [
+      {
+        "objectId": "obj-710",
+        "title": "V2 Incremental Reliability",
+        "persistentConcern": "Ensuring incremental semantic updates are durable, ordered, recoverable, and not lost.",
+        "status": "active"
+      },
+      {
+        "objectId": "obj-720",
+        "title": "V2 Incremental Performance",
+        "persistentConcern": "Reducing latency and unnecessary computation in incremental semantic updates.",
+        "status": "active"
+      }
+    ],
+    "relationships": []
+  },
+  "newMessages": [
+    {
+      "role": "user",
+      "messageId": "user-msg-010a",
+      "content": "I think we're making a mistake by treating the reliability and performance work as completely separate implementation tasks now. Before Kiro changes either one again, I want us to step back and define what the V2 incremental engine itself is supposed to guarantee end to end\u2014how a message moves from persistence through semantic processing, mutation generation, commit, recovery, and eventually performance optimization. I want the whole incremental engine architecture to be something we can reason about as one system."
+    },
+    {
+      "role": "assistant",
+      "messageId": "assistant-msg-010",
+      "content": "So rather than only discussing reliability or latency independently, you want an explicit system-level architecture for the incremental engine itself."
+    },
+    {
+      "role": "user",
+      "messageId": "user-msg-010b",
+      "content": "Exactly. Reliability and performance should still remain separate concerns inside it, but I want the engine architecture itself to become something we can return to and design."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "packet-010",
+    "userEvidenceMessageIds": [
+      "user-msg-010a",
+      "user-msg-010b"
+    ],
+    "assistantContextMessageIds": [
+      "assistant-msg-010"
+    ],
+    "conciseMeaning": "The user establishes the V2 Incremental Engine itself as a persistent system-level architecture concern encompassing the end-to-end update lifecycle while retaining reliability and performance as distinct internal concerns.",
+    "focalSubject": "V2 Incremental Engine architecture",
+    "operativeIntent": "PLAN"
+  },
+  "retrieval": {
+    "initialIdentityCandidates": [
+      {
+        "objectId": "obj-710",
+        "rank": 1
+      },
+      {
+        "objectId": "obj-720",
+        "rank": 2
+      }
+    ]
+  },
+  "expectedTrace": {
+    "durableSemanticSignificance": true,
+    "identity": {
+      "initialSameObjectId": null,
+      "identitySearchSufficient": true,
+      "mustWidenIdentitySearch": false,
+      "finalPrimaryObjectId": "NEW_OBJECT",
+      "primaryObjectDisposition": "NEW"
+    },
+    "structural": {
+      "initialParentSearchSufficient": true,
+      "mustWidenParentSearch": false,
+      "canonicalParentId": null
+    },
+    "crossObjectImpacts": []
+  },
+  "expectedMutationSet": {
+    "objectMutations": [
+      {
+        "type": "CREATE_OBJECT",
+        "proposedTitle": "V2 Incremental Engine"
+      }
+    ],
+    "structuralMutations": [],
+    "relationshipMutations": [],
+    "propositionStateMutations": [],
+    "restructuringSignals": [
+      {
+        "type": "POSSIBLE_REPARENT",
+        "targetObjectId": "obj-710",
+        "proposedParent": "NEW_OBJECT"
+      },
+      {
+        "type": "POSSIBLE_REPARENT",
+        "targetObjectId": "obj-720",
+        "proposedParent": "NEW_OBJECT"
+      }
+    ]
+  },
+  "forbiddenOutcomes": [
+    {
+      "type": "EXTEND_OBJECT",
+      "targetObjectId": "obj-710",
+      "asSoleAction": true
+    },
+    {
+      "type": "EXTEND_OBJECT",
+      "targetObjectId": "obj-720",
+      "asSoleAction": true
+    },
+    {
+      "type": "MERGE_OBJECTS",
+      "objectIds": [
+        "obj-710",
+        "obj-720"
+      ]
+    },
+    {
+      "type": "AUTO_APPLY_REPARENT_WITHOUT_VALIDATION"
+    }
+  ],
+  "criticalAssertions": [
+    "new_broader_object=true",
+    "possible_reparent=obj-710",
+    "possible_reparent=obj-720",
+    "no_immediate_merge"
+  ]
+}

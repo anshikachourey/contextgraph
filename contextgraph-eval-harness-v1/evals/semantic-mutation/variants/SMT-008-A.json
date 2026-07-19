@@ -1,0 +1,19 @@
+{
+  "id": "SMT-008-A",
+  "baseCaseId": "SMT-008",
+  "description": "Reverse clause order so Netflix condition is stated before the Mumbai decision; mutation set unchanged.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "note",
+        "path": "/newMessages",
+        "value": "Paraphrase with reversed clause order."
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

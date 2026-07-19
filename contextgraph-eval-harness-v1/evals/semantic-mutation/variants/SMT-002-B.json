@@ -1,0 +1,21 @@
+{
+  "id": "SMT-002-B",
+  "baseCaseId": "SMT-002",
+  "description": "Increase temporal distance to 5,000 unrelated messages before the revisit; widening and reopen must still occur.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "add",
+        "path": "/metamorphicContext",
+        "value": {
+          "unrelatedMessagesInserted": 5000
+        }
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}

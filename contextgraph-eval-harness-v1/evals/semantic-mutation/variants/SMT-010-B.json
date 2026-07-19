@@ -1,0 +1,23 @@
+{
+  "id": "SMT-010-B",
+  "baseCaseId": "SMT-010",
+  "description": "Add an existing semantic relationship between Reliability and Performance; broader object must still emerge without merging them.",
+  "transformation": {
+    "patches": [
+      {
+        "op": "add",
+        "path": "/existingGraph/relationships/0",
+        "value": {
+          "sourceObjectId": "obj-710",
+          "targetObjectId": "obj-720",
+          "semanticClass": "RELATED"
+        }
+      }
+    ]
+  },
+  "expectedInvariant": {
+    "preserveCriticalAssertions": true,
+    "preserveForbiddenOutcomes": true,
+    "preserveExpectedMutationSemantics": true
+  }
+}
