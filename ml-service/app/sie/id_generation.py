@@ -13,14 +13,13 @@ Key properties:
 """
 
 import uuid
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
 # Per-entity-kind namespace UUIDs for UUIDv5 derivation.
-# Each namespace is itself a UUIDv5 derived from the DNS namespace + a unique
+# Each namespace is itself a UUIDv5 derived from a fixed root namespace + a unique
 # domain string, ensuring deterministic but collision-free ID spaces.
 # ---------------------------------------------------------------------------
 
@@ -31,13 +30,15 @@ ENTITY_NAMESPACES: dict[str, uuid.UUID] = {
     "retention_decision": uuid.uuid5(_SIE_ROOT_NAMESPACE, "sie.retention_decision"),
     "proposition": uuid.uuid5(_SIE_ROOT_NAMESPACE, "sie.proposition"),
     "packet": uuid.uuid5(_SIE_ROOT_NAMESPACE, "sie.packet"),
-    "packet_partition": uuid.uuid5(_SIE_ROOT_NAMESPACE, "sie.packet_partition"),
     "packet_split": uuid.uuid5(_SIE_ROOT_NAMESPACE, "sie.packet_split"),
     "concern": uuid.uuid5(_SIE_ROOT_NAMESPACE, "sie.concern"),
     "association": uuid.uuid5(_SIE_ROOT_NAMESPACE, "sie.association"),
     "membership": uuid.uuid5(_SIE_ROOT_NAMESPACE, "sie.membership"),
     "pending_semantic_decision": uuid.uuid5(
         _SIE_ROOT_NAMESPACE, "sie.pending_semantic_decision"
+    ),
+    "identity_resolution_record": uuid.uuid5(
+        _SIE_ROOT_NAMESPACE, "sie.identity_resolution_record"
     ),
 }
 
@@ -120,6 +121,17 @@ def create_entity_ref(entity_kind: str, creation_key: str) -> EntityCreationRef:
 # Each builder constructs a stable key from ONLY immutable provenance fields.
 # Mutable/model-generated fields (canonical meaning, identity summary,
 # display title, current summary, aliases, parent) are EXCLUDED.
+#
+# Key patterns (from design):
+#   request:           f"{conversation_id}:{message_seq_start}-{message_seq_end}:{pipeline_version}"
+#   retention_decision: f"{request_id}:{source_message_id}:{sequence_position}"
+#   proposition:       f"{request_id}:{extraction_unit_position}"
+#   packet:            f"{request_id}:{partition_key}"
+#   packet_split:      f"{request_id}:{original_packet_creation_key}:{child_partition_index}"
+#   concern:           f"{packet_creation_key}:{identity_resolution_event}"
+#   association:       f"{request_id}:{proposition_creation_key}:{concern_id}:{role}"
+#   membership:        f"{packet_creation_key}:{proposition_creation_key}:{ordinal}"
+#   pending_decision:  f"{request_id}:{stage}:{entity_creation_key}"
 # ---------------------------------------------------------------------------
 
 
@@ -127,14 +139,15 @@ def build_processing_request_key(
     conversation_id: str,
     message_seq_start: int,
     message_seq_end: int,
-    pipeline_invocation_id: str,
+    pipeline_version: str,
 ) -> str:
     """Build a stable creation key for a processing request.
 
-    Derived from: conversation, source message sequence range, and pipeline
-    invocation identity.
+    Pattern: f"{conversation_id}:{message_seq_start}-{message_seq_end}:{pipeline_version}"
+
+    Derived from: conversation, source message sequence range, and pipeline version.
     """
-    return f"req:{conversation_id}:{message_seq_start}:{message_seq_end}:{pipeline_invocation_id}"
+    return f"{conversation_id}:{message_seq_start}-{message_seq_end}:{pipeline_version}"
 
 
 def build_retention_decision_key(
@@ -144,116 +157,115 @@ def build_retention_decision_key(
 ) -> str:
     """Build a stable creation key for a retention decision.
 
+    Pattern: f"{request_id}:{source_message_id}:{sequence_position}"
+
     Derived from: the request that produced it, the source message, and
     its sequence position within that request's assessment.
     """
-    return f"ret:{request_id}:{source_message_id}:{sequence_position}"
+    return f"{request_id}:{source_message_id}:{sequence_position}"
 
 
 def build_proposition_key(
     request_id: str,
-    source_message_ids: list[str],
     extraction_unit_position: int,
 ) -> str:
     """Build a stable creation key for a proposition.
 
-    Derived from: immutable source provenance and the stable extraction-unit
-    position within the request. NOT from canonical wording.
+    Pattern: f"{request_id}:{extraction_unit_position}"
 
-    Args:
-        request_id: The stable request ID that produced this extraction.
-        source_message_ids: The source message UUIDs (sorted for stability).
-        extraction_unit_position: The ordinal position of this proposition
-            within the extraction batch for the given source messages.
+    Derived from: the request and the stable extraction-unit position.
+    NOT from canonical meaning or any mutable model text.
     """
-    sorted_ids = ",".join(sorted(source_message_ids))
-    return f"prop:{request_id}:{sorted_ids}:{extraction_unit_position}"
+    return f"{request_id}:{extraction_unit_position}"
 
 
 def build_packet_key(
     request_id: str,
-    partition_index: int,
+    partition_key: str,
 ) -> str:
     """Build a stable creation key for a semantic packet.
 
-    Derived from: the request and its stable partition lineage/index.
+    Pattern: f"{request_id}:{partition_key}"
+
+    Derived from: the request and its stable partition key.
     """
-    return f"pkt:{request_id}:{partition_index}"
-
-
-def build_packet_partition_key(
-    parent_packet_key: str,
-    child_partition_index: int,
-) -> str:
-    """Build a stable creation key for a packet partition (child of a split).
-
-    Derived from: the parent packet's creation key and the child's stable
-    partition index within the split.
-    """
-    return f"part:{parent_packet_key}:{child_partition_index}"
+    return f"{request_id}:{partition_key}"
 
 
 def build_packet_split_key(
-    original_packet_id: str,
-    split_ordinal: int,
+    request_id: str,
+    original_packet_creation_key: str,
+    child_partition_index: int,
 ) -> str:
-    """Build a stable creation key for a packet split event.
+    """Build a stable creation key for a packet split (child of a split).
 
-    Derived from: the original packet being split and the split ordinal
-    (to support multiple splits of the same packet in edge cases).
+    Pattern: f"{request_id}:{original_packet_creation_key}:{child_partition_index}"
+
+    Derived from: the request, the original packet's creation key, and the
+    child's stable partition index within the split.
     """
-    return f"split:{original_packet_id}:{split_ordinal}"
+    return f"{request_id}:{original_packet_creation_key}:{child_partition_index}"
 
 
 def build_concern_key(
-    packet_id: str,
-    identity_resolution_event_ordinal: int,
+    packet_creation_key: str,
+    identity_resolution_event: str,
 ) -> str:
     """Build a stable creation key for a new Persistent Concern.
 
-    Derived from: the packet that triggered creation and the identity-resolution
-    creation event ordinal. NOT from identity summary, display title, or any
-    mutable semantic text.
+    Pattern: f"{packet_creation_key}:{identity_resolution_event}"
+
+    Derived from: the packet creation key that triggered creation and the
+    identity-resolution event identifier. NOT from identity summary, display
+    title, or any mutable semantic text.
     """
-    return f"concern:{packet_id}:{identity_resolution_event_ordinal}"
+    return f"{packet_creation_key}:{identity_resolution_event}"
 
 
 def build_association_key(
-    proposition_id: str,
+    request_id: str,
+    proposition_creation_key: str,
     concern_id: str,
     role: str,
-    establishing_packet_id: str,
 ) -> str:
     """Build a stable creation key for a proposition-concern association.
 
-    Derived from: the proposition, target concern, role, and the packet
-    that established the association.
+    Pattern: f"{request_id}:{proposition_creation_key}:{concern_id}:{role}"
+
+    Derived from: the request, the proposition's creation key, target concern,
+    and role.
     """
-    return f"assoc:{proposition_id}:{concern_id}:{role}:{establishing_packet_id}"
+    return f"{request_id}:{proposition_creation_key}:{concern_id}:{role}"
 
 
 def build_membership_key(
-    packet_id: str,
-    proposition_id: str,
+    packet_creation_key: str,
+    proposition_creation_key: str,
+    ordinal: int,
 ) -> str:
     """Build a stable creation key for a packet membership.
 
-    Derived from: the packet and the proposition being included.
+    Pattern: f"{packet_creation_key}:{proposition_creation_key}:{ordinal}"
+
+    Derived from: the packet's creation key, the proposition's creation key,
+    and the ordinal position within the packet.
     """
-    return f"memb:{packet_id}:{proposition_id}"
+    return f"{packet_creation_key}:{proposition_creation_key}:{ordinal}"
 
 
 def build_pending_semantic_decision_key(
     request_id: str,
     stage: str,
-    entity_id: str,
+    entity_creation_key: str,
 ) -> str:
     """Build a stable creation key for a pending semantic decision.
 
+    Pattern: f"{request_id}:{stage}:{entity_creation_key}"
+
     Derived from: the request that created it, the pipeline stage, and the
-    entity the decision pertains to.
+    entity creation key the decision pertains to.
     """
-    return f"psd:{request_id}:{stage}:{entity_id}"
+    return f"{request_id}:{stage}:{entity_creation_key}"
 
 
 # ---------------------------------------------------------------------------
@@ -265,11 +277,11 @@ def create_processing_request_ref(
     conversation_id: str,
     message_seq_start: int,
     message_seq_end: int,
-    pipeline_invocation_id: str,
+    pipeline_version: str,
 ) -> EntityCreationRef:
     """Create a full EntityCreationRef for a processing request."""
     key = build_processing_request_key(
-        conversation_id, message_seq_start, message_seq_end, pipeline_invocation_id
+        conversation_id, message_seq_start, message_seq_end, pipeline_version
     )
     return create_entity_ref("processing_request", key)
 
@@ -286,77 +298,69 @@ def create_retention_decision_ref(
 
 def create_proposition_ref(
     request_id: str,
-    source_message_ids: list[str],
     extraction_unit_position: int,
 ) -> EntityCreationRef:
     """Create a full EntityCreationRef for a proposition."""
-    key = build_proposition_key(request_id, source_message_ids, extraction_unit_position)
+    key = build_proposition_key(request_id, extraction_unit_position)
     return create_entity_ref("proposition", key)
 
 
 def create_packet_ref(
     request_id: str,
-    partition_index: int,
+    partition_key: str,
 ) -> EntityCreationRef:
     """Create a full EntityCreationRef for a semantic packet."""
-    key = build_packet_key(request_id, partition_index)
+    key = build_packet_key(request_id, partition_key)
     return create_entity_ref("packet", key)
 
 
-def create_packet_partition_ref(
-    parent_packet_key: str,
+def create_packet_split_ref(
+    request_id: str,
+    original_packet_creation_key: str,
     child_partition_index: int,
 ) -> EntityCreationRef:
-    """Create a full EntityCreationRef for a packet partition."""
-    key = build_packet_partition_key(parent_packet_key, child_partition_index)
-    return create_entity_ref("packet_partition", key)
-
-
-def create_packet_split_ref(
-    original_packet_id: str,
-    split_ordinal: int,
-) -> EntityCreationRef:
-    """Create a full EntityCreationRef for a packet split event."""
-    key = build_packet_split_key(original_packet_id, split_ordinal)
+    """Create a full EntityCreationRef for a packet split."""
+    key = build_packet_split_key(
+        request_id, original_packet_creation_key, child_partition_index
+    )
     return create_entity_ref("packet_split", key)
 
 
 def create_concern_ref(
-    packet_id: str,
-    identity_resolution_event_ordinal: int,
+    packet_creation_key: str,
+    identity_resolution_event: str,
 ) -> EntityCreationRef:
     """Create a full EntityCreationRef for a new Persistent Concern."""
-    key = build_concern_key(packet_id, identity_resolution_event_ordinal)
+    key = build_concern_key(packet_creation_key, identity_resolution_event)
     return create_entity_ref("concern", key)
 
 
 def create_association_ref(
-    proposition_id: str,
+    request_id: str,
+    proposition_creation_key: str,
     concern_id: str,
     role: str,
-    establishing_packet_id: str,
 ) -> EntityCreationRef:
     """Create a full EntityCreationRef for a proposition association."""
-    key = build_association_key(
-        proposition_id, concern_id, role, establishing_packet_id
-    )
+    key = build_association_key(request_id, proposition_creation_key, concern_id, role)
     return create_entity_ref("association", key)
 
 
 def create_membership_ref(
-    packet_id: str,
-    proposition_id: str,
+    packet_creation_key: str,
+    proposition_creation_key: str,
+    ordinal: int,
 ) -> EntityCreationRef:
     """Create a full EntityCreationRef for a packet membership."""
-    key = build_membership_key(packet_id, proposition_id)
+    key = build_membership_key(packet_creation_key, proposition_creation_key, ordinal)
     return create_entity_ref("membership", key)
 
 
 def create_pending_semantic_decision_ref(
     request_id: str,
     stage: str,
-    entity_id: str,
+    entity_creation_key: str,
 ) -> EntityCreationRef:
     """Create a full EntityCreationRef for a pending semantic decision."""
-    key = build_pending_semantic_decision_key(request_id, stage, entity_id)
+    key = build_pending_semantic_decision_key(request_id, stage, entity_creation_key)
     return create_entity_ref("pending_semantic_decision", key)

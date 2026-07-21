@@ -1,1 +1,1 @@
-"""SIE data model tests."""
+"""SIE test package."""

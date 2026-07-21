@@ -107,3 +107,58 @@ class AssociationRole(str, Enum):
     EMERGENCE_EVIDENCE = "EMERGENCE_EVIDENCE"
     CONTEXT = "CONTEXT"
     CROSS_OBJECT_IMPACT = "CROSS_OBJECT_IMPACT"
+
+
+class ResolutionAction(str, Enum):
+    """Identity resolution action taken for a semantic packet."""
+
+    ASSIGN_EXISTING = "ASSIGN_EXISTING"
+    PROPOSE_NEW = "PROPOSE_NEW"
+    RETAIN_PENDING = "RETAIN_PENDING"
+    NONE = "NONE"
+
+
+class IRSSignalType(str, Enum):
+    """Intelligent Retrieval Signal types that indicate retrieval gaps."""
+
+    REVISIT_LANGUAGE = "REVISIT_LANGUAGE"
+    HISTORICAL_REFERENT = "HISTORICAL_REFERENT"
+    IMPLIED_PRIOR_STATE = "IMPLIED_PRIOR_STATE"
+    BROAD_CANDIDATE_MISMATCH = "BROAD_CANDIDATE_MISMATCH"
+    ALIAS_OR_VOCABULARY_DRIFT = "ALIAS_OR_VOCABULARY_DRIFT"
+    CONTINUATION_HISTORY_MISMATCH = "CONTINUATION_HISTORY_MISMATCH"
+
+
+class RetrievalAttemptStatus(str, Enum):
+    """Outcome status of a single retrieval attempt."""
+
+    SUCCESS_WITH_CANDIDATES = "SUCCESS_WITH_CANDIDATES"
+    SUCCESS_EMPTY = "SUCCESS_EMPTY"
+    ERROR = "ERROR"
+    TIMEOUT = "TIMEOUT"
+    UNAVAILABLE = "UNAVAILABLE"
+    SKIPPED_WITH_REASON = "SKIPPED_WITH_REASON"
+
+
+class StageExecutionStatus(str, Enum):
+    """Execution status of a pipeline stage (identity or sufficiency)."""
+
+    COMPLETED = "COMPLETED"
+    NOT_RUN = "NOT_RUN"
+    FAILED = "FAILED"
+
+
+class ProcessingMode(str, Enum):
+    """Processing mode determining which pipeline stages to execute.
+
+    - FULL_PIPELINE: Execute all upstream stages (extraction, retention,
+      packet formation, cohesion) followed by identity resolution.
+    - IDENTITY_RESOLUTION_ONLY: Skip upstream stages; requires complete
+      proposition detail and all primary/secondary retention roles pre-supplied.
+    - PENDING_RE_EVALUATION: Re-evaluate previously pending identity decisions
+      with new evidence or policy changes.
+    """
+
+    FULL_PIPELINE = "FULL_PIPELINE"
+    IDENTITY_RESOLUTION_ONLY = "IDENTITY_RESOLUTION_ONLY"
+    PENDING_RE_EVALUATION = "PENDING_RE_EVALUATION"

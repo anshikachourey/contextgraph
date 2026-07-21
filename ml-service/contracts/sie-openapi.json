@@ -1,0 +1,1652 @@
+{
+  "components": {
+    "schemas": {
+      "AssociationRole": {
+        "description": "Role of a proposition-to-concern association.",
+        "enum": [
+          "PRIMARY_OWNER",
+          "SUPPORTING_EVIDENCE",
+          "EMERGENCE_EVIDENCE",
+          "CONTEXT",
+          "CROSS_OBJECT_IMPACT"
+        ],
+        "title": "AssociationRole",
+        "type": "string"
+      },
+      "AssociationSummary": {
+        "description": "Summary of an active association provided as graph-state context.",
+        "properties": {
+          "association_id": {
+            "title": "Association Id",
+            "type": "string"
+          },
+          "concern_id": {
+            "title": "Concern Id",
+            "type": "string"
+          },
+          "proposition_id": {
+            "title": "Proposition Id",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AssociationRole"
+          },
+          "semantic_state": {
+            "$ref": "#/components/schemas/SemanticState"
+          }
+        },
+        "required": [
+          "association_id",
+          "proposition_id",
+          "concern_id",
+          "role",
+          "semantic_state"
+        ],
+        "title": "AssociationSummary",
+        "type": "object"
+      },
+      "BehavioralConfidenceBand": {
+        "description": "Stage-specific confidence band determining pipeline behavior.",
+        "enum": [
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ],
+        "title": "BehavioralConfidenceBand",
+        "type": "string"
+      },
+      "ClusterRequest": {
+        "properties": {
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "title": "Messages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "messages"
+        ],
+        "title": "ClusterRequest",
+        "type": "object"
+      },
+      "ClusterResponse": {
+        "properties": {
+          "clusters": {
+            "items": {
+              "$ref": "#/components/schemas/Segment"
+            },
+            "title": "Clusters",
+            "type": "array"
+          },
+          "grouping_threshold": {
+            "title": "Grouping Threshold",
+            "type": "number"
+          },
+          "model_used": {
+            "title": "Model Used",
+            "type": "string"
+          },
+          "noise_message_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Noise Message Ids",
+            "type": "array"
+          },
+          "segment_similarities": {
+            "items": {
+              "$ref": "#/components/schemas/SegmentSimilarity"
+            },
+            "title": "Segment Similarities",
+            "type": "array"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/Segment"
+            },
+            "title": "Segments",
+            "type": "array"
+          },
+          "semantic_groups": {
+            "items": {
+              "$ref": "#/components/schemas/SemanticGroup"
+            },
+            "title": "Semantic Groups",
+            "type": "array"
+          },
+          "total_messages": {
+            "title": "Total Messages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "segments",
+          "semantic_groups",
+          "segment_similarities",
+          "noise_message_ids",
+          "total_messages",
+          "model_used",
+          "grouping_threshold",
+          "clusters"
+        ],
+        "title": "ClusterResponse",
+        "type": "object"
+      },
+      "CohesionStatus": {
+        "description": "Result of concern-cohesion analysis for a Semantic Packet.",
+        "enum": [
+          "COHESIVE",
+          "MIXED",
+          "UNRESOLVED_COHESION"
+        ],
+        "title": "CohesionStatus",
+        "type": "string"
+      },
+      "ConcernProposal": {
+        "description": "Proposal for a new Persistent Concern from identity resolution.\n\nThe proposed_concern_id is an opaque ID resolved from concern_creation_key\nthrough the entity registry. Parent resolution defaults to PARENT_DEFERRED.",
+        "properties": {
+          "concern_creation_key": {
+            "title": "Concern Creation Key",
+            "type": "string"
+          },
+          "display_title": {
+            "title": "Display Title",
+            "type": "string"
+          },
+          "identity_summary": {
+            "title": "Identity Summary",
+            "type": "string"
+          },
+          "initial_summary": {
+            "title": "Initial Summary",
+            "type": "string"
+          },
+          "parent_resolution_state": {
+            "$ref": "#/components/schemas/ParentResolutionState",
+            "default": "PARENT_DEFERRED"
+          },
+          "proposed_concern_id": {
+            "title": "Proposed Concern Id",
+            "type": "string"
+          },
+          "proposed_parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Parent Id"
+          }
+        },
+        "required": [
+          "concern_creation_key",
+          "proposed_concern_id",
+          "identity_summary",
+          "display_title",
+          "initial_summary"
+        ],
+        "title": "ConcernProposal",
+        "type": "object"
+      },
+      "ConcernStatus": {
+        "description": "Lifecycle status of a Persistent Concern.",
+        "enum": [
+          "ACTIVE",
+          "DORMANT",
+          "RETIRED",
+          "MERGED"
+        ],
+        "title": "ConcernStatus",
+        "type": "string"
+      },
+      "ConcernSummary": {
+        "description": "Summary of a Persistent Concern provided as graph-state context.\n\nIncludes enough information for Python to perform identity resolution\nwithout needing to query the database directly.",
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "canonical_parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Parent Id"
+          },
+          "concern_id": {
+            "title": "Concern Id",
+            "type": "string"
+          },
+          "current_summary": {
+            "title": "Current Summary",
+            "type": "string"
+          },
+          "display_title": {
+            "title": "Display Title",
+            "type": "string"
+          },
+          "identity_summary": {
+            "title": "Identity Summary",
+            "type": "string"
+          },
+          "last_active_at": {
+            "title": "Last Active At",
+            "type": "string"
+          },
+          "parent_resolution_state": {
+            "$ref": "#/components/schemas/ParentResolutionState"
+          },
+          "semantic_version": {
+            "title": "Semantic Version",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ConcernStatus"
+          }
+        },
+        "required": [
+          "concern_id",
+          "identity_summary",
+          "display_title",
+          "current_summary",
+          "status",
+          "parent_resolution_state",
+          "last_active_at",
+          "semantic_version"
+        ],
+        "title": "ConcernSummary",
+        "type": "object"
+      },
+      "GraphStateContext": {
+        "description": "Graph state provided by TypeScript for Python to reason over.\n\nContains the current state of concerns, propositions, associations, and\npending decisions. The graph_version must match the base_graph_version\nin the enclosing ProcessRequest.",
+        "properties": {
+          "active_associations": {
+            "items": {
+              "$ref": "#/components/schemas/AssociationSummary"
+            },
+            "title": "Active Associations",
+            "type": "array"
+          },
+          "concerns": {
+            "items": {
+              "$ref": "#/components/schemas/ConcernSummary"
+            },
+            "title": "Concerns",
+            "type": "array"
+          },
+          "graph_version": {
+            "title": "Graph Version",
+            "type": "integer"
+          },
+          "pending_decisions": {
+            "items": {
+              "$ref": "#/components/schemas/PendingDecisionSummary"
+            },
+            "title": "Pending Decisions",
+            "type": "array"
+          },
+          "propositions": {
+            "items": {
+              "$ref": "#/components/schemas/PropositionSummary"
+            },
+            "title": "Propositions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "graph_version",
+          "concerns",
+          "propositions",
+          "active_associations"
+        ],
+        "title": "GraphStateContext",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "IdentityResolutionResult": {
+        "description": "Result of identity resolution (performed in Python).\n\nEnforces a discriminated-result invariant:\n- For YES outcome: exactly one of matched_concern_id or new_concern_proposal\n  must be set (match OR new-concern, never both).\n- For UNRESOLVED/DEFER/NO/RETRIEVAL_INCONCLUSIVE/REQUIRES_VALIDATION:\n  both matched_concern_id and new_concern_proposal must be None.",
+        "properties": {
+          "candidates_considered": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Candidates Considered",
+            "type": "array"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/BehavioralConfidenceBand"
+          },
+          "matched_concern_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Concern Id"
+          },
+          "new_concern_proposal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConcernProposal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/PipelineOutcome"
+          },
+          "packet_id": {
+            "title": "Packet Id",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "packet_id",
+          "outcome",
+          "confidence",
+          "rationale"
+        ],
+        "title": "IdentityResolutionResult",
+        "type": "object"
+      },
+      "Message": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "content"
+        ],
+        "title": "Message",
+        "type": "object"
+      },
+      "PacketMembership": {
+        "description": "Normalized membership of a proposition in a packet.\n\nSource provenance is INHERITED from the proposition — packet membership\nnever introduces new source provenance. The source message IDs, speaker role,\nand extraction provenance all come from the proposition itself.\n\nAttributes:\n    membership_id: Opaque permanent ID resolved from membership_creation_key.\n    membership_creation_key: Retry-stable key derived from packet and\n        proposition creation keys plus ordinal position.\n    packet_id: The packet this membership belongs to.\n    proposition_id: The proposition that is a member of the packet.\n    ordinal: Position of this proposition within the packet (0-indexed).\n    created_at: ISO 8601 timestamp of membership creation.",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "membership_creation_key": {
+            "description": "Retry-stable key derived from packet + proposition creation keys + ordinal",
+            "title": "Membership Creation Key",
+            "type": "string"
+          },
+          "membership_id": {
+            "title": "Membership Id",
+            "type": "string"
+          },
+          "ordinal": {
+            "description": "Position within packet (0-indexed)",
+            "minimum": 0.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "packet_id": {
+            "title": "Packet Id",
+            "type": "string"
+          },
+          "proposition_id": {
+            "title": "Proposition Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "membership_id",
+          "membership_creation_key",
+          "packet_id",
+          "proposition_id",
+          "ordinal",
+          "created_at"
+        ],
+        "title": "PacketMembership",
+        "type": "object"
+      },
+      "PacketSplitRecord": {
+        "description": "Records a packet split event.\n\nChild packets inherit source provenance from their constituent propositions —\nno new source provenance is introduced by the split. The split record preserves\nlineage so the relationship between original and resulting packets is traceable.\n\nAt the persistence layer, resulting_packet_ids is expanded into normalized\nsplit-edge rows sharing one split_event_id; each edge receives its own\nsplit_edge_id. This model represents the API-level split event.\n\nAttributes:\n    split_id: Opaque permanent ID resolved from split_creation_key.\n    split_creation_key: Retry-stable key derived from the request and\n        original packet creation key.\n    original_packet_id: The packet that was split.\n    resulting_packet_ids: The child packets produced by the split.\n    split_reason: Human-readable reason for the split (e.g., \"mixed_cohesion\",\n        \"independent_concerns_detected\").\n    created_at: ISO 8601 timestamp of when the split occurred.",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "original_packet_id": {
+            "title": "Original Packet Id",
+            "type": "string"
+          },
+          "resulting_packet_ids": {
+            "description": "Child packet IDs produced by the split",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 2,
+            "title": "Resulting Packet Ids",
+            "type": "array"
+          },
+          "split_creation_key": {
+            "description": "Retry-stable key derived from request + original packet creation key",
+            "title": "Split Creation Key",
+            "type": "string"
+          },
+          "split_id": {
+            "title": "Split Id",
+            "type": "string"
+          },
+          "split_reason": {
+            "title": "Split Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "split_id",
+          "split_creation_key",
+          "original_packet_id",
+          "resulting_packet_ids",
+          "split_reason",
+          "created_at"
+        ],
+        "title": "PacketSplitRecord",
+        "type": "object"
+      },
+      "ParentResolutionState": {
+        "description": "Resolution state of a concern's parent relationship.",
+        "enum": [
+          "ROOT_CONFIRMED",
+          "PARENT_DEFERRED",
+          "PARENT_ASSIGNED"
+        ],
+        "title": "ParentResolutionState",
+        "type": "string"
+      },
+      "PendingDecisionSummary": {
+        "description": "Summary of a pending/unresolved/deferred semantic decision.\n\nSurfaced in GraphStateContext so Python can account for prior unresolved\ndecisions when making new semantic judgments. Examples include:\n- Unresolved identity resolution from a prior invocation.\n- Deferred cohesion analysis awaiting additional context.\n- Pending ownership assignment awaiting structural validation.",
+        "properties": {
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/PipelineOutcome"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_id",
+          "stage",
+          "outcome"
+        ],
+        "title": "PendingDecisionSummary",
+        "type": "object"
+      },
+      "PipelineDiagnostics": {
+        "description": "Diagnostics from the semantic processing pipeline.\n\nIncludes stage versions for traceability, any warnings generated during\nprocessing, and entity IDs that were deferred for later resolution.",
+        "properties": {
+          "deferred_entity_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Deferred Entity Ids",
+            "type": "array"
+          },
+          "stage_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Stage Versions",
+            "type": "object"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "stage_versions"
+        ],
+        "title": "PipelineDiagnostics",
+        "type": "object"
+      },
+      "PipelineOutcome": {
+        "description": "Graduated pipeline decision outcome.",
+        "enum": [
+          "YES",
+          "NO",
+          "UNRESOLVED",
+          "DEFER",
+          "RETRIEVAL_INCONCLUSIVE",
+          "REQUIRES_VALIDATION"
+        ],
+        "title": "PipelineOutcome",
+        "type": "string"
+      },
+      "ProcessRequest": {
+        "description": "Full semantic processing pipeline request.\n\nInput: messages + current graph state (concerns, associations).\nPython performs ALL semantic decisions. TypeScript only needs to validate\nstructural invariants and commit.\n\nContract invariant: current_graph_state.graph_version == base_graph_version.",
+        "properties": {
+          "api_contract_version": {
+            "title": "Api Contract Version",
+            "type": "string"
+          },
+          "base_graph_version": {
+            "title": "Base Graph Version",
+            "type": "integer"
+          },
+          "context_window": {
+            "items": {
+              "$ref": "#/components/schemas/SIEMessage"
+            },
+            "title": "Context Window",
+            "type": "array"
+          },
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "current_graph_state": {
+            "$ref": "#/components/schemas/GraphStateContext"
+          },
+          "extraction_version": {
+            "title": "Extraction Version",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "message_seq_end": {
+            "title": "Message Seq End",
+            "type": "integer"
+          },
+          "message_seq_start": {
+            "title": "Message Seq Start",
+            "type": "integer"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/SIEMessage"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "string"
+          },
+          "pipeline_version": {
+            "title": "Pipeline Version",
+            "type": "string"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_contract_version",
+          "pipeline_version",
+          "model_version",
+          "extraction_version",
+          "request_id",
+          "idempotency_key",
+          "conversation_id",
+          "base_graph_version",
+          "message_seq_start",
+          "message_seq_end",
+          "messages",
+          "current_graph_state"
+        ],
+        "title": "ProcessRequest",
+        "type": "object"
+      },
+      "ProcessResult": {
+        "description": "Full semantic processing pipeline result.\n\nContains all semantic decisions made by Python: retention decisions,\npropositions, packets, memberships, splits, identity resolutions,\nnew concern proposals, proposed associations, dependency groups,\nand pipeline diagnostics.",
+        "properties": {
+          "api_contract_version": {
+            "title": "Api Contract Version",
+            "type": "string"
+          },
+          "base_graph_version": {
+            "title": "Base Graph Version",
+            "type": "integer"
+          },
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "dependency_groups": {
+            "items": {
+              "$ref": "#/components/schemas/SemanticDependencyGroupRef"
+            },
+            "title": "Dependency Groups",
+            "type": "array"
+          },
+          "diagnostics": {
+            "$ref": "#/components/schemas/PipelineDiagnostics"
+          },
+          "extraction_version": {
+            "title": "Extraction Version",
+            "type": "string"
+          },
+          "highest_seq": {
+            "title": "Highest Seq",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "identity_resolutions": {
+            "items": {
+              "$ref": "#/components/schemas/IdentityResolutionResult"
+            },
+            "title": "Identity Resolutions",
+            "type": "array"
+          },
+          "lowest_seq": {
+            "title": "Lowest Seq",
+            "type": "integer"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "string"
+          },
+          "new_concern_proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ConcernProposal"
+            },
+            "title": "New Concern Proposals",
+            "type": "array"
+          },
+          "packet_memberships": {
+            "items": {
+              "$ref": "#/components/schemas/PacketMembership"
+            },
+            "title": "Packet Memberships",
+            "type": "array"
+          },
+          "packets": {
+            "items": {
+              "$ref": "#/components/schemas/SemanticPacket"
+            },
+            "title": "Packets",
+            "type": "array"
+          },
+          "pipeline_version": {
+            "title": "Pipeline Version",
+            "type": "string"
+          },
+          "proposed_associations": {
+            "items": {
+              "$ref": "#/components/schemas/PropositionAssociation"
+            },
+            "title": "Proposed Associations",
+            "type": "array"
+          },
+          "propositions": {
+            "items": {
+              "$ref": "#/components/schemas/Proposition"
+            },
+            "title": "Propositions",
+            "type": "array"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "retention_decisions": {
+            "items": {
+              "$ref": "#/components/schemas/RetentionDecision"
+            },
+            "title": "Retention Decisions",
+            "type": "array"
+          },
+          "splits": {
+            "items": {
+              "$ref": "#/components/schemas/PacketSplitRecord"
+            },
+            "title": "Splits",
+            "type": "array"
+          }
+        },
+        "required": [
+          "api_contract_version",
+          "pipeline_version",
+          "model_version",
+          "extraction_version",
+          "request_id",
+          "idempotency_key",
+          "conversation_id",
+          "base_graph_version",
+          "lowest_seq",
+          "highest_seq",
+          "retention_decisions",
+          "propositions",
+          "packets",
+          "packet_memberships",
+          "splits",
+          "identity_resolutions",
+          "new_concern_proposals",
+          "proposed_associations",
+          "diagnostics"
+        ],
+        "title": "ProcessResult",
+        "type": "object"
+      },
+      "Proposition": {
+        "description": "Smallest semantic unit with full provenance.\n\nPermanent ID is resolved through the creation-key registry (not derived\nfrom mutable model text like canonical_meaning). All applicable retention\nlevels (primary + secondary) are preserved in retention_levels.",
+        "properties": {
+          "canonical_meaning": {
+            "title": "Canonical Meaning",
+            "type": "string"
+          },
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "extraction_version": {
+            "title": "Extraction Version",
+            "type": "string"
+          },
+          "message_seq_range": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Message Seq Range",
+            "type": "array"
+          },
+          "proposition_creation_key": {
+            "title": "Proposition Creation Key",
+            "type": "string"
+          },
+          "proposition_id": {
+            "title": "Proposition Id",
+            "type": "string"
+          },
+          "proposition_type": {
+            "$ref": "#/components/schemas/PropositionType"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/PropositionProvenance"
+          },
+          "retention_levels": {
+            "items": {
+              "$ref": "#/components/schemas/RetentionLevel"
+            },
+            "title": "Retention Levels",
+            "type": "array"
+          },
+          "semantic_state": {
+            "$ref": "#/components/schemas/SemanticState",
+            "default": "ACTIVE"
+          },
+          "source_message_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Message Ids",
+            "type": "array"
+          },
+          "speaker_role": {
+            "title": "Speaker Role",
+            "type": "string"
+          },
+          "supersedes_proposition_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Proposition Id"
+          }
+        },
+        "required": [
+          "proposition_id",
+          "proposition_creation_key",
+          "conversation_id",
+          "source_message_ids",
+          "speaker_role",
+          "canonical_meaning",
+          "proposition_type",
+          "message_seq_range",
+          "provenance",
+          "retention_levels",
+          "created_at",
+          "extraction_version"
+        ],
+        "title": "Proposition",
+        "type": "object"
+      },
+      "PropositionAssociation": {
+        "description": "Normalized association between a proposition and a concern.\n\nA proposition may have multiple associations with different roles.\nA proposition MAY be both PRIMARY_OWNER of one concern and\nSUPPORTING_EVIDENCE for another — roles are per-association, not per-proposition.\n\nSupporting evidence is modeled as a role-constrained PropositionAssociation\n(role in {SUPPORTING_EVIDENCE, EMERGENCE_EVIDENCE, CONTEXT, CROSS_OBJECT_IMPACT}),\nnot as a separate independently persisted type. The same semantic link must never\nbe written once as a proposition association and again as a separate evidence record.\n\nInvalidation/replacement semantics:\n- Re-establishing a previously invalidated association creates a NEW association\n  event with a new creation key rather than colliding with the historical ID.\n- An association can be reassigned (role changed, concern changed) via semantic\n  repair — the old association is marked INVALIDATED and a new one created.\n- Historical associations remain auditable; they are never overwritten.\n\nAttributes:\n    association_id: Opaque permanent ID resolved from association_creation_key.\n    association_creation_key: Retry-stable event key resolved through the\n        entity registry. Excludes mutable semantic text.\n    proposition_id: The proposition being associated.\n    concern_id: The target concern.\n    role: The semantic role of this association (PRIMARY_OWNER,\n        SUPPORTING_EVIDENCE, EMERGENCE_EVIDENCE, CONTEXT, CROSS_OBJECT_IMPACT).\n    confidence: Behavioral confidence band for this association.\n    provenance: How this association was established (free-form description\n        of the establishment mechanism, e.g., \"identity_resolution\",\n        \"cross_object_impact_analysis\", \"semantic_repair\").\n    established_by_packet_id: Which packet caused this association to be\n        established. Nullable — may be None for associations established\n        through repair or migration.\n    semantic_state: Lifecycle state. ACTIVE associations are current;\n        SUPERSEDED/INVALIDATED associations are historical records.\n    created_at: ISO 8601 timestamp of association creation.\n    version: Monotonically increasing version for this association record.",
+        "properties": {
+          "association_creation_key": {
+            "description": "Retry-stable event key resolved through the entity registry",
+            "title": "Association Creation Key",
+            "type": "string"
+          },
+          "association_id": {
+            "title": "Association Id",
+            "type": "string"
+          },
+          "concern_id": {
+            "title": "Concern Id",
+            "type": "string"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/BehavioralConfidenceBand"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "established_by_packet_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which packet established this association; nullable for repair/migration",
+            "title": "Established By Packet Id"
+          },
+          "proposition_id": {
+            "title": "Proposition Id",
+            "type": "string"
+          },
+          "provenance": {
+            "description": "How this association was established",
+            "title": "Provenance",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AssociationRole"
+          },
+          "semantic_state": {
+            "$ref": "#/components/schemas/SemanticState",
+            "default": "ACTIVE"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "association_id",
+          "association_creation_key",
+          "proposition_id",
+          "concern_id",
+          "role",
+          "confidence",
+          "provenance",
+          "created_at"
+        ],
+        "title": "PropositionAssociation",
+        "type": "object"
+      },
+      "PropositionProvenance": {
+        "description": "How the proposition was derived from source material.",
+        "enum": [
+          "DIRECT",
+          "PARAPHRASE",
+          "INTERPRETATION",
+          "INFERENCE"
+        ],
+        "title": "PropositionProvenance",
+        "type": "string"
+      },
+      "PropositionSummary": {
+        "description": "Summary of an existing proposition provided as graph-state context.",
+        "properties": {
+          "canonical_meaning": {
+            "title": "Canonical Meaning",
+            "type": "string"
+          },
+          "message_seq_range": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Message Seq Range",
+            "type": "array"
+          },
+          "proposition_id": {
+            "title": "Proposition Id",
+            "type": "string"
+          },
+          "proposition_type": {
+            "$ref": "#/components/schemas/PropositionType"
+          },
+          "semantic_state": {
+            "$ref": "#/components/schemas/SemanticState"
+          },
+          "speaker_role": {
+            "title": "Speaker Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposition_id",
+          "canonical_meaning",
+          "proposition_type",
+          "speaker_role",
+          "semantic_state",
+          "message_seq_range"
+        ],
+        "title": "PropositionSummary",
+        "type": "object"
+      },
+      "PropositionType": {
+        "description": "Type classification for extracted propositions.",
+        "enum": [
+          "QUESTION",
+          "CLAIM",
+          "PREFERENCE",
+          "GOAL",
+          "INTENT",
+          "DECISION",
+          "CONSTRAINT",
+          "PLAN",
+          "CORRECTION",
+          "REJECTION",
+          "UPDATE",
+          "REQUEST",
+          "EMOTIONAL_STATE",
+          "EXAMPLE"
+        ],
+        "title": "PropositionType",
+        "type": "string"
+      },
+      "ProvisionalConcernBoundary": {
+        "description": "Provisional concern-boundary analysis before identity resolution.\n\nDetermines whether propositions likely belong to the same or different\nprimary concerns. Does NOT assign final Persistent Concern ownership.\nThe provisional_concern_label is descriptive text, NOT a concern ID.",
+        "properties": {
+          "boundary_id": {
+            "title": "Boundary Id",
+            "type": "string"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/BehavioralConfidenceBand"
+          },
+          "proposition_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Proposition Ids",
+            "type": "array"
+          },
+          "provisional_concern_label": {
+            "title": "Provisional Concern Label",
+            "type": "string"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          }
+        },
+        "required": [
+          "boundary_id",
+          "proposition_ids",
+          "provisional_concern_label",
+          "confidence"
+        ],
+        "title": "ProvisionalConcernBoundary",
+        "type": "object"
+      },
+      "RetentionDecision": {
+        "description": "Result of retention assessment. All retention roles are preserved downstream.",
+        "properties": {
+          "assessment_version": {
+            "title": "Assessment Version",
+            "type": "string"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/BehavioralConfidenceBand"
+          },
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "decision_creation_key": {
+            "title": "Decision Creation Key",
+            "type": "string"
+          },
+          "decision_id": {
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "extraction_version": {
+            "title": "Extraction Version",
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/PipelineOutcome"
+          },
+          "primary_level": {
+            "$ref": "#/components/schemas/RetentionLevel"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "secondary_roles": {
+            "items": {
+              "$ref": "#/components/schemas/RetentionLevel"
+            },
+            "title": "Secondary Roles",
+            "type": "array"
+          },
+          "sequence_position": {
+            "title": "Sequence Position",
+            "type": "integer"
+          },
+          "source_message_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Message Ids",
+            "type": "array"
+          },
+          "speaker_role": {
+            "title": "Speaker Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision_id",
+          "decision_creation_key",
+          "conversation_id",
+          "primary_level",
+          "confidence",
+          "outcome",
+          "source_message_ids",
+          "speaker_role",
+          "sequence_position",
+          "extraction_version",
+          "assessment_version"
+        ],
+        "title": "RetentionDecision",
+        "type": "object"
+      },
+      "RetentionLevel": {
+        "description": "Classification of how conversational material should be retained.",
+        "enum": [
+          "DISCARD",
+          "CONTEXT_ONLY",
+          "SUPPORTING_EVIDENCE",
+          "DURABLE_PROPOSITION",
+          "EMERGENCE_EVIDENCE",
+          "INDEPENDENT_CONCERN_CANDIDATE"
+        ],
+        "title": "RetentionLevel",
+        "type": "string"
+      },
+      "SIEMessage": {
+        "description": "Input message for SIE processing.\n\nSupports attachments (via attachment_refs) and structured content\n(e.g., code blocks, tables) for richer semantic extraction.",
+        "properties": {
+          "attachment_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Attachment Refs",
+            "type": "array"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "sequence_position": {
+            "title": "Sequence Position",
+            "type": "integer"
+          },
+          "structured_content": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Structured Content"
+          }
+        },
+        "required": [
+          "message_id",
+          "conversation_id",
+          "role",
+          "content",
+          "sequence_position",
+          "created_at"
+        ],
+        "title": "SIEMessage",
+        "type": "object"
+      },
+      "Segment": {
+        "description": "A contiguous topic episode in the conversation.",
+        "properties": {
+          "centroid_embedding": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Centroid Embedding",
+            "type": "array"
+          },
+          "message_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Message Ids",
+            "type": "array"
+          },
+          "representative_text": {
+            "title": "Representative Text",
+            "type": "string"
+          },
+          "segment_id": {
+            "title": "Segment Id",
+            "type": "string"
+          },
+          "semantic_group_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantic Group Id"
+          },
+          "temporal_order": {
+            "title": "Temporal Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "segment_id",
+          "message_ids",
+          "temporal_order",
+          "centroid_embedding",
+          "representative_text"
+        ],
+        "title": "Segment",
+        "type": "object"
+      },
+      "SegmentSimilarity": {
+        "description": "Pairwise similarity between two segments (for debugging/tuning).",
+        "properties": {
+          "above_threshold": {
+            "title": "Above Threshold",
+            "type": "boolean"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "segment_a": {
+            "title": "Segment A",
+            "type": "string"
+          },
+          "segment_b": {
+            "title": "Segment B",
+            "type": "string"
+          }
+        },
+        "required": [
+          "segment_a",
+          "segment_b",
+          "score",
+          "above_threshold"
+        ],
+        "title": "SegmentSimilarity",
+        "type": "object"
+      },
+      "SemanticDependencyGroupRef": {
+        "description": "Transport-level grouping for semantic dependency groups.\n\nFull mutation semantics are defined by the evolution/integration\nspecification. The failure_policy determines how failures within\nthe group are handled:\n- ALL_OR_NONE: all mutations succeed or all are rolled back.\n- INDEPENDENT: mutations are independent; partial success is acceptable.\n- DERIVED: mutations are derived from a parent; failure propagates.",
+        "properties": {
+          "failure_policy": {
+            "title": "Failure Policy",
+            "type": "string"
+          },
+          "group_id": {
+            "title": "Group Id",
+            "type": "string"
+          },
+          "mutation_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Mutation Refs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "group_id",
+          "mutation_refs",
+          "failure_policy"
+        ],
+        "title": "SemanticDependencyGroupRef",
+        "type": "object"
+      },
+      "SemanticGroup": {
+        "description": "A broader topic that groups related temporal segments.",
+        "properties": {
+          "centroid_embedding": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Centroid Embedding",
+            "type": "array"
+          },
+          "group_id": {
+            "title": "Group Id",
+            "type": "string"
+          },
+          "segment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Segment Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "group_id",
+          "segment_ids",
+          "centroid_embedding"
+        ],
+        "title": "SemanticGroup",
+        "type": "object"
+      },
+      "SemanticPacket": {
+        "description": "Concern-cohesive processing unit with retry-stable creation lineage.\n\nA packet is NOT automatically a graph object. It groups propositions for\nidentity resolution. Cohesion must be validated before proceeding to\nidentity resolution.",
+        "properties": {
+          "assistant_context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistant Context"
+          },
+          "cohesion_status": {
+            "$ref": "#/components/schemas/CohesionStatus"
+          },
+          "continuation_origin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Continuation Origin"
+          },
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "message_seq_range": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Message Seq Range",
+            "type": "array"
+          },
+          "packet_creation_key": {
+            "title": "Packet Creation Key",
+            "type": "string"
+          },
+          "packet_formation_version": {
+            "title": "Packet Formation Version",
+            "type": "string"
+          },
+          "packet_id": {
+            "title": "Packet Id",
+            "type": "string"
+          },
+          "provenance": {
+            "title": "Provenance",
+            "type": "string"
+          },
+          "provisional_boundaries": {
+            "items": {
+              "$ref": "#/components/schemas/ProvisionalConcernBoundary"
+            },
+            "title": "Provisional Boundaries",
+            "type": "array"
+          },
+          "source_message_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Message Ids",
+            "type": "array"
+          },
+          "user_grounded_meaning": {
+            "title": "User Grounded Meaning",
+            "type": "string"
+          }
+        },
+        "required": [
+          "packet_id",
+          "packet_creation_key",
+          "conversation_id",
+          "source_message_ids",
+          "message_seq_range",
+          "user_grounded_meaning",
+          "provenance",
+          "packet_formation_version",
+          "cohesion_status"
+        ],
+        "title": "SemanticPacket",
+        "type": "object"
+      },
+      "SemanticState": {
+        "description": "Lifecycle state of a semantic entity (proposition or association).",
+        "enum": [
+          "ACTIVE",
+          "SUPERSEDED",
+          "RETRACTED",
+          "INVALIDATED"
+        ],
+        "title": "SemanticState",
+        "type": "string"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Conversation structuring: segmentation + similarity-graph grouping",
+    "title": "ContextGraph ML Service",
+    "version": "1.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/cluster-conversation": {
+      "post": {
+        "description": "Two-stage conversation structuring:\n\nStage 1 — SEGMENTATION:\n  Sliding-window cosine similarity with adaptive threshold.\n  Each contiguous block = one segment = one future graph node.\n\nStage 2 — SEMANTIC GROUPING:\n  Pairwise cosine similarity between segment centroids.\n  Connected components over the similarity graph = semantic groups.\n  Related segments share a group_id.",
+        "operationId": "cluster_conversation_cluster_conversation_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClusterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClusterResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cluster Conversation"
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health Check"
+      }
+    },
+    "/sie/process-messages": {
+      "post": {
+        "description": "Accepts a batch of messages with current graph state and produces semantic decisions including retention, propositions, packets, and identity resolutions. Requires approved stage implementations to be installed and the SIE endpoint to be enabled via configuration.",
+        "operationId": "process_messages_sie_process_messages_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "SIE pipeline not available: no approved stage implementations installed"
+                }
+              }
+            },
+            "description": "SIE pipeline not available"
+          }
+        },
+        "summary": "Process messages through the SIE semantic pipeline",
+        "tags": [
+          "SIE Pipeline"
+        ]
+      }
+    }
+  }
+}

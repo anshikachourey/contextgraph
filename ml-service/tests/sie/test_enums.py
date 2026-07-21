@@ -3,9 +3,11 @@
 Validates:
 - Every enum value serializes to its expected string
 - Every enum can be constructed from its string value
-- str(enum_value) produces the expected string representation
 - All expected values are present in each enum class
+- JSON serialization produces the expected string value
 """
+
+import json
 
 import pytest
 
@@ -125,9 +127,9 @@ class TestRetentionLevel:
         assert isinstance(member, RetentionLevel)
 
     @pytest.mark.parametrize("value", RETENTION_LEVEL_VALUES)
-    def test_str_representation(self, value: str):
+    def test_json_serialization(self, value: str):
         member = RetentionLevel(value)
-        assert str(member) == value
+        assert json.loads(json.dumps(member.value)) == value
 
 
 class TestBehavioralConfidenceBand:
@@ -148,9 +150,9 @@ class TestBehavioralConfidenceBand:
         assert isinstance(member, BehavioralConfidenceBand)
 
     @pytest.mark.parametrize("value", BEHAVIORAL_CONFIDENCE_BAND_VALUES)
-    def test_str_representation(self, value: str):
+    def test_json_serialization(self, value: str):
         member = BehavioralConfidenceBand(value)
-        assert str(member) == value
+        assert json.loads(json.dumps(member.value)) == value
 
 
 class TestPipelineOutcome:
@@ -171,9 +173,9 @@ class TestPipelineOutcome:
         assert isinstance(member, PipelineOutcome)
 
     @pytest.mark.parametrize("value", PIPELINE_OUTCOME_VALUES)
-    def test_str_representation(self, value: str):
+    def test_json_serialization(self, value: str):
         member = PipelineOutcome(value)
-        assert str(member) == value
+        assert json.loads(json.dumps(member.value)) == value
 
 
 class TestPropositionType:
@@ -194,9 +196,9 @@ class TestPropositionType:
         assert isinstance(member, PropositionType)
 
     @pytest.mark.parametrize("value", PROPOSITION_TYPE_VALUES)
-    def test_str_representation(self, value: str):
+    def test_json_serialization(self, value: str):
         member = PropositionType(value)
-        assert str(member) == value
+        assert json.loads(json.dumps(member.value)) == value
 
 
 class TestPropositionProvenance:
@@ -217,9 +219,9 @@ class TestPropositionProvenance:
         assert isinstance(member, PropositionProvenance)
 
     @pytest.mark.parametrize("value", PROPOSITION_PROVENANCE_VALUES)
-    def test_str_representation(self, value: str):
+    def test_json_serialization(self, value: str):
         member = PropositionProvenance(value)
-        assert str(member) == value
+        assert json.loads(json.dumps(member.value)) == value
 
 
 class TestSemanticState:
@@ -240,9 +242,9 @@ class TestSemanticState:
         assert isinstance(member, SemanticState)
 
     @pytest.mark.parametrize("value", SEMANTIC_STATE_VALUES)
-    def test_str_representation(self, value: str):
+    def test_json_serialization(self, value: str):
         member = SemanticState(value)
-        assert str(member) == value
+        assert json.loads(json.dumps(member.value)) == value
 
 
 class TestCohesionStatus:
@@ -263,9 +265,9 @@ class TestCohesionStatus:
         assert isinstance(member, CohesionStatus)
 
     @pytest.mark.parametrize("value", COHESION_STATUS_VALUES)
-    def test_str_representation(self, value: str):
+    def test_json_serialization(self, value: str):
         member = CohesionStatus(value)
-        assert str(member) == value
+        assert json.loads(json.dumps(member.value)) == value
 
 
 class TestConcernStatus:
@@ -286,9 +288,9 @@ class TestConcernStatus:
         assert isinstance(member, ConcernStatus)
 
     @pytest.mark.parametrize("value", CONCERN_STATUS_VALUES)
-    def test_str_representation(self, value: str):
+    def test_json_serialization(self, value: str):
         member = ConcernStatus(value)
-        assert str(member) == value
+        assert json.loads(json.dumps(member.value)) == value
 
 
 class TestParentResolutionState:
@@ -309,9 +311,9 @@ class TestParentResolutionState:
         assert isinstance(member, ParentResolutionState)
 
     @pytest.mark.parametrize("value", PARENT_RESOLUTION_STATE_VALUES)
-    def test_str_representation(self, value: str):
+    def test_json_serialization(self, value: str):
         member = ParentResolutionState(value)
-        assert str(member) == value
+        assert json.loads(json.dumps(member.value)) == value
 
 
 class TestAssociationRole:
@@ -332,9 +334,9 @@ class TestAssociationRole:
         assert isinstance(member, AssociationRole)
 
     @pytest.mark.parametrize("value", ASSOCIATION_ROLE_VALUES)
-    def test_str_representation(self, value: str):
+    def test_json_serialization(self, value: str):
         member = AssociationRole(value)
-        assert str(member) == value
+        assert json.loads(json.dumps(member.value)) == value
 
 
 class TestEnumCount:

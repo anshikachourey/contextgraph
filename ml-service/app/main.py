@@ -23,12 +23,16 @@ from app.models import (
 from app.embedder import embed_messages, MODEL_NAME
 from app.segmenter import segment_conversation
 from app.grouper import group_segments_by_similarity, SEGMENT_GROUP_THRESHOLD
+from app.sie.routes import router as sie_router
 
 app = FastAPI(
     title="ContextGraph ML Service",
     description="Conversation structuring: segmentation + similarity-graph grouping",
     version="1.1.0",
 )
+
+# Register SIE pipeline routes (endpoint handles its own feature gating)
+app.include_router(sie_router)
 
 
 # ─── Safety helpers ──────────────────────────────────────────────────────────
