@@ -8,12 +8,13 @@ type ChatPanelProps = {
   messages: ChatMessageType[];
   highlightedMessageIds: string[];
   isAssistantResponding: boolean;
+  conversationId?: string | null;
   // Node workspace
   workspaceNode: ContextNode | null;
   workspaceLinkedMessages: ChatMessageType[];
   onExitWorkspace: () => void;
   // Actions
-  onSendMessage: (content: string) => void;
+  onSendMessage: (content: string, attachments?: import("@/src/types/message").AttachmentMeta[]) => void;
   onEditMessage?: (messageId: string, newContent: string) => void;
 };
 
@@ -21,6 +22,7 @@ export default function ChatPanel({
   messages,
   highlightedMessageIds,
   isAssistantResponding,
+  conversationId,
   workspaceNode,
   workspaceLinkedMessages,
   onExitWorkspace,
@@ -43,9 +45,9 @@ export default function ChatPanel({
 
   // Normal conversation view
   return (
-    <section className="mx-auto flex min-h-screen max-w-3xl flex-col justify-end px-6 pb-10 pt-24">
-      {/* Message list */}
-      <div className="mb-4 space-y-5">
+    <section className="mx-auto flex h-screen max-w-3xl flex-col px-6 pt-24">
+      {/* Message list — scrollable */}
+      <div className="flex-1 overflow-y-auto space-y-5 pb-4">
         {messages.map((message, idx) => {
           // Determine if this is the latest user message (for edit branching info)
           const userMessages = messages.filter((m) => m.role === "user");
@@ -80,11 +82,12 @@ export default function ChatPanel({
         )}
       </div>
 
-      {/* Input */}
-      <div className="mb-4">
+      {/* Input — sticky at the bottom */}
+      <div className="sticky bottom-0 bg-white pb-4 pt-2">
         <ChatInput
           onSendMessage={onSendMessage}
           disabled={isAssistantResponding}
+          conversationId={conversationId}
         />
       </div>
     </section>

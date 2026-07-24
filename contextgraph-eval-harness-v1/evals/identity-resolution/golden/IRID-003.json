@@ -1,0 +1,99 @@
+{
+  "id": "IRID-003",
+  "title": "Dormant concern return — user substantively resumes a long-inactive concern",
+  "tags": ["identity-resolution", "dormant-return", "temporal-distance", "representative", "maritime"],
+  "category": "dormant_return",
+  "domain": "maritime-logistics",
+  "length": "short",
+  "difficulty": "representative",
+  "existingGraph": {
+    "concerns": [
+      {
+        "concernId": "concern-port-ops",
+        "title": "Container Terminal Throughput Optimization",
+        "identitySummary": "How to reduce vessel turnaround time at the Rotterdam terminal by optimizing crane sequencing, berth allocation, and truck gate scheduling.",
+        "status": "DORMANT",
+        "parentConcernId": null,
+        "aliases": ["port throughput", "terminal optimization", "container ops Rotterdam"],
+        "lastActiveAt": "2023-08-10T06:00:00Z"
+      },
+      {
+        "concernId": "concern-fleet-routing",
+        "title": "Fleet Route Optimization",
+        "identitySummary": "Optimal routing for the Asia-Europe container fleet considering fuel costs, weather windows, and port slot availability.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["fleet routing", "vessel scheduling"],
+        "lastActiveAt": "2024-06-01T12:00:00Z"
+      }
+    ],
+    "propositions": [],
+    "associations": []
+  },
+  "newMessages": [
+    {
+      "role": "user",
+      "messageId": "msg-003",
+      "content": "We're back to the Rotterdam problem. The new automated stacking cranes are online but turnaround is still 22 hours average. I think the bottleneck moved from crane sequencing to the truck gate — the appointment system isn't spreading arrivals evenly across time slots."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "pkt-irid-003",
+    "userEvidenceMessageIds": ["msg-003"],
+    "assistantContextMessageIds": [],
+    "conciseMeaning": "User resumes the Rotterdam terminal throughput concern, identifying truck gate appointment distribution as the new bottleneck after automated cranes were deployed.",
+    "retentionRoles": ["INDEPENDENT_CONCERN_CANDIDATE", "DURABLE_PROPOSITION"]
+  },
+  "propositions": [
+    {
+      "propositionId": "prop-irid-003-a",
+      "speakerRole": "USER",
+      "canonicalMeaning": "Rotterdam terminal turnaround is 22 hours average despite new automated stacking cranes",
+      "retentionLevels": ["DURABLE_PROPOSITION"]
+    },
+    {
+      "propositionId": "prop-irid-003-b",
+      "speakerRole": "USER",
+      "canonicalMeaning": "The bottleneck moved from crane sequencing to truck gate appointment distribution",
+      "retentionLevels": ["INDEPENDENT_CONCERN_CANDIDATE"]
+    }
+  ],
+  "retrieval": {
+    "initialCandidates": [
+      { "concernId": "concern-fleet-routing", "rank": 1, "score": 0.65 },
+      { "concernId": "concern-port-ops", "rank": 2, "score": 0.61 }
+    ]
+  },
+  "expectedIdentityResult": {
+    "outcome": "YES",
+    "action": "ASSIGN_EXISTING",
+    "matchedConcernId": "concern-port-ops",
+    "proposedNewConcern": null,
+    "identityConfidence": "HIGH",
+    "sufficiencyConfidence": null,
+    "mustWiden": false,
+    "reactivation": true,
+    "mergeRedirectFollowed": false,
+    "substantiveResumption": true
+  },
+  "forbiddenOutcomes": [
+    {
+      "outcome": "NO",
+      "action": "PROPOSE_NEW",
+      "reason": "The dormant concern is the same identity despite 10-month gap"
+    },
+    {
+      "outcome": "YES",
+      "action": "ASSIGN_EXISTING",
+      "matchedConcernId": "concern-fleet-routing",
+      "reason": "Fleet routing is a different concern despite maritime domain overlap"
+    }
+  ],
+  "criticalAssertions": [
+    "matched_concern=concern-port-ops",
+    "reactivation_proposed",
+    "temporal_distance_does_not_break_identity",
+    "dormant_status_does_not_reduce_match_quality"
+  ],
+  "qualityMetrics": ["missed_reactivation", "false_novelty"]
+}

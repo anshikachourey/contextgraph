@@ -1,0 +1,98 @@
+{
+  "id": "IRID-007",
+  "title": "Duplicate concern risk — similar concerns exist, must not create another duplicate",
+  "tags": ["identity-resolution", "duplicate-concerns", "adversarial", "agriculture"],
+  "category": "duplicate_concerns",
+  "domain": "agriculture",
+  "length": "short",
+  "difficulty": "adversarial",
+  "existingGraph": {
+    "concerns": [
+      {
+        "concernId": "concern-irrigation-east",
+        "title": "East Field Irrigation Scheduling",
+        "identitySummary": "When and how much to irrigate the east field based on soil moisture sensors, weather forecasts, and crop water requirements for the current corn planting.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["east field watering", "irrigation schedule east"],
+        "lastActiveAt": "2024-06-10T07:00:00Z"
+      },
+      {
+        "concernId": "concern-irrigation-system",
+        "title": "Irrigation Infrastructure and Equipment",
+        "identitySummary": "The physical irrigation system: pump capacity, drip line layout, pivot radius, maintenance schedule, and upgrade planning for the farm's irrigation hardware.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["irrigation equipment", "pump maintenance", "drip system"],
+        "lastActiveAt": "2024-06-08T14:00:00Z"
+      }
+    ],
+    "propositions": [],
+    "associations": []
+  },
+  "newMessages": [
+    {
+      "role": "user",
+      "messageId": "msg-007",
+      "content": "The soil moisture readings from sensor 3 in the east field dropped below 40% field capacity overnight. With the heat wave forecast for the next 5 days, I think we need to bump the irrigation cycle from every 3 days to every 2 days. But the pump can only run 16 hours a day — can we fit the extra cycle in?"
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "pkt-irid-007",
+    "userEvidenceMessageIds": ["msg-007"],
+    "assistantContextMessageIds": [],
+    "conciseMeaning": "User observes low soil moisture in east field and proposes increasing irrigation frequency due to heat wave, constrained by pump operating hours.",
+    "retentionRoles": ["INDEPENDENT_CONCERN_CANDIDATE", "DURABLE_PROPOSITION"]
+  },
+  "propositions": [
+    {
+      "propositionId": "prop-irid-007-a",
+      "speakerRole": "USER",
+      "canonicalMeaning": "East field sensor 3 shows soil moisture below 40% field capacity",
+      "retentionLevels": ["DURABLE_PROPOSITION"]
+    },
+    {
+      "propositionId": "prop-irid-007-b",
+      "speakerRole": "USER",
+      "canonicalMeaning": "Proposes increasing east field irrigation from every 3 days to every 2 days due to 5-day heat wave forecast",
+      "retentionLevels": ["INDEPENDENT_CONCERN_CANDIDATE"]
+    }
+  ],
+  "retrieval": {
+    "initialCandidates": [
+      { "concernId": "concern-irrigation-east", "rank": 1, "score": 0.88 },
+      { "concernId": "concern-irrigation-system", "rank": 2, "score": 0.76 }
+    ]
+  },
+  "expectedIdentityResult": {
+    "outcome": "YES",
+    "action": "ASSIGN_EXISTING",
+    "matchedConcernId": "concern-irrigation-east",
+    "proposedNewConcern": null,
+    "identityConfidence": "HIGH",
+    "sufficiencyConfidence": null,
+    "mustWiden": false,
+    "reactivation": false,
+    "mergeRedirectFollowed": false,
+    "substantiveResumption": false
+  },
+  "forbiddenOutcomes": [
+    {
+      "outcome": "NO",
+      "action": "PROPOSE_NEW",
+      "reason": "Creating a new concern would duplicate the existing east-field irrigation concern"
+    },
+    {
+      "outcome": "YES",
+      "action": "ASSIGN_EXISTING",
+      "matchedConcernId": "concern-irrigation-system",
+      "reason": "Infrastructure/equipment is a different concern from scheduling decisions"
+    }
+  ],
+  "criticalAssertions": [
+    "matched_concern=concern-irrigation-east",
+    "no_duplicate_created",
+    "scheduling_identity_distinct_from_infrastructure"
+  ],
+  "qualityMetrics": ["false_novelty", "false_assignment"]
+}

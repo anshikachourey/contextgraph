@@ -1,0 +1,59 @@
+{
+  "name": "SIE Identity Resolution Evaluation Suite v1",
+  "description": "Labeled evaluation cases for Requirement 12 — identity resolution quality and release gates.",
+  "goldenCases": [
+    "IRID-001",
+    "IRID-002",
+    "IRID-003",
+    "IRID-004",
+    "IRID-005",
+    "IRID-006",
+    "IRID-007",
+    "IRID-008",
+    "IRID-009",
+    "IRID-010",
+    "IRID-011",
+    "IRID-012",
+    "IRID-013"
+  ],
+  "counts": {
+    "golden": 13,
+    "total": 13
+  },
+  "coverageMap": {
+    "same_vocabulary_different_identity": ["IRID-001"],
+    "vocabulary_drift_same_identity": ["IRID-002"],
+    "dormant_return": ["IRID-003"],
+    "retired_reopening": ["IRID-004"],
+    "merge_redirect": ["IRID-005"],
+    "parent_child_ambiguity": ["IRID-006"],
+    "duplicate_concerns": ["IRID-007"],
+    "multiple_competitors": ["IRID-008"],
+    "assistant_attribution": ["IRID-009"],
+    "extraction_repair": ["IRID-010"],
+    "channel_failure": ["IRID-011"],
+    "pending_reactivation": ["IRID-012"],
+    "state_evolution_no_identity_change": ["IRID-013"]
+  },
+  "domainCoverage": {
+    "development_domains": ["software-architecture", "machine-learning"],
+    "absent_from_development": ["agriculture", "classical-music-composition", "maritime-logistics", "clinical-trial-coordination", "competitive-gaming-esports"]
+  },
+  "difficultyDistribution": {
+    "representative": 7,
+    "adversarial": 5,
+    "multilingual": 1
+  },
+  "lengthDistribution": {
+    "short": 7,
+    "long": 6
+  },
+  "qualityMetricCoverage": {
+    "false_assignment": ["IRID-001", "IRID-004", "IRID-005", "IRID-006", "IRID-007", "IRID-008", "IRID-009", "IRID-010", "IRID-012"],
+    "false_novelty": ["IRID-001", "IRID-002", "IRID-003", "IRID-004", "IRID-007", "IRID-009", "IRID-011", "IRID-013"],
+    "missed_reactivation": ["IRID-003", "IRID-004"],
+    "unresolved_defer_calibration": ["IRID-008", "IRID-012"],
+    "retrieval_sufficiency_error": ["IRID-011"],
+    "retry_version_determinism": []
+  }
+}

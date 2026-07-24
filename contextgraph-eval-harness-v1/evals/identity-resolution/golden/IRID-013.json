@@ -1,0 +1,105 @@
+{
+  "id": "IRID-013",
+  "title": "State evolution without identity change — opinion changes but concern identity is preserved",
+  "tags": ["identity-resolution", "state-evolution", "no-identity-change", "representative", "classical-music"],
+  "category": "state_evolution_no_identity_change",
+  "domain": "classical-music-composition",
+  "length": "long",
+  "difficulty": "representative",
+  "existingGraph": {
+    "concerns": [
+      {
+        "concernId": "concern-tempo-marking",
+        "title": "Movement Tempo and Character Marking",
+        "identitySummary": "The tempo marking, metronome indication, and expressive character designation for each movement of the symphony.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["tempo", "metronome marking", "movement character"],
+        "lastActiveAt": "2024-06-12T11:00:00Z"
+      },
+      {
+        "concernId": "concern-form-structure",
+        "title": "Large-Scale Formal Structure",
+        "identitySummary": "The overall architectural form of each movement: sonata, rondo, theme-and-variations, or hybrid designs and their proportional relationships.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["formal structure", "movement architecture", "sonata form"],
+        "lastActiveAt": "2024-06-10T14:00:00Z"
+      }
+    ],
+    "propositions": [
+      {
+        "propositionId": "prop-old-tempo",
+        "concernId": "concern-tempo-marking",
+        "canonicalMeaning": "Second movement tempo is Andante con moto, quarter = 72",
+        "note": "User's earlier decision about the tempo"
+      }
+    ],
+    "associations": [
+      {
+        "propositionId": "prop-old-tempo",
+        "concernId": "concern-tempo-marking",
+        "role": "PRIMARY_OWNER"
+      }
+    ]
+  },
+  "newMessages": [
+    {
+      "role": "assistant",
+      "messageId": "msg-013-a",
+      "content": "You previously settled on Andante con moto at quarter = 72 for the second movement."
+    },
+    {
+      "role": "user",
+      "messageId": "msg-013-b",
+      "content": "I've changed my mind. After hearing the rehearsal playback, 72 feels too slow for the woodwind figurations. I'm moving it up to quarter = 80 and changing the character marking to Andante grazioso. The movement's identity is the same — it's still the lyrical interlude — but the pacing needs to be lighter."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "pkt-irid-013",
+    "userEvidenceMessageIds": ["msg-013-b"],
+    "assistantContextMessageIds": ["msg-013-a"],
+    "conciseMeaning": "User changes the second movement tempo from quarter=72 Andante con moto to quarter=80 Andante grazioso after hearing rehearsal, while explicitly preserving the movement's identity.",
+    "retentionRoles": ["INDEPENDENT_CONCERN_CANDIDATE", "DURABLE_PROPOSITION"]
+  },
+  "propositions": [
+    {
+      "propositionId": "prop-irid-013-a",
+      "speakerRole": "USER",
+      "canonicalMeaning": "Second movement tempo changed to quarter = 80, Andante grazioso (supersedes quarter = 72, Andante con moto)",
+      "retentionLevels": ["INDEPENDENT_CONCERN_CANDIDATE", "DURABLE_PROPOSITION"]
+    }
+  ],
+  "retrieval": {
+    "initialCandidates": [
+      { "concernId": "concern-tempo-marking", "rank": 1, "score": 0.92 },
+      { "concernId": "concern-form-structure", "rank": 2, "score": 0.51 }
+    ]
+  },
+  "expectedIdentityResult": {
+    "outcome": "YES",
+    "action": "ASSIGN_EXISTING",
+    "matchedConcernId": "concern-tempo-marking",
+    "proposedNewConcern": null,
+    "identityConfidence": "HIGH",
+    "sufficiencyConfidence": null,
+    "mustWiden": false,
+    "reactivation": false,
+    "mergeRedirectFollowed": false,
+    "substantiveResumption": false
+  },
+  "forbiddenOutcomes": [
+    {
+      "outcome": "NO",
+      "action": "PROPOSE_NEW",
+      "reason": "State change (opinion revision) does not create a new identity per SME-9"
+    }
+  ],
+  "criticalAssertions": [
+    "matched_concern=concern-tempo-marking",
+    "state_change_preserves_identity",
+    "opinion_revision_is_same_concern",
+    "supersession_applicable_not_new_concern"
+  ],
+  "qualityMetrics": ["false_novelty"]
+}

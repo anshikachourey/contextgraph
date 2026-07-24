@@ -37,6 +37,9 @@ describe("SIE Contract Round-Trip", () => {
       base_graph_version: 7,
       message_seq_start: 5,
       message_seq_end: 10,
+      processing_mode: "FULL_PIPELINE",
+      semantic_policy_version: "1.0.0",
+      retrieval_policy_version: "1.0.0",
       messages: [
         {
           message_id: "msg-005",
@@ -60,6 +63,8 @@ describe("SIE Contract Round-Trip", () => {
       context_window: [],
       current_graph_state: {
         graph_version: 7,
+        snapshot_token: "snap-7-abc",
+        snapshot_digest: "sha256-digest-placeholder",
         concerns: [
           {
             concern_id: "concern-relocation-001",
@@ -223,7 +228,10 @@ describe("SIE Contract Round-Trip", () => {
         {
           packet_id: "pkt-001",
           outcome: "YES",
-          confidence: "HIGH",
+          action: "ASSIGN_EXISTING",
+          identity_stage_status: "COMPLETED",
+          identity_confidence: "HIGH",
+          sufficiency_stage_status: "NOT_RUN",
           matched_concern_id: "concern-relocation-001",
           new_concern_proposal: null,
           candidates_considered: [
@@ -419,6 +427,8 @@ describe("SIE Contract Round-Trip", () => {
     it("pending_decisions in GraphStateContext round-trips correctly", () => {
       const graphState: GraphStateContext = {
         graph_version: 12,
+        snapshot_token: "snap-12-xyz",
+        snapshot_digest: "sha256-digest-graph-12",
         concerns: [],
         propositions: [],
         active_associations: [],

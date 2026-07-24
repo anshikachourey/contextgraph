@@ -104,6 +104,7 @@ class ConcernSummary(BaseModel):
     display_title: str
     current_summary: str
     status: ConcernStatus
+    merged_into_concern_id: Optional[str] = None
     aliases: list[str] = Field(default_factory=list)
     canonical_parent_id: Optional[str] = None
     parent_resolution_state: ParentResolutionState
@@ -220,6 +221,22 @@ class ProcessRequest(BaseModel):
     )
     retrieval_policy_version: str = Field(
         description="Version of the retrieval policy governing channel plans"
+    )
+
+    # PENDING_RE_EVALUATION mode fields
+    re_evaluation_trigger: Optional[str] = Field(
+        default=None,
+        description=(
+            "Event trigger for PENDING_RE_EVALUATION mode. "
+            "Must be a configured trigger in the re-evaluation policy."
+        ),
+    )
+    targeted_decision_ids: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "Optional list of specific pending-decision IDs to re-evaluate. "
+            "If None, all eligible pending decisions in the conversation are considered."
+        ),
     )
 
     @model_validator(mode="after")

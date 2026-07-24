@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SIE Identity Resolution Eval Case v1",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "tags",
+    "category",
+    "domain",
+    "length",
+    "difficulty",
+    "existingGraph",
+    "newMessages",
+    "semanticPacket",
+    "propositions",
+    "expectedIdentityResult",
+    "forbiddenOutcomes",
+    "criticalAssertions",
+    "qualityMetrics"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^IRID-\\d{3}$"
+    },
+    "title": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "same_vocabulary_different_identity",
+        "vocabulary_drift_same_identity",
+        "dormant_return",
+        "retired_reopening",
+        "merge_redirect",
+        "parent_child_ambiguity",
+        "duplicate_concerns",
+        "multiple_competitors",
+        "assistant_attribution",
+        "extraction_repair",
+        "channel_failure",
+        "pending_reactivation",
+        "state_evolution_no_identity_change"
+      ]
+    },
+    "domain": {
+      "type": "string"
+    },
+    "length": {
+      "type": "string",
+      "enum": ["short", "long"]
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": ["representative", "adversarial", "multilingual"]
+    },
+    "existingGraph": {
+      "type": "object",
+      "required": ["concerns"],
+      "properties": {
+        "concerns": { "type": "array" },
+        "propositions": { "type": "array" },
+        "associations": { "type": "array" }
+      }
+    },
+    "newMessages": {
+      "type": "array"
+    },
+    "semanticPacket": {
+      "type": "object",
+      "required": ["packetId", "userEvidenceMessageIds", "conciseMeaning", "retentionRoles"]
+    },
+    "propositions": {
+      "type": "array"
+    },
+    "retrieval": {
+      "type": "object"
+    },
+    "expectedIdentityResult": {
+      "type": "object",
+      "required": ["outcome", "action"]
+    },
+    "forbiddenOutcomes": {
+      "type": "array"
+    },
+    "criticalAssertions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "qualityMetrics": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

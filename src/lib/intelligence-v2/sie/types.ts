@@ -23,6 +23,57 @@ export type Proposition = components["schemas"]["Proposition"];
 export type PropositionAssociation = components["schemas"]["PropositionAssociation"];
 export type SemanticPacket = components["schemas"]["SemanticPacket"];
 
+// ─── Re-export identity resolution types ────────────────────────────────────
+
+/** Python-owned identity resolution record — complete audit record per packet. */
+export type IdentityResolutionRecord =
+  components["schemas"]["IdentityResolutionRecord"];
+
+/** Python-owned identity resolution result (transport-level summary). */
+export type IdentityResolutionResult =
+  components["schemas"]["IdentityResolutionResult"];
+
+/** Python-owned candidate evaluation record. */
+export type CandidateRecord = components["schemas"]["CandidateRecord"];
+
+/** Python-owned retrieval attempt record. */
+export type RetrievalAttemptRecord =
+  components["schemas"]["RetrievalAttemptRecord"];
+
+/** Python-owned IRS signal record. */
+export type IRSSignal = components["schemas"]["IRSSignal"];
+
+/** Python-owned evidence reference. */
+export type EvidenceReference = components["schemas"]["EvidenceReference"];
+
+/** Python-owned concern proposal. */
+export type ConcernProposal = components["schemas"]["ConcernProposal"];
+
+// ─── Re-export identity resolution enums ────────────────────────────────────
+
+/** Pipeline outcome enum values. */
+export type PipelineOutcome = components["schemas"]["PipelineOutcome"];
+
+/** Resolution action enum values. */
+export type ResolutionAction = components["schemas"]["ResolutionAction"];
+
+/** IRS signal type enum values. */
+export type IRSSignalType = components["schemas"]["IRSSignalType"];
+
+/** Stage execution status enum values. */
+export type StageExecutionStatus = components["schemas"]["StageExecutionStatus"];
+
+/** Processing mode enum values. */
+export type ProcessingMode = components["schemas"]["ProcessingMode"];
+
+/** Retrieval attempt status enum values. */
+export type RetrievalAttemptStatus =
+  components["schemas"]["RetrievalAttemptStatus"];
+
+/** Behavioral confidence band enum values. */
+export type BehavioralConfidenceBand =
+  components["schemas"]["BehavioralConfidenceBand"];
+
 // ─── TypeScript-owned orchestration types ───────────────────────────────────
 
 /**

@@ -317,6 +317,8 @@ export async function retrieveGraphState(
 
   const graphStateContext: GraphStateContext = {
     graph_version: graphVersion,
+    snapshot_token: `snapshot-${graphVersion}`,
+    snapshot_digest: "",
     concerns,
     propositions: propositionSummaries,
     active_associations: associationSummaries,

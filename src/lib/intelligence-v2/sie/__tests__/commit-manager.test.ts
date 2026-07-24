@@ -15,6 +15,8 @@ import {
   buildCommitBundle,
   computePayloadFingerprint,
   commitSIEResult,
+  validateContractCompleteness,
+  validateDependencyGroupCompleteness,
 } from "../commit-manager";
 import type { SIEGraphState, ProcessResult } from "../types";
 import type { components } from "../generated/transport-types";
@@ -46,6 +48,13 @@ vi.mock("../invariant-validator", () => ({
 vi.mock("../v2-projection", () => ({
   projectToV2Snapshot: vi.fn(() => ({ objects: [], propositions: [], threads: [] })),
 }));
+
+vi.mock("../authority-state-machine", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../authority-state-machine")>();
+  return {
+    ...actual,
+  };
+});
 
 
 // ─── Test Helpers ───────────────────────────────────────────────────────────
@@ -241,6 +250,24 @@ function makeConcern(id: string, overrides?: Partial<ConcernSummary>): ConcernSu
   };
 }
 
+function makeIdentityResolution(
+  overrides: Partial<IdentityResolutionResult> & { packet_id: string; outcome: IdentityResolutionResult["outcome"]; rationale: string }
+): IdentityResolutionResult {
+  const isYes = overrides.outcome === "YES";
+  const isNo = overrides.outcome === "NO";
+  return {
+    action: isYes ? "ASSIGN_EXISTING" : isNo ? "PROPOSE_NEW" : "RETAIN_PENDING",
+    identity_stage_status: "COMPLETED",
+    identity_confidence: isYes ? "HIGH" : "LOW",
+    sufficiency_stage_status: isNo ? "COMPLETED" : "NOT_RUN",
+    sufficiency_confidence: isNo ? "HIGH" : null,
+    matched_concern_id: null,
+    new_concern_proposal: null,
+    candidates_considered: [],
+    ...overrides,
+  };
+}
+
 
 // ─── Test Suites ────────────────────────────────────────────────────────────
 
@@ -322,24 +349,24 @@ describe("Commit Manager", () => {
       const processResult = makeMinimalProcessResult({
         packets: [makePacket("pkt-001"), makePacket("pkt-002")],
         identity_resolutions: [
-          {
+          makeIdentityResolution({
             packet_id: "pkt-001",
             outcome: "UNRESOLVED",
-            confidence: "LOW",
+            identity_confidence: "LOW",
             matched_concern_id: null,
             new_concern_proposal: null,
             candidates_considered: [],
             rationale: "Could not determine identity",
-          },
-          {
+          }),
+          makeIdentityResolution({
             packet_id: "pkt-002",
             outcome: "DEFER",
-            confidence: "MEDIUM",
+            identity_confidence: "MEDIUM",
             matched_concern_id: null,
             new_concern_proposal: null,
             candidates_considered: ["c-a", "c-b"],
             rationale: "Awaiting more context",
-          },
+          }),
         ],
       });
 
@@ -357,15 +384,14 @@ describe("Commit Manager", () => {
       const processResult = makeMinimalProcessResult({
         packets: [makePacket("pkt-deferred")],
         identity_resolutions: [
-          {
+          makeIdentityResolution({
             packet_id: "pkt-deferred",
             outcome: "YES",
-            confidence: "HIGH",
             matched_concern_id: "concern-existing",
             new_concern_proposal: null,
             candidates_considered: ["concern-existing"],
             rationale: "Matched existing concern",
-          },
+          }),
         ],
         diagnostics: {
           stage_versions: { retention: "0.1.0" },
@@ -497,10 +523,10 @@ describe("Commit Manager", () => {
 
   describe("commit flow (mocked RPC)", () => {
     it("successful commit returns CommitResult with success=true and new graph version", async () => {
-      mockRpc.mockResolvedValueOnce({
-        data: { graph_version: 6 },
-        error: null,
-      });
+      // First call: v2_commit_update, Second call: v2_commit_identity_bundle
+      mockRpc
+        .mockResolvedValueOnce({ data: { graph_version: 6 }, error: null })
+        .mockResolvedValueOnce({ data: { success: true }, error: null });
 
       const processResult = makeMinimalProcessResult({
         propositions: [makeProposition("prop-001")],
@@ -511,7 +537,9 @@ describe("Commit Manager", () => {
       const result = await commitSIEResult(
         "conv-001",
         processResult,
-        graphState
+        graphState,
+        undefined,
+        "SIE_SHADOW"
       );
 
       expect(result.success).toBe(true);
@@ -519,7 +547,6 @@ describe("Commit Manager", () => {
       expect(result.requestId).toBe("req-test-001");
       expect(result.retryRequired).toBe(false);
       expect(result.violations).toHaveLength(0);
-      expect(mockRpc).toHaveBeenCalledTimes(1);
       expect(mockRpc).toHaveBeenCalledWith(
         "v2_commit_update",
         expect.objectContaining({
@@ -550,7 +577,9 @@ describe("Commit Manager", () => {
       const result = await commitSIEResult(
         "conv-001",
         processResult,
-        graphState
+        graphState,
+        undefined,
+        "SIE_SHADOW"
       );
 
       expect(result.success).toBe(false);
@@ -574,7 +603,9 @@ describe("Commit Manager", () => {
       const result = await commitSIEResult(
         "conv-001",
         processResult,
-        graphState
+        graphState,
+        undefined,
+        "SIE_SHADOW"
       );
 
       expect(result.success).toBe(false);
@@ -593,22 +624,22 @@ describe("Commit Manager", () => {
       const graphState = makeEmptyGraphState();
 
       await expect(
-        commitSIEResult("conv-001", processResult, graphState)
+        commitSIEResult("conv-001", processResult, graphState, undefined, "SIE_SHADOW")
       ).rejects.toThrow("SIE commit RPC failed");
     });
 
     it("RPC is called with correct SIE-specific parameters", async () => {
-      mockRpc.mockResolvedValueOnce({
-        data: { graph_version: 6 },
-        error: null,
-      });
+      // First call: v2_commit_update, Second call: v2_commit_identity_bundle
+      mockRpc
+        .mockResolvedValueOnce({ data: { graph_version: 6 }, error: null })
+        .mockResolvedValueOnce({ data: { success: true }, error: null });
 
       const processResult = makeMinimalProcessResult({
         propositions: [makeProposition("prop-001")],
       });
       const graphState = makeEmptyGraphState();
 
-      await commitSIEResult("conv-001", processResult, graphState);
+      await commitSIEResult("conv-001", processResult, graphState, undefined, "SIE_SHADOW");
 
       const rpcArgs = mockRpc.mock.calls[0][1];
       expect(rpcArgs.p_from_version).toBe(5);
@@ -638,7 +669,7 @@ describe("Commit Manager", () => {
       const graphState = makeEmptyGraphState();
 
       await expect(
-        commitSIEResult("conv-001", processResult, graphState)
+        commitSIEResult("conv-001", processResult, graphState, undefined, "SIE_SHADOW")
       ).rejects.toThrow("SIE commit RPC failed");
     });
 
@@ -654,7 +685,7 @@ describe("Commit Manager", () => {
       const graphState = makeEmptyGraphState();
 
       await expect(
-        commitSIEResult("conv-001", processResult, graphState)
+        commitSIEResult("conv-001", processResult, graphState, undefined, "SIE_SHADOW")
       ).rejects.toThrow("SIE commit RPC failed");
     });
 
@@ -668,7 +699,7 @@ describe("Commit Manager", () => {
       const graphState = makeEmptyGraphState();
 
       await expect(
-        commitSIEResult("conv-001", processResult, graphState)
+        commitSIEResult("conv-001", processResult, graphState, undefined, "SIE_SHADOW")
       ).rejects.toThrow("conv-001");
     });
 
@@ -691,7 +722,9 @@ describe("Commit Manager", () => {
         const result = await commitSIEResult(
           "conv-001",
           makeMinimalProcessResult(),
-          makeEmptyGraphState()
+          makeEmptyGraphState(),
+          undefined,
+          "SIE_SHADOW"
         );
 
         expect(result.retryRequired).toBe(true);
@@ -709,11 +742,36 @@ describe("Commit Manager", () => {
       const result = await commitSIEResult(
         "conv-001",
         makeMinimalProcessResult(),
-        makeEmptyGraphState()
+        makeEmptyGraphState(),
+        undefined,
+        "SIE_SHADOW"
       );
 
       expect(result.retryRequired).toBe(true);
       expect(result.success).toBe(false);
+    });
+
+    it("database validation errors are treated as authoritative rejections", async () => {
+      mockRpc.mockResolvedValueOnce({
+        data: null,
+        error: { message: "invariant_violation: dependency_group_incomplete for group grp-1" },
+      });
+
+      const processResult = makeMinimalProcessResult();
+      const graphState = makeEmptyGraphState();
+
+      const result = await commitSIEResult(
+        "conv-001",
+        processResult,
+        graphState,
+        undefined,
+        "SIE_SHADOW"
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.retryRequired).toBe(false);
+      expect(result.violations).toHaveLength(1);
+      expect(result.violations[0].description).toContain("Database validation rejected");
     });
   });
 
@@ -730,7 +788,10 @@ describe("Commit Manager", () => {
           {
             packet_id: "pkt-001",
             outcome: "RETRIEVAL_INCONCLUSIVE",
-            confidence: "LOW",
+            identity_confidence: "LOW",
+            action: "RETAIN_PENDING",
+            identity_stage_status: "COMPLETED",
+            sufficiency_stage_status: "NOT_RUN",
             matched_concern_id: null,
             new_concern_proposal: null,
             candidates_considered: [],
@@ -755,7 +816,10 @@ describe("Commit Manager", () => {
           {
             packet_id: "pkt-001",
             outcome: "REQUIRES_VALIDATION",
-            confidence: "MEDIUM",
+            identity_confidence: "MEDIUM",
+            action: "RETAIN_PENDING",
+            identity_stage_status: "COMPLETED",
+            sufficiency_stage_status: "NOT_RUN",
             matched_concern_id: null,
             new_concern_proposal: null,
             candidates_considered: ["c-a"],
@@ -778,7 +842,9 @@ describe("Commit Manager", () => {
           {
             packet_id: "pkt-001",
             outcome: "YES",
-            confidence: "HIGH",
+            action: "ASSIGN_EXISTING",
+            identity_stage_status: "COMPLETED",
+            sufficiency_stage_status: "NOT_RUN",
             matched_concern_id: null,
             new_concern_proposal: makeConcernProposal("concern-new"),
             candidates_considered: [],
@@ -799,7 +865,9 @@ describe("Commit Manager", () => {
           {
             packet_id: "pkt-001",
             outcome: "NO",
-            confidence: "HIGH",
+            action: "PROPOSE_NEW",
+            identity_stage_status: "COMPLETED",
+            sufficiency_stage_status: "NOT_RUN",
             matched_concern_id: null,
             new_concern_proposal: null,
             candidates_considered: ["c-a"],
@@ -820,7 +888,9 @@ describe("Commit Manager", () => {
           {
             packet_id: "pkt-old",
             outcome: "YES",
-            confidence: "HIGH",
+            action: "ASSIGN_EXISTING",
+            identity_stage_status: "COMPLETED",
+            sufficiency_stage_status: "NOT_RUN",
             matched_concern_id: "concern-a",
             new_concern_proposal: null,
             candidates_considered: ["concern-a"],
@@ -829,7 +899,10 @@ describe("Commit Manager", () => {
           {
             packet_id: "pkt-new",
             outcome: "UNRESOLVED",
-            confidence: "LOW",
+            identity_confidence: "LOW",
+            action: "RETAIN_PENDING",
+            identity_stage_status: "COMPLETED",
+            sufficiency_stage_status: "NOT_RUN",
             matched_concern_id: null,
             new_concern_proposal: null,
             candidates_considered: [],
@@ -856,6 +929,491 @@ describe("Commit Manager", () => {
       // pkt-new is unresolved → new pending decision
       expect(bundle.pendingDecisionCreations).toHaveLength(1);
       expect(bundle.pendingDecisionCreations[0].entity_id).toBe("pkt-new");
+    });
+  });
+
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Identity Bundle Section Tests
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe("identity bundle sections", () => {
+    it("extracts identity resolution records from identity resolutions", () => {
+      const processResult = makeMinimalProcessResult({
+        packets: [makePacket("pkt-001")],
+        identity_resolutions: [
+          makeIdentityResolution({
+            packet_id: "pkt-001",
+            outcome: "YES",
+            matched_concern_id: "concern-existing",
+            new_concern_proposal: null,
+            candidates_considered: ["concern-existing"],
+            rationale: "Matched by identity continuity",
+          }),
+        ],
+      });
+
+      const bundle = buildCommitBundle(processResult, makeEmptyGraphState({
+        concerns: [makeConcern("concern-existing")],
+      }));
+
+      expect(bundle.identityBundle.resolutionRecords).toHaveLength(1);
+      const record = bundle.identityBundle.resolutionRecords[0];
+      expect(record.packet_id).toBe("pkt-001");
+      expect(record.outcome).toBe("YES");
+      expect(record.action).toBe("ASSIGN_EXISTING");
+      expect(record.matched_concern_id).toBe("concern-existing");
+      expect(record.proposed_concern_id).toBeNull();
+      expect(record.identity_confidence).toBe("HIGH");
+      expect(record.reasoning).toBe("Matched by identity continuity");
+    });
+
+    it("extracts shared proposals for new concern proposals", () => {
+      const processResult = makeMinimalProcessResult({
+        new_concern_proposals: [makeConcernProposal("concern-new")],
+        identity_resolutions: [
+          makeIdentityResolution({
+            packet_id: "pkt-001",
+            outcome: "NO",
+            matched_concern_id: null,
+            new_concern_proposal: makeConcernProposal("concern-new"),
+            candidates_considered: [],
+            rationale: "Novel concern",
+          }),
+        ],
+        packets: [makePacket("pkt-001")],
+      });
+
+      const bundle = buildCommitBundle(processResult, makeEmptyGraphState());
+
+      expect(bundle.identityBundle.sharedProposals).toHaveLength(1);
+      expect(bundle.identityBundle.sharedProposals[0].concern_id).toBe("concern-new");
+      expect(bundle.identityBundle.sharedProposals[0].display_title).toBe("Title for concern-new");
+      expect(bundle.identityBundle.sharedProposals[0].status).toBe("ACTIVE");
+    });
+
+    it("extracts association mutations from proposed associations", () => {
+      const processResult = makeMinimalProcessResult({
+        propositions: [makeProposition("prop-001")],
+        proposed_associations: [
+          makeAssociation("assoc-001", "prop-001", "concern-existing"),
+        ],
+      });
+
+      const bundle = buildCommitBundle(processResult, makeEmptyGraphState({
+        concerns: [makeConcern("concern-existing")],
+      }));
+
+      expect(bundle.identityBundle.associationMutations).toHaveLength(1);
+      const mutation = bundle.identityBundle.associationMutations[0];
+      expect(mutation.association_id).toBe("assoc-001");
+      expect(mutation.proposition_id).toBe("prop-001");
+      expect(mutation.concern_id).toBe("concern-existing");
+      expect(mutation.role).toBe("PRIMARY_OWNER");
+      expect(mutation.confidence).toBe("HIGH");
+    });
+
+    it("extracts pending identity details for unresolved resolutions", () => {
+      const processResult = makeMinimalProcessResult({
+        packets: [makePacket("pkt-001")],
+        packet_memberships: [
+          makeMembership("mem-001", "pkt-001", "prop-001", 0),
+        ],
+        propositions: [makeProposition("prop-001")],
+        identity_resolutions: [
+          makeIdentityResolution({
+            packet_id: "pkt-001",
+            outcome: "UNRESOLVED",
+            identity_confidence: "LOW",
+            matched_concern_id: null,
+            new_concern_proposal: null,
+            candidates_considered: ["c-a", "c-b"],
+            rationale: "Ambiguous candidates",
+          }),
+        ],
+      });
+
+      const bundle = buildCommitBundle(processResult, makeEmptyGraphState());
+
+      expect(bundle.identityBundle.pendingIdentityDetails).toHaveLength(1);
+      const detail = bundle.identityBundle.pendingIdentityDetails[0];
+      expect(detail.packet_id).toBe("pkt-001");
+      expect(detail.identity_confidence).toBe("LOW");
+
+      // Should also have pending proposition memberships
+      expect(bundle.identityBundle.pendingPropositionMemberships).toHaveLength(1);
+      expect(bundle.identityBundle.pendingPropositionMemberships[0].proposition_id).toBe("prop-001");
+    });
+
+    it("includes request state transition for COMMITTED", () => {
+      const processResult = makeMinimalProcessResult();
+      const bundle = buildCommitBundle(processResult, makeEmptyGraphState());
+
+      expect(bundle.identityBundle.requestStateTransition).not.toBeNull();
+      expect(bundle.identityBundle.requestStateTransition!.target_status).toBe("COMMITTED");
+      expect(bundle.identityBundle.requestStateTransition!.committed_graph_version).toBe(6);
+      expect(bundle.identityBundle.requestStateTransition!.request_id).toBe("req-test-001");
+    });
+
+    it("TypeScript never modifies Python's semantic decisions in the bundle", () => {
+      // Verify that the identity bundle simply passes through Python's output
+      const processResult = makeMinimalProcessResult({
+        packets: [makePacket("pkt-001")],
+        propositions: [makeProposition("prop-001")],
+        proposed_associations: [
+          makeAssociation("assoc-001", "prop-001", "concern-a", {
+            role: "SUPPORTING_EVIDENCE",
+            confidence: "MEDIUM",
+          }),
+        ],
+        identity_resolutions: [
+          makeIdentityResolution({
+            packet_id: "pkt-001",
+            outcome: "YES",
+            matched_concern_id: "concern-a",
+            new_concern_proposal: null,
+            candidates_considered: ["concern-a", "concern-b"],
+            rationale: "Best match is concern-a",
+          }),
+        ],
+      });
+
+      const bundle = buildCommitBundle(processResult, makeEmptyGraphState({
+        concerns: [makeConcern("concern-a"), makeConcern("concern-b")],
+      }));
+
+      // Association role/confidence must match exactly what Python produced
+      const assocMutation = bundle.identityBundle.associationMutations[0];
+      expect(assocMutation.role).toBe("SUPPORTING_EVIDENCE");
+      expect(assocMutation.confidence).toBe("MEDIUM");
+
+      // Resolution record must preserve Python's rationale verbatim
+      const record = bundle.identityBundle.resolutionRecords[0];
+      expect(record.reasoning).toBe("Best match is concern-a");
+      expect(record.matched_concern_id).toBe("concern-a");
+    });
+  });
+
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Contract and Dependency Group Validation Tests
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe("contract and dependency group validation", () => {
+    it("validates missing api_contract_version", () => {
+      const processResult = makeMinimalProcessResult({
+        api_contract_version: "",
+      });
+
+      const violations = validateContractCompleteness(processResult);
+      expect(violations.length).toBeGreaterThan(0);
+      expect(violations[0].description).toContain("api_contract_version");
+    });
+
+    it("validates missing request_id", () => {
+      const processResult = makeMinimalProcessResult({
+        request_id: "",
+      });
+
+      const violations = validateContractCompleteness(processResult);
+      expect(violations.length).toBeGreaterThan(0);
+    });
+
+    it("passes for valid ProcessResult", () => {
+      const processResult = makeMinimalProcessResult();
+      const violations = validateContractCompleteness(processResult);
+      expect(violations).toHaveLength(0);
+    });
+
+    it("detects missing mutation refs in dependency groups", () => {
+      const processResult = makeMinimalProcessResult({
+        dependency_groups: [
+          {
+            group_id: "grp-1",
+            failure_policy: "ALL_OR_NONE",
+            mutation_refs: ["prop-missing", "assoc-missing"],
+          },
+        ],
+      });
+
+      const violations = validateDependencyGroupCompleteness(processResult);
+      expect(violations).toHaveLength(1);
+      expect(violations[0].description).toContain("missing mutation refs");
+      expect(violations[0].description).toContain("prop-missing");
+    });
+
+    it("passes when all mutation refs exist in result", () => {
+      const processResult = makeMinimalProcessResult({
+        propositions: [makeProposition("prop-001")],
+        packets: [makePacket("pkt-001")],
+        dependency_groups: [
+          {
+            group_id: "grp-1",
+            failure_policy: "ALL_OR_NONE",
+            mutation_refs: ["prop-001", "pkt-001"],
+          },
+        ],
+      });
+
+      const violations = validateDependencyGroupCompleteness(processResult);
+      expect(violations).toHaveLength(0);
+    });
+
+    it("commit rejects when contract is incomplete", async () => {
+      const processResult = makeMinimalProcessResult({
+        request_id: "",
+      });
+
+      const result = await commitSIEResult(
+        "conv-001",
+        processResult,
+        makeEmptyGraphState(),
+        undefined,
+        "SIE_SHADOW"
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.violations.length).toBeGreaterThan(0);
+      // No RPC should have been called
+      expect(mockRpc).not.toHaveBeenCalled();
+    });
+
+    it("commit rejects when dependency groups have dangling refs", async () => {
+      const processResult = makeMinimalProcessResult({
+        dependency_groups: [
+          {
+            group_id: "grp-1",
+            failure_policy: "ALL_OR_NONE",
+            mutation_refs: ["nonexistent-entity"],
+          },
+        ],
+      });
+
+      const result = await commitSIEResult(
+        "conv-001",
+        processResult,
+        makeEmptyGraphState(),
+        undefined,
+        "SIE_SHADOW"
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.violations.length).toBeGreaterThan(0);
+      expect(mockRpc).not.toHaveBeenCalled();
+    });
+  });
+
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Authority State Machine Integration Tests
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe("authority state machine integration", () => {
+    it("allows commit in SIE_SHADOW mode", async () => {
+      mockRpc
+        .mockResolvedValueOnce({ data: { graph_version: 6 }, error: null })
+        .mockResolvedValueOnce({ data: { success: true }, error: null });
+
+      const result = await commitSIEResult(
+        "conv-001",
+        makeMinimalProcessResult(),
+        makeEmptyGraphState(),
+        undefined,
+        "SIE_SHADOW"
+      );
+
+      expect(result.success).toBe(true);
+    });
+
+    it("allows commit in SIE authority mode", async () => {
+      mockRpc
+        .mockResolvedValueOnce({ data: { graph_version: 6 }, error: null })
+        .mockResolvedValueOnce({ data: { success: true }, error: null });
+
+      const result = await commitSIEResult(
+        "conv-001",
+        makeMinimalProcessResult(),
+        makeEmptyGraphState(),
+        undefined,
+        "SIE"
+      );
+
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects commit in V2 authority mode (SIE cannot write)", async () => {
+      const result = await commitSIEResult(
+        "conv-001",
+        makeMinimalProcessResult(),
+        makeEmptyGraphState(),
+        undefined,
+        "V2"
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.violations).toHaveLength(1);
+      expect(result.violations[0].description).toContain("authority state");
+      // No RPC should have been called
+      expect(mockRpc).not.toHaveBeenCalled();
+    });
+
+    it("defaults to SIE_SHADOW when authorityState not provided", async () => {
+      mockRpc
+        .mockResolvedValueOnce({ data: { graph_version: 6 }, error: null })
+        .mockResolvedValueOnce({ data: { success: true }, error: null });
+
+      // No authorityState parameter — should default to SIE_SHADOW
+      const result = await commitSIEResult(
+        "conv-001",
+        makeMinimalProcessResult(),
+        makeEmptyGraphState()
+      );
+
+      expect(result.success).toBe(true);
+    });
+
+    it("does not mutate authority state as a side effect of committing", async () => {
+      // This test verifies the commit manager never changes the authority state.
+      // We pass SIE_SHADOW and verify the commit uses it but doesn't transition it.
+      mockRpc
+        .mockResolvedValueOnce({ data: { graph_version: 6 }, error: null })
+        .mockResolvedValueOnce({ data: { success: true }, error: null });
+
+      await commitSIEResult(
+        "conv-001",
+        makeMinimalProcessResult(),
+        makeEmptyGraphState(),
+        undefined,
+        "SIE_SHADOW"
+      );
+
+      // Verify no authority-changing RPC was called (no transition RPC)
+      const rpcNames = mockRpc.mock.calls.map((call: unknown[]) => call[0]);
+      expect(rpcNames).not.toContain("update_authority_state");
+      expect(rpcNames).not.toContain("transition_authority");
+    });
+  });
+
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Identity Bundle RPC Call Tests
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe("identity bundle RPC invocation", () => {
+    it("calls v2_commit_identity_bundle when identity work exists", async () => {
+      mockRpc
+        .mockResolvedValueOnce({ data: { graph_version: 6 }, error: null })
+        .mockResolvedValueOnce({ data: { success: true, identity_bundle_applied: true }, error: null });
+
+      const processResult = makeMinimalProcessResult({
+        propositions: [makeProposition("prop-001")],
+        packets: [makePacket("pkt-001")],
+        proposed_associations: [
+          makeAssociation("assoc-001", "prop-001", "concern-existing"),
+        ],
+        identity_resolutions: [
+          makeIdentityResolution({
+            packet_id: "pkt-001",
+            outcome: "YES",
+            matched_concern_id: "concern-existing",
+            new_concern_proposal: null,
+            candidates_considered: ["concern-existing"],
+            rationale: "Matched",
+          }),
+        ],
+      });
+
+      await commitSIEResult(
+        "conv-001",
+        processResult,
+        makeEmptyGraphState({ concerns: [makeConcern("concern-existing")] }),
+        undefined,
+        "SIE_SHADOW"
+      );
+
+      // Should have called both RPCs
+      expect(mockRpc).toHaveBeenCalledTimes(2);
+      expect(mockRpc.mock.calls[0][0]).toBe("v2_commit_update");
+      expect(mockRpc.mock.calls[1][0]).toBe("v2_commit_identity_bundle");
+
+      // Verify identity bundle RPC parameters
+      const bundleArgs = mockRpc.mock.calls[1][1];
+      expect(bundleArgs.p_conversation_id).toBe("conv-001");
+      expect(bundleArgs.p_request_id).toBe("req-test-001");
+      expect(bundleArgs.p_identity_resolution_records).not.toBeNull();
+      expect(bundleArgs.p_association_mutations).not.toBeNull();
+      expect(bundleArgs.p_request_state_transition).not.toBeNull();
+    });
+
+    it("handles v2_commit_identity_bundle version conflict", async () => {
+      mockRpc
+        .mockResolvedValueOnce({ data: { graph_version: 6 }, error: null })
+        .mockResolvedValueOnce({ data: null, error: { message: "version conflict: snapshot changed" } });
+
+      const processResult = makeMinimalProcessResult({
+        propositions: [makeProposition("prop-001")],
+        proposed_associations: [
+          makeAssociation("assoc-001", "prop-001", "concern-existing"),
+        ],
+        identity_resolutions: [
+          makeIdentityResolution({
+            packet_id: "pkt-001",
+            outcome: "YES",
+            matched_concern_id: "concern-existing",
+            new_concern_proposal: null,
+            candidates_considered: [],
+            rationale: "Match",
+          }),
+        ],
+        packets: [makePacket("pkt-001")],
+      });
+
+      const result = await commitSIEResult(
+        "conv-001",
+        processResult,
+        makeEmptyGraphState({ concerns: [makeConcern("concern-existing")] }),
+        undefined,
+        "SIE_SHADOW"
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.retryRequired).toBe(true);
+    });
+
+    it("handles v2_commit_identity_bundle database validation error", async () => {
+      mockRpc
+        .mockResolvedValueOnce({ data: { graph_version: 6 }, error: null })
+        .mockResolvedValueOnce({ data: null, error: { message: "invariant_violation: association_uniqueness violated" } });
+
+      const processResult = makeMinimalProcessResult({
+        propositions: [makeProposition("prop-001")],
+        proposed_associations: [
+          makeAssociation("assoc-001", "prop-001", "concern-existing"),
+        ],
+        identity_resolutions: [
+          makeIdentityResolution({
+            packet_id: "pkt-001",
+            outcome: "YES",
+            matched_concern_id: "concern-existing",
+            new_concern_proposal: null,
+            candidates_considered: [],
+            rationale: "Match",
+          }),
+        ],
+        packets: [makePacket("pkt-001")],
+      });
+
+      const result = await commitSIEResult(
+        "conv-001",
+        processResult,
+        makeEmptyGraphState({ concerns: [makeConcern("concern-existing")] }),
+        undefined,
+        "SIE_SHADOW"
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.retryRequired).toBe(false);
+      expect(result.violations[0].description).toContain("Database validation rejected identity bundle");
     });
   });
 });

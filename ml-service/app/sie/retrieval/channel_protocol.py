@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 from ..contracts import GraphStateContext
-from ..enums import PipelineOutcome, ResolutionAction
+from ..enums import ConcernStatus, PipelineOutcome, ResolutionAction
 from ..identity_models import CandidateRecord, RetrievalAttemptRecord
 from ..identity_policy import (
     CANONICAL_CHANNEL_FAMILIES,
@@ -28,6 +28,7 @@ from ..identity_policy import (
     PolicyValidationResult,
     RetrievalPolicy,
 )
+from ..models import SemanticPacket
 from ..models import SemanticPacket
 
 
@@ -284,17 +285,36 @@ class ChannelRegistry:
 
 
 @dataclass
+@dataclass(frozen=True, slots=True)
+class RetrievalCandidate:
+    """A retrieval-stage candidate surfaced by one or more channels.
+
+    This is the coordinator's output — a concern that was surfaced by retrieval.
+    It carries NO semantic identity confidence. Confidence is assigned later by
+    the IdentityEvaluator after semantic evaluation.
+
+    Retrieval proposes candidates; evaluation decides ownership.
+    """
+
+    concern_id: str
+    lifecycle_status: ConcernStatus
+    contributing_attempt_ids: list[str]
+
+
+@dataclass
 class RetrievalResult:
     """Aggregated results from multiple retrieval channel executions.
 
-    Contains all attempt records and a deduplicated list of candidates.
+    Contains all attempt records and a deduplicated list of retrieval candidates.
     Candidates are deduplicated by concern_id; contributing_attempt_ids
     from multiple channels are merged.
 
-    Retrieval scores in channel_local_diagnostics remain diagnostic only.
-    They never constitute proof of ownership.
+    RetrievalCandidate carries NO semantic confidence — retrieval scores
+    are diagnostics only. They never constitute proof of ownership.
+    The IdentityEvaluator produces CandidateRecord with behavioral confidence
+    after semantic evaluation.
     """
 
     attempts: list[RetrievalAttemptRecord] = field(default_factory=list)
-    candidates: list[CandidateRecord] = field(default_factory=list)
+    candidates: list[RetrievalCandidate] = field(default_factory=list)
     total_latency_ms: int = 0

@@ -80,16 +80,16 @@ class TestEndpointDisabled:
 
     @patch("app.sie.routes.SIE_ENDPOINT_ENABLED", True)
     def test_returns_503_when_enabled_but_no_implementations(self, client: TestClient):
-        """Even with endpoint enabled, 503 if no stage implementations installed."""
+        """Even with endpoint enabled, 503 for FULL_PIPELINE mode (upstream not implemented)."""
         response = client.post("/sie/process-messages", json=_valid_request_body())
         assert response.status_code == 503
-        assert "no approved stage implementations" in response.json()["detail"]
+        assert "FULL_PIPELINE" in response.json()["detail"]
 
     @patch("app.sie.routes.SIE_ENDPOINT_ENABLED", True)
     def test_does_not_fabricate_results(self, client: TestClient):
         """Endpoint must never return a fabricated ProcessResult."""
         response = client.post("/sie/process-messages", json=_valid_request_body())
-        # Should be a 503 error, not a 200 with fake data
+        # FULL_PIPELINE should be a 503 error, not a 200 with fake data
         assert response.status_code == 503
         # Ensure no retention_decisions or propositions in the response
         body = response.json()

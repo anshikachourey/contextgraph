@@ -1,13 +1,21 @@
 """
 Shared fixtures for real PostgreSQL database tests.
 
-These tests require a live PostgreSQL database. They are marked with
-@pytest.mark.database so they can be skipped in environments without a
-database available.
+These tests require a live PostgreSQL database with all SIE migrations applied.
+They are marked with @pytest.mark.database so they can be skipped in environments
+without a database available.
+
+Setup:
+    # One-time bootstrap (creates DB, roles, applies all migrations):
+    ./scripts/setup-test-db.sh
+
+    # Or reset an existing test DB:
+    ./scripts/setup-test-db.sh --reset
 
 Usage:
-    # Run all tests including database tests:
-    pytest tests/database/ -m database
+    # Run all database tests:
+    TEST_DATABASE_URL="postgresql://<user>@localhost:5432/contextgraph_test" \
+        ml-service/venv/bin/python -m pytest tests/database/ -v
 
     # Skip database tests:
     pytest tests/database/ -m "not database"
@@ -15,6 +23,10 @@ Usage:
 Environment variables:
     TEST_DATABASE_URL: PostgreSQL connection string for a disposable test database.
                       Default: postgresql://postgres:postgres@localhost:5432/contextgraph_test
+
+Dependencies (declared in ml-service/requirements.txt):
+    - psycopg2-binary>=2.9.9
+    - pytest-asyncio>=0.23.0
 """
 
 import os

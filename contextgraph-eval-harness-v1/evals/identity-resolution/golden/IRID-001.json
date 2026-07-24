@@ -1,0 +1,98 @@
+{
+  "id": "IRID-001",
+  "title": "Same vocabulary used for different concerns — crop yield vs financial yield",
+  "tags": ["identity-resolution", "same-vocabulary", "different-identity", "domain-diverse", "agriculture"],
+  "category": "same_vocabulary_different_identity",
+  "domain": "agriculture",
+  "length": "short",
+  "difficulty": "adversarial",
+  "existingGraph": {
+    "concerns": [
+      {
+        "concernId": "concern-yield-finance",
+        "title": "Investment Portfolio Yield Optimization",
+        "identitySummary": "How to maximize financial yield from a diversified bond and dividend portfolio, including reinvestment timing and tax-loss harvesting strategies.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["yield optimization", "portfolio yield", "dividend yield strategy"],
+        "lastActiveAt": "2024-06-15T10:00:00Z"
+      },
+      {
+        "concernId": "concern-crop-mgmt",
+        "title": "Seasonal Crop Rotation Planning",
+        "identitySummary": "Which crops to plant in each rotation cycle to maintain soil health and maximize per-acre output across the three north fields.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["crop rotation", "field planning", "seasonal planting"],
+        "lastActiveAt": "2024-06-14T08:00:00Z"
+      }
+    ],
+    "propositions": [],
+    "associations": []
+  },
+  "newMessages": [
+    {
+      "role": "user",
+      "messageId": "msg-001",
+      "content": "I need to improve the yield on the north fields this season. The soil tests came back and nitrogen is depleted after three consecutive corn cycles. Should I switch to soybeans for the nitrogen fixation, or go straight to a cover crop?"
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "pkt-irid-001",
+    "userEvidenceMessageIds": ["msg-001"],
+    "assistantContextMessageIds": [],
+    "conciseMeaning": "User asks about improving agricultural crop yield on north fields given nitrogen depletion, considering soybeans or cover crops.",
+    "retentionRoles": ["INDEPENDENT_CONCERN_CANDIDATE", "DURABLE_PROPOSITION"]
+  },
+  "propositions": [
+    {
+      "propositionId": "prop-irid-001-a",
+      "speakerRole": "USER",
+      "canonicalMeaning": "North fields have nitrogen-depleted soil after three consecutive corn cycles",
+      "retentionLevels": ["DURABLE_PROPOSITION"]
+    },
+    {
+      "propositionId": "prop-irid-001-b",
+      "speakerRole": "USER",
+      "canonicalMeaning": "User is considering soybeans for nitrogen fixation or a cover crop as the next rotation",
+      "retentionLevels": ["INDEPENDENT_CONCERN_CANDIDATE"]
+    }
+  ],
+  "retrieval": {
+    "initialCandidates": [
+      { "concernId": "concern-yield-finance", "rank": 1, "score": 0.87 },
+      { "concernId": "concern-crop-mgmt", "rank": 2, "score": 0.82 }
+    ]
+  },
+  "expectedIdentityResult": {
+    "outcome": "YES",
+    "action": "ASSIGN_EXISTING",
+    "matchedConcernId": "concern-crop-mgmt",
+    "proposedNewConcern": null,
+    "identityConfidence": "HIGH",
+    "sufficiencyConfidence": null,
+    "mustWiden": false,
+    "reactivation": false,
+    "mergeRedirectFollowed": false,
+    "substantiveResumption": false
+  },
+  "forbiddenOutcomes": [
+    {
+      "outcome": "YES",
+      "action": "ASSIGN_EXISTING",
+      "matchedConcernId": "concern-yield-finance",
+      "reason": "Financial yield concern shares vocabulary but is a completely different identity"
+    },
+    {
+      "outcome": "NO",
+      "action": "PROPOSE_NEW",
+      "reason": "Crop management concern already exists and matches semantically"
+    }
+  ],
+  "criticalAssertions": [
+    "matched_concern=concern-crop-mgmt",
+    "not_matched=concern-yield-finance",
+    "retrieval_rank_not_authoritative"
+  ],
+  "qualityMetrics": ["false_assignment", "false_novelty"]
+}

@@ -1,0 +1,109 @@
+{
+  "id": "IRID-012",
+  "title": "Pending reactivation — new evidence resolves a previously unresolved decision",
+  "tags": ["identity-resolution", "pending-reactivation", "representative", "esports"],
+  "category": "pending_reactivation",
+  "domain": "competitive-gaming-esports",
+  "length": "long",
+  "difficulty": "representative",
+  "existingGraph": {
+    "concerns": [
+      {
+        "concernId": "concern-aim-training",
+        "title": "Aim Training Routine and Methodology",
+        "identitySummary": "The daily aim training regimen: which scenarios to run in aim trainers, duration, metrics to track, and how to periodize mechanical practice.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["aim training", "mechanical practice", "kovaaks routine"],
+        "lastActiveAt": "2024-06-14T21:00:00Z"
+      },
+      {
+        "concernId": "concern-crosshair-settings",
+        "title": "Crosshair and Sensitivity Settings",
+        "identitySummary": "Crosshair style, color, size, sensitivity values, mouse DPI, and in-game multiplier decisions for competitive play.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["crosshair settings", "sensitivity", "mouse settings"],
+        "lastActiveAt": "2024-06-12T22:00:00Z"
+      }
+    ],
+    "propositions": [],
+    "associations": [],
+    "pendingDecisions": [
+      {
+        "decisionId": "pending-001",
+        "packetId": "pkt-earlier-ambiguous",
+        "outcome": "UNRESOLVED",
+        "reason": "Packet about 'improving precision in close-range duels' was ambiguous between aim-training methodology and sensitivity tuning",
+        "candidatesConsidered": ["concern-aim-training", "concern-crosshair-settings"],
+        "createdAt": "2024-06-13T10:00:00Z"
+      }
+    ]
+  },
+  "newMessages": [
+    {
+      "role": "user",
+      "messageId": "msg-012",
+      "content": "Going back to improving my close-range precision — I realized the issue isn't my settings, it's that I haven't been training reactive flicks enough. I'm going to add 20 minutes of close-range reactive scenarios to my daily routine. The sensitivity is fine where it is."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "pkt-irid-012",
+    "userEvidenceMessageIds": ["msg-012"],
+    "assistantContextMessageIds": [],
+    "conciseMeaning": "User resolves earlier ambiguity: close-range precision improvement is about aim training methodology (adding reactive scenarios), not sensitivity settings.",
+    "retentionRoles": ["INDEPENDENT_CONCERN_CANDIDATE", "DURABLE_PROPOSITION"]
+  },
+  "propositions": [
+    {
+      "propositionId": "prop-irid-012-a",
+      "speakerRole": "USER",
+      "canonicalMeaning": "Close-range precision issue is lack of reactive flick training, not sensitivity settings",
+      "retentionLevels": ["DURABLE_PROPOSITION"]
+    },
+    {
+      "propositionId": "prop-irid-012-b",
+      "speakerRole": "USER",
+      "canonicalMeaning": "Adding 20 minutes of close-range reactive aim scenarios to daily routine",
+      "retentionLevels": ["INDEPENDENT_CONCERN_CANDIDATE"]
+    }
+  ],
+  "retrieval": {
+    "initialCandidates": [
+      { "concernId": "concern-aim-training", "rank": 1, "score": 0.86 },
+      { "concernId": "concern-crosshair-settings", "rank": 2, "score": 0.72 }
+    ]
+  },
+  "expectedIdentityResult": {
+    "outcome": "YES",
+    "action": "ASSIGN_EXISTING",
+    "matchedConcernId": "concern-aim-training",
+    "proposedNewConcern": null,
+    "identityConfidence": "HIGH",
+    "sufficiencyConfidence": null,
+    "mustWiden": false,
+    "reactivation": false,
+    "mergeRedirectFollowed": false,
+    "substantiveResumption": false
+  },
+  "forbiddenOutcomes": [
+    {
+      "outcome": "UNRESOLVED",
+      "action": "RETAIN_PENDING",
+      "reason": "User has now provided disambiguating evidence — should no longer be unresolved"
+    },
+    {
+      "outcome": "YES",
+      "action": "ASSIGN_EXISTING",
+      "matchedConcernId": "concern-crosshair-settings",
+      "reason": "User explicitly stated sensitivity is fine — this is about training methodology"
+    }
+  ],
+  "criticalAssertions": [
+    "matched_concern=concern-aim-training",
+    "pending_decision_resolvable",
+    "new_evidence_disambiguates",
+    "sensitivity_explicitly_excluded"
+  ],
+  "qualityMetrics": ["false_assignment", "unresolved_defer_calibration"]
+}

@@ -61,7 +61,10 @@ export interface paths {
         put?: never;
         /**
          * Process messages through the SIE semantic pipeline
-         * @description Accepts a batch of messages with current graph state and produces semantic decisions including retention, propositions, packets, and identity resolutions. Requires approved stage implementations to be installed and the SIE endpoint to be enabled via configuration.
+         * @description Accepts a batch of messages with current graph state and produces semantic decisions including retention, propositions, packets, and identity resolutions. Dispatches by processing_mode:
+         *     - FULL_PIPELINE: upstream stages (503 until implemented)
+         *     - IDENTITY_RESOLUTION_ONLY: identity resolution on preformed packets
+         *     - PENDING_RE_EVALUATION: re-evaluate pending identity decisions
          */
         post: operations["process_messages_sie_process_messages_post"];
         delete?: never;
@@ -100,6 +103,48 @@ export interface components {
          * @enum {string}
          */
         BehavioralConfidenceBand: "HIGH" | "MEDIUM" | "LOW";
+        /**
+         * CandidateRecord
+         * @description An evaluated identity candidate with contributing retrieval attempts.
+         *
+         *     Uses contributing_attempt_ids (not contributing_channels).
+         *     Uses confidence (not confidence_band).
+         */
+        CandidateRecord: {
+            /** Channel Local Diagnostics */
+            channel_local_diagnostics: components["schemas"]["ChannelDiagnostic"][];
+            /** Concern Id */
+            concern_id: string;
+            confidence: components["schemas"]["BehavioralConfidenceBand"];
+            /** Contrary Evidence */
+            contrary_evidence: components["schemas"]["EvidenceReference"][];
+            /** Contributing Attempt Ids */
+            contributing_attempt_ids: string[];
+            /** Explanation */
+            explanation: string;
+            /** Identity Evidence */
+            identity_evidence: components["schemas"]["EvidenceReference"][];
+            lifecycle_status: components["schemas"]["ConcernStatus"];
+            /** Resolved Merge Target */
+            resolved_merge_target?: string | null;
+        };
+        /**
+         * ChannelDiagnostic
+         * @description Channel-local diagnostic score or metadata.
+         *
+         *     Retrieval scores are channel-local diagnostics only.
+         *     No score, rank, or threshold can directly cause YES.
+         */
+        ChannelDiagnostic: {
+            /** Channel Id */
+            channel_id: string;
+            /** Detail */
+            detail?: string | null;
+            /** Metric Name */
+            metric_name: string;
+            /** Metric Value */
+            metric_value?: number | null;
+        };
         /** ClusterRequest */
         ClusterRequest: {
             /** Messages */
@@ -130,6 +175,41 @@ export interface components {
          * @enum {string}
          */
         CohesionStatus: "COHESIVE" | "MIXED" | "UNRESOLVED_COHESION";
+        /**
+         * ConcernAlias
+         * @description Normalized alias for a concern used in alias-based retrieval.
+         *
+         *     Aliases are normalized forms of how a concern has been referenced
+         *     across conversation history.
+         */
+        ConcernAlias: {
+            /** Alias Text */
+            alias_text: string;
+            /** Concern Id */
+            concern_id: string;
+            /** Normalized Form */
+            normalized_form: string;
+        };
+        /**
+         * ConcernEmbedding
+         * @description Version-matched embedding for a concern used in identity retrieval.
+         *
+         *     Embeddings are bound to a specific graph version, embedding model version,
+         *     and source text hash. Stale embeddings (where source text or model has changed)
+         *     are excluded from context and marked unavailable.
+         */
+        ConcernEmbedding: {
+            /** Concern Id */
+            concern_id: string;
+            /** Embedding */
+            embedding: number[];
+            /** Embedding Model Version */
+            embedding_model_version: string;
+            /** Graph Version */
+            graph_version: number;
+            /** Source Text Hash */
+            source_text_hash: string;
+        };
         /**
          * ConcernProposal
          * @description Proposal for a new Persistent Concern from identity resolution.
@@ -181,10 +261,33 @@ export interface components {
             identity_summary: string;
             /** Last Active At */
             last_active_at: string;
+            /** Merged Into Concern Id */
+            merged_into_concern_id?: string | null;
             parent_resolution_state: components["schemas"]["ParentResolutionState"];
             /** Semantic Version */
             semantic_version: number;
             status: components["schemas"]["ConcernStatus"];
+        };
+        /**
+         * EvidenceReference
+         * @description A reference to grounding evidence used in identity evaluation.
+         *
+         *     Points to a stable entity (proposition, concern, etc.) and optionally
+         *     a source-message span for audit traceability.
+         */
+        EvidenceReference: {
+            /** Description */
+            description?: string | null;
+            /** Entity Id */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Source Message Id */
+            source_message_id?: string | null;
+            /** Span End */
+            span_end?: number | null;
+            /** Span Start */
+            span_start?: number | null;
         };
         /**
          * GraphStateContext
@@ -193,18 +296,47 @@ export interface components {
          *     Contains the current state of concerns, propositions, associations, and
          *     pending decisions. The graph_version must match the base_graph_version
          *     in the enclosing ProcessRequest.
+         *
+         *     Extended fields for identity resolution:
+         *     - snapshot_token: Opaque token binding the exact graph state snapshot.
+         *     - snapshot_digest: Hash of snapshot content for payload fingerprinting.
+         *     - concern_embeddings: Version-matched embeddings for retrieval.
+         *     - normalized_aliases: Normalized concern aliases for alias-based retrieval.
+         *     - pending_identity_details: Pending identity decisions with full detail.
+         *     - privacy_suppressed_concern_ids: IDs of suppressed concerns (already excluded).
+         *     - packet_lineage: Packet split/merge lineage summaries.
          */
         GraphStateContext: {
             /** Active Associations */
             active_associations: components["schemas"]["AssociationSummary"][];
+            /** Concern Embeddings */
+            concern_embeddings?: components["schemas"]["ConcernEmbedding"][];
             /** Concerns */
             concerns: components["schemas"]["ConcernSummary"][];
             /** Graph Version */
             graph_version: number;
+            /** Normalized Aliases */
+            normalized_aliases?: components["schemas"]["ConcernAlias"][];
+            /** Packet Lineage */
+            packet_lineage?: components["schemas"]["PacketLineageSummary"][];
             /** Pending Decisions */
             pending_decisions?: components["schemas"]["PendingDecisionSummary"][];
+            /** Pending Identity Details */
+            pending_identity_details?: components["schemas"]["PendingIdentityDetailSummary"][];
+            /** Privacy Suppressed Concern Ids */
+            privacy_suppressed_concern_ids?: string[];
             /** Propositions */
             propositions: components["schemas"]["PropositionSummary"][];
+            /**
+             * Snapshot Digest
+             * @description Hash of snapshot content for fingerprinting
+             */
+            snapshot_digest: string;
+            /**
+             * Snapshot Token
+             * @description Opaque token binding the exact graph state snapshot
+             */
+            snapshot_token: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -212,19 +344,114 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         /**
+         * IRSSignal
+         * @description An Intelligent Retrieval Signal indicating a retrieval gap or concern.
+         *
+         *     Every signal must be grounded in source evidence.
+         */
+        IRSSignal: {
+            confidence: components["schemas"]["BehavioralConfidenceBand"];
+            /** Explanation */
+            explanation: string;
+            /** Resolved */
+            resolved: boolean;
+            /** Resolved By Attempt Ids */
+            resolved_by_attempt_ids: string[];
+            signal_type: components["schemas"]["IRSSignalType"];
+            /** Source Evidence */
+            source_evidence: components["schemas"]["EvidenceReference"][];
+        };
+        /**
+         * IRSSignalType
+         * @description Intelligent Retrieval Signal types that indicate retrieval gaps.
+         * @enum {string}
+         */
+        IRSSignalType: "REVISIT_LANGUAGE" | "HISTORICAL_REFERENT" | "IMPLIED_PRIOR_STATE" | "BROAD_CANDIDATE_MISMATCH" | "ALIAS_OR_VOCABULARY_DRIFT" | "CONTINUATION_HISTORY_MISMATCH";
+        /**
+         * IdentityResolutionRecord
+         * @description Complete append-only identity resolution decision record.
+         *
+         *     Stores the full reasoning, diagnostics, and version-bound context for
+         *     one packet's identity resolution. This is the first-class record returned
+         *     in ProcessResult.identity_resolution_records.
+         *
+         *     Stage confidence rules:
+         *     - COMPLETED stage status requires non-null confidence.
+         *     - NOT_RUN/FAILED stage status requires null confidence.
+         */
+        IdentityResolutionRecord: {
+            action: components["schemas"]["ResolutionAction"];
+            /** Candidates Considered */
+            candidates_considered: components["schemas"]["CandidateRecord"][];
+            /** Conversation Id */
+            conversation_id: string;
+            /** Evidence References */
+            evidence_references: components["schemas"]["EvidenceReference"][];
+            /** Graph Snapshot Token */
+            graph_snapshot_token: string;
+            /** Graph Version Analyzed */
+            graph_version_analyzed: number;
+            /** Idempotency Key */
+            idempotency_key: string;
+            identity_confidence?: components["schemas"]["BehavioralConfidenceBand"] | null;
+            identity_stage_status: components["schemas"]["StageExecutionStatus"];
+            /** Irs Signals */
+            irs_signals: components["schemas"]["IRSSignal"][];
+            /** Matched Concern Id */
+            matched_concern_id?: string | null;
+            /** Model Config Version */
+            model_config_version: string;
+            outcome: components["schemas"]["PipelineOutcome"];
+            /** Packet Id */
+            packet_id: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Proposed Concern Id */
+            proposed_concern_id?: string | null;
+            /** Proposed Dependency Group Id */
+            proposed_dependency_group_id?: string | null;
+            /** Proposition Ids */
+            proposition_ids: string[];
+            /** Reasoning */
+            reasoning: string;
+            /** Record Id */
+            record_id: string;
+            /** Request Id */
+            request_id: string;
+            /** Retrieval Attempts */
+            retrieval_attempts: components["schemas"]["RetrievalAttemptRecord"][];
+            /** Retrieval Policy Version */
+            retrieval_policy_version: string;
+            /** Semantic Policy Version */
+            semantic_policy_version: string;
+            sufficiency_confidence?: components["schemas"]["BehavioralConfidenceBand"] | null;
+            sufficiency_stage_status: components["schemas"]["StageExecutionStatus"];
+        };
+        /**
          * IdentityResolutionResult
          * @description Result of identity resolution (performed in Python).
          *
-         *     Enforces a discriminated-result invariant:
-         *     - For YES outcome: exactly one of matched_concern_id or new_concern_proposal
-         *       must be set (match OR new-concern, never both).
-         *     - For UNRESOLVED/DEFER/NO/RETRIEVAL_INCONCLUSIVE/REQUIRES_VALIDATION:
-         *       both matched_concern_id and new_concern_proposal must be None.
+         *     Enforces the discriminated-result invariant per the finalized design:
+         *     - YES/ASSIGN_EXISTING: matched_concern_id IS NOT NULL,
+         *       new_concern_proposal IS NULL. Requires completed identity stage
+         *       with HIGH confidence.
+         *     - NO/PROPOSE_NEW: matched_concern_id IS NULL,
+         *       new_concern_proposal IS NOT NULL. Requires completed sufficiency
+         *       stage with HIGH confidence.
+         *     - Pending outcomes (UNRESOLVED, DEFER, RETRIEVAL_INCONCLUSIVE,
+         *       REQUIRES_VALIDATION): both matched_concern_id and
+         *       new_concern_proposal must be None.
+         *
+         *     Stage-status/confidence coupling:
+         *     - COMPLETED stage requires non-null confidence.
+         *     - NOT_RUN or FAILED stage requires null confidence.
          */
         IdentityResolutionResult: {
+            action: components["schemas"]["ResolutionAction"];
             /** Candidates Considered */
             candidates_considered?: string[];
-            confidence: components["schemas"]["BehavioralConfidenceBand"];
+            identity_confidence?: components["schemas"]["BehavioralConfidenceBand"] | null;
+            identity_stage_status: components["schemas"]["StageExecutionStatus"];
             /** Matched Concern Id */
             matched_concern_id?: string | null;
             new_concern_proposal?: components["schemas"]["ConcernProposal"] | null;
@@ -233,6 +460,8 @@ export interface components {
             packet_id: string;
             /** Rationale */
             rationale: string;
+            sufficiency_confidence?: components["schemas"]["BehavioralConfidenceBand"] | null;
+            sufficiency_stage_status: components["schemas"]["StageExecutionStatus"];
         };
         /** Message */
         Message: {
@@ -246,6 +475,21 @@ export interface components {
             index?: number | null;
             /** Role */
             role: string;
+        };
+        /**
+         * PacketLineageSummary
+         * @description Summary of packet split/merge lineage for graph-state context.
+         *
+         *     Tracks how packets were derived from splits so identity resolution
+         *     can reason about shared provenance across sibling packets.
+         */
+        PacketLineageSummary: {
+            /** Packet Id */
+            packet_id: string;
+            /** Split From Packet Id */
+            split_from_packet_id?: string | null;
+            /** Split Reason */
+            split_reason?: string | null;
         };
         /**
          * PacketMembership
@@ -352,6 +596,25 @@ export interface components {
             stage: string;
         };
         /**
+         * PendingIdentityDetailSummary
+         * @description Summary of a pending identity decision provided as graph-state context.
+         *
+         *     Surfaced so Python can account for prior unresolved identity decisions
+         *     when evaluating new packets — e.g., avoiding duplicate proposals or
+         *     recognizing that earlier evidence now resolves a pending decision.
+         */
+        PendingIdentityDetailSummary: {
+            /** Decision Id */
+            decision_id: string;
+            /** Graph Version Analyzed */
+            graph_version_analyzed: number;
+            outcome: components["schemas"]["PipelineOutcome"];
+            /** Packet Id */
+            packet_id: string;
+            /** Proposition Ids */
+            proposition_ids: string[];
+        };
+        /**
          * PipelineDiagnostics
          * @description Diagnostics from the semantic processing pipeline.
          *
@@ -383,6 +646,12 @@ export interface components {
          *     structural invariants and commit.
          *
          *     Contract invariant: current_graph_state.graph_version == base_graph_version.
+         *
+         *     The processing_mode controls which pipeline stages execute:
+         *     - FULL_PIPELINE: All stages from extraction through identity resolution.
+         *     - IDENTITY_RESOLUTION_ONLY: Requires complete proposition detail and all
+         *       primary/secondary retention roles pre-supplied.
+         *     - PENDING_RE_EVALUATION: Re-evaluate previously pending identity decisions.
          */
         ProcessRequest: {
             /** Api Contract Version */
@@ -408,8 +677,30 @@ export interface components {
             model_version: string;
             /** Pipeline Version */
             pipeline_version: string;
+            /** @default FULL_PIPELINE */
+            processing_mode: components["schemas"]["ProcessingMode"];
+            /**
+             * Re Evaluation Trigger
+             * @description Event trigger for PENDING_RE_EVALUATION mode. Must be a configured trigger in the re-evaluation policy.
+             */
+            re_evaluation_trigger?: string | null;
             /** Request Id */
             request_id: string;
+            /**
+             * Retrieval Policy Version
+             * @description Version of the retrieval policy governing channel plans
+             */
+            retrieval_policy_version: string;
+            /**
+             * Semantic Policy Version
+             * @description Version of the semantic evaluation policy governing this request
+             */
+            semantic_policy_version: string;
+            /**
+             * Targeted Decision Ids
+             * @description Optional list of specific pending-decision IDs to re-evaluate. If None, all eligible pending decisions in the conversation are considered.
+             */
+            targeted_decision_ids?: string[] | null;
         };
         /**
          * ProcessResult
@@ -419,6 +710,11 @@ export interface components {
          *     propositions, packets, memberships, splits, identity resolutions,
          *     new concern proposals, proposed associations, dependency groups,
          *     and pipeline diagnostics.
+         *
+         *     The identity_resolution_records field is the first-class append-only
+         *     decision record for identity resolution — not hidden in diagnostics.
+         *     identity_mutations and identity_dependency_groups carry proposed
+         *     identity-specific mutations and their atomic grouping.
          */
         ProcessResult: {
             /** Api Contract Version */
@@ -436,6 +732,23 @@ export interface components {
             highest_seq: number;
             /** Idempotency Key */
             idempotency_key: string;
+            /**
+             * Identity Dependency Groups
+             * @description Identity-specific semantic dependency groups
+             */
+            identity_dependency_groups?: components["schemas"]["SemanticDependencyGroupRef"][];
+            /**
+             * Identity Mutations
+             * @description Proposed identity mutations (concern creation, reactivation, merge)
+             */
+            identity_mutations?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Identity Resolution Records
+             * @description First-class append-only identity resolution decision records
+             */
+            identity_resolution_records?: components["schemas"]["IdentityResolutionRecord"][];
             /** Identity Resolutions */
             identity_resolutions: components["schemas"]["IdentityResolutionResult"][];
             /** Lowest Seq */
@@ -461,6 +774,19 @@ export interface components {
             /** Splits */
             splits: components["schemas"]["PacketSplitRecord"][];
         };
+        /**
+         * ProcessingMode
+         * @description Processing mode determining which pipeline stages to execute.
+         *
+         *     - FULL_PIPELINE: Execute all upstream stages (extraction, retention,
+         *       packet formation, cohesion) followed by identity resolution.
+         *     - IDENTITY_RESOLUTION_ONLY: Skip upstream stages; requires complete
+         *       proposition detail and all primary/secondary retention roles pre-supplied.
+         *     - PENDING_RE_EVALUATION: Re-evaluate previously pending identity decisions
+         *       with new evidence or policy changes.
+         * @enum {string}
+         */
+        ProcessingMode: "FULL_PIPELINE" | "IDENTITY_RESOLUTION_ONLY" | "PENDING_RE_EVALUATION";
         /**
          * Proposition
          * @description Smallest semantic unit with full provenance.
@@ -625,6 +951,12 @@ export interface components {
             rationale?: string | null;
         };
         /**
+         * ResolutionAction
+         * @description Identity resolution action taken for a semantic packet.
+         * @enum {string}
+         */
+        ResolutionAction: "ASSIGN_EXISTING" | "PROPOSE_NEW" | "RETAIN_PENDING" | "NONE";
+        /**
          * RetentionDecision
          * @description Result of retention assessment. All retention roles are preserved downstream.
          */
@@ -659,6 +991,45 @@ export interface components {
          * @enum {string}
          */
         RetentionLevel: "DISCARD" | "CONTEXT_ONLY" | "SUPPORTING_EVIDENCE" | "DURABLE_PROPOSITION" | "EMERGENCE_EVIDENCE" | "INDEPENDENT_CONCERN_CANDIDATE";
+        /**
+         * RetrievalAttemptRecord
+         * @description Record of a single retrieval attempt with full diagnostics.
+         *
+         *     candidate_count must equal len(candidate_ids).
+         *     query_mode, query_reference, and scope_description are required.
+         */
+        RetrievalAttemptRecord: {
+            /** Attempt Id */
+            attempt_id: string;
+            /** Candidate Count */
+            candidate_count: number;
+            /** Candidate Ids */
+            candidate_ids: string[];
+            /** Channel Family */
+            channel_family: string;
+            /** Channel Id */
+            channel_id: string;
+            /** Failure Reason */
+            failure_reason?: string | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Query Mode */
+            query_mode: string;
+            /** Query Reference */
+            query_reference: string;
+            /** Retrieval Policy Version */
+            retrieval_policy_version: string;
+            /** Scope Description */
+            scope_description: string;
+            status: components["schemas"]["RetrievalAttemptStatus"];
+            triggered_by_signal?: components["schemas"]["IRSSignalType"] | null;
+        };
+        /**
+         * RetrievalAttemptStatus
+         * @description Outcome status of a single retrieval attempt.
+         * @enum {string}
+         */
+        RetrievalAttemptStatus: "SUCCESS_WITH_CANDIDATES" | "SUCCESS_EMPTY" | "ERROR" | "TIMEOUT" | "UNAVAILABLE" | "SKIPPED_WITH_REASON";
         /**
          * SIEMessage
          * @description Input message for SIE processing.
@@ -791,6 +1162,12 @@ export interface components {
          * @enum {string}
          */
         SemanticState: "ACTIVE" | "SUPERSEDED" | "RETRACTED" | "INVALIDATED";
+        /**
+         * StageExecutionStatus
+         * @description Execution status of a pipeline stage (identity or sufficiency).
+         * @enum {string}
+         */
+        StageExecutionStatus: "COMPLETED" | "NOT_RUN" | "FAILED";
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -884,14 +1261,12 @@ export interface operations {
                     "application/json": components["schemas"]["ProcessResult"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Invalid request (contract validation failure) */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
             /** @description SIE pipeline not available */
             503: {
@@ -901,7 +1276,7 @@ export interface operations {
                 content: {
                     /**
                      * @example {
-                     *       "detail": "SIE pipeline not available: no approved stage implementations installed"
+                     *       "detail": "SIE pipeline not available: endpoint disabled by configuration"
                      *     }
                      */
                     "application/json": unknown;

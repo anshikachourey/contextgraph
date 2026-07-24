@@ -1,0 +1,103 @@
+{
+  "id": "IRID-002",
+  "title": "Vocabulary drift — user describes same concern with entirely different terminology",
+  "tags": ["identity-resolution", "vocabulary-drift", "same-identity", "multilingual", "classical-music"],
+  "category": "vocabulary_drift_same_identity",
+  "domain": "classical-music-composition",
+  "length": "long",
+  "difficulty": "multilingual",
+  "existingGraph": {
+    "concerns": [
+      {
+        "concernId": "concern-orchestration",
+        "title": "Orchestral Texture and Voicing Decisions",
+        "identitySummary": "How to distribute melodic material across instrument families to achieve the desired timbral density and transparency in the symphony's second movement.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["orchestration", "instrument voicing", "timbral balance"],
+        "lastActiveAt": "2024-05-20T14:00:00Z"
+      },
+      {
+        "concernId": "concern-harmony",
+        "title": "Harmonic Language and Chord Progression",
+        "identitySummary": "The harmonic vocabulary and progression logic for the piece, including modal mixture, chromatic mediants, and voice leading constraints.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["harmony", "chord progression", "harmonic language"],
+        "lastActiveAt": "2024-05-18T09:00:00Z"
+      }
+    ],
+    "propositions": [],
+    "associations": []
+  },
+  "newMessages": [
+    {
+      "role": "assistant",
+      "messageId": "msg-002-a",
+      "content": "For the second movement, you previously mentioned wanting the strings to carry the primary melodic line while winds provide harmonic support."
+    },
+    {
+      "role": "user",
+      "messageId": "msg-002-b",
+      "content": "Actually I've been rethinking the Klangfarbenmelodie approach. Instead of giving the tune to the violins alone, what if I fragment the Hauptstimme across oboe, clarinet, and flute in two-bar segments? The Nebenstimmen would stay in the low brass. It creates that pointillistic Webern quality but within a more Romantic Satz."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "pkt-irid-002",
+    "userEvidenceMessageIds": ["msg-002-b"],
+    "assistantContextMessageIds": ["msg-002-a"],
+    "conciseMeaning": "User proposes fragmenting the primary melody across woodwinds in two-bar segments with secondary voices in low brass, creating a pointillistic texture within Romantic structure.",
+    "retentionRoles": ["INDEPENDENT_CONCERN_CANDIDATE", "DURABLE_PROPOSITION"]
+  },
+  "propositions": [
+    {
+      "propositionId": "prop-irid-002-a",
+      "speakerRole": "USER",
+      "canonicalMeaning": "Fragment the primary melody (Hauptstimme) across oboe, clarinet, and flute in two-bar Klangfarbenmelodie segments",
+      "retentionLevels": ["INDEPENDENT_CONCERN_CANDIDATE"]
+    },
+    {
+      "propositionId": "prop-irid-002-b",
+      "speakerRole": "USER",
+      "canonicalMeaning": "Keep secondary voices (Nebenstimmen) in low brass for timbral contrast",
+      "retentionLevels": ["DURABLE_PROPOSITION"]
+    }
+  ],
+  "retrieval": {
+    "initialCandidates": [
+      { "concernId": "concern-harmony", "rank": 1, "score": 0.72 },
+      { "concernId": "concern-orchestration", "rank": 2, "score": 0.68 }
+    ]
+  },
+  "expectedIdentityResult": {
+    "outcome": "YES",
+    "action": "ASSIGN_EXISTING",
+    "matchedConcernId": "concern-orchestration",
+    "proposedNewConcern": null,
+    "identityConfidence": "HIGH",
+    "sufficiencyConfidence": null,
+    "mustWiden": false,
+    "reactivation": false,
+    "mergeRedirectFollowed": false,
+    "substantiveResumption": false
+  },
+  "forbiddenOutcomes": [
+    {
+      "outcome": "YES",
+      "action": "ASSIGN_EXISTING",
+      "matchedConcernId": "concern-harmony",
+      "reason": "German musical terminology may confuse retrieval but the concern is orchestration, not harmony"
+    },
+    {
+      "outcome": "NO",
+      "action": "PROPOSE_NEW",
+      "reason": "Despite vocabulary drift, this is the same orchestral texture concern"
+    }
+  ],
+  "criticalAssertions": [
+    "matched_concern=concern-orchestration",
+    "vocabulary_drift_does_not_break_identity",
+    "multilingual_terminology_handled"
+  ],
+  "qualityMetrics": ["false_assignment", "false_novelty"]
+}

@@ -1,0 +1,119 @@
+{
+  "id": "IRID-008",
+  "title": "Multiple competitive candidates — three plausible concerns, no unique winner",
+  "tags": ["identity-resolution", "multiple-competitors", "unresolved", "adversarial", "clinical-trials"],
+  "category": "multiple_competitors",
+  "domain": "clinical-trial-coordination",
+  "length": "long",
+  "difficulty": "adversarial",
+  "existingGraph": {
+    "concerns": [
+      {
+        "concernId": "concern-biomarker-panel",
+        "title": "Biomarker Panel Selection",
+        "identitySummary": "Which biomarkers to include in the companion diagnostic panel, validation requirements, and cutoff thresholds for patient stratification.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["biomarker selection", "companion diagnostic", "patient stratification markers"],
+        "lastActiveAt": "2024-06-10T11:00:00Z"
+      },
+      {
+        "concernId": "concern-endpoint-design",
+        "title": "Primary Endpoint and Statistical Design",
+        "identitySummary": "Choice of primary efficacy endpoint, sample size calculation, interim analysis plan, and alpha-spending function for the adaptive design.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["endpoint selection", "statistical design", "adaptive design"],
+        "lastActiveAt": "2024-06-09T14:00:00Z"
+      },
+      {
+        "concernId": "concern-regulatory-strategy",
+        "title": "Regulatory Submission Strategy",
+        "identitySummary": "FDA interaction plan, breakthrough therapy designation pathway, accelerated approval eligibility, and rolling submission timeline.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["regulatory strategy", "FDA pathway", "accelerated approval"],
+        "lastActiveAt": "2024-06-08T09:00:00Z"
+      }
+    ],
+    "propositions": [],
+    "associations": []
+  },
+  "newMessages": [
+    {
+      "role": "assistant",
+      "messageId": "msg-008-a",
+      "content": "The biomarker validation study results and the FDA pre-submission meeting notes are both relevant to your next decision."
+    },
+    {
+      "role": "user",
+      "messageId": "msg-008-b",
+      "content": "Right. Given that the FDA said they'd accept PFS as an accelerated approval endpoint IF we can show biomarker-positive enrichment above 60%, I think we need to redesign the adaptive randomization to stratify by the biomarker panel. That ties together the endpoint, the biomarker cutoff, and the regulatory path all at once."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "pkt-irid-008",
+    "userEvidenceMessageIds": ["msg-008-b"],
+    "assistantContextMessageIds": ["msg-008-a"],
+    "conciseMeaning": "User proposes redesigning adaptive randomization to stratify by biomarker panel, linking the endpoint choice, biomarker cutoff, and regulatory pathway into one interconnected decision.",
+    "retentionRoles": ["INDEPENDENT_CONCERN_CANDIDATE", "DURABLE_PROPOSITION"]
+  },
+  "propositions": [
+    {
+      "propositionId": "prop-irid-008-a",
+      "speakerRole": "USER",
+      "canonicalMeaning": "FDA will accept PFS for accelerated approval if biomarker-positive enrichment exceeds 60%",
+      "retentionLevels": ["DURABLE_PROPOSITION"]
+    },
+    {
+      "propositionId": "prop-irid-008-b",
+      "speakerRole": "USER",
+      "canonicalMeaning": "Proposes redesigning adaptive randomization to stratify by biomarker panel",
+      "retentionLevels": ["INDEPENDENT_CONCERN_CANDIDATE"]
+    }
+  ],
+  "retrieval": {
+    "initialCandidates": [
+      { "concernId": "concern-biomarker-panel", "rank": 1, "score": 0.84 },
+      { "concernId": "concern-endpoint-design", "rank": 2, "score": 0.82 },
+      { "concernId": "concern-regulatory-strategy", "rank": 3, "score": 0.79 }
+    ]
+  },
+  "expectedIdentityResult": {
+    "outcome": "UNRESOLVED",
+    "action": "RETAIN_PENDING",
+    "matchedConcernId": null,
+    "proposedNewConcern": null,
+    "identityConfidence": "MEDIUM",
+    "sufficiencyConfidence": null,
+    "mustWiden": false,
+    "reactivation": false,
+    "mergeRedirectFollowed": false,
+    "substantiveResumption": false
+  },
+  "forbiddenOutcomes": [
+    {
+      "outcome": "YES",
+      "action": "ASSIGN_EXISTING",
+      "matchedConcernId": "concern-biomarker-panel",
+      "reason": "Cannot arbitrarily select one of three materially competitive candidates"
+    },
+    {
+      "outcome": "YES",
+      "action": "ASSIGN_EXISTING",
+      "matchedConcernId": "concern-endpoint-design",
+      "reason": "Cannot arbitrarily select one of three materially competitive candidates"
+    },
+    {
+      "outcome": "NO",
+      "action": "PROPOSE_NEW",
+      "reason": "Multiple plausible existing owners exist; novelty is not warranted"
+    }
+  ],
+  "criticalAssertions": [
+    "no_arbitrary_winner_selected",
+    "unresolved_or_retain_pending",
+    "multiple_high_candidates_not_resolved"
+  ],
+  "qualityMetrics": ["unresolved_defer_calibration", "false_assignment"]
+}

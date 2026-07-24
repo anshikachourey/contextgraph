@@ -1,7 +1,160 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import type { ChatMessage as ChatMessageType } from "@/src/types/message";
+import type { ChatMessage as ChatMessageType, AttachmentMeta } from "@/src/types/message";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeSanitize from "rehype-sanitize";
+import type { Components } from "react-markdown";
+
+/**
+ * Formats a byte count into a human-readable file size string.
+ * e.g., 1024 → "1.0 KB", 2621440 → "2.5 MB"
+ */
+export function formatFileSize(bytes: number): string {
+  if (bytes < 0) return "0 B";
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let unitIndex = 0;
+  let size = bytes;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+  return unitIndex === 0 ? `${size} B` : `${size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+/** Renders message attachments: image previews or download links */
+function MessageAttachments({ attachments }: { attachments: AttachmentMeta[] }) {
+  if (!attachments || attachments.length === 0) return null;
+
+  return (
+    <div className="mt-3 flex flex-wrap gap-3">
+      {attachments.map((attachment, index) => {
+        const isImage = attachment.mimeType.startsWith("image/");
+
+        if (isImage) {
+          return (
+            <a
+              key={`${attachment.url}-${index}`}
+              href={attachment.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block"
+            >
+              <img
+                src={attachment.url}
+                alt={attachment.filename}
+                className="rounded-lg"
+                style={{ maxWidth: "400px", height: "auto" }}
+              />
+            </a>
+          );
+        }
+
+        return (
+          <a
+            key={`${attachment.url}-${index}`}
+            href={attachment.url}
+            download={attachment.filename}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
+          >
+            <svg
+              className="h-5 w-5 flex-shrink-0 text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.5}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12l3 3m0 0l3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+              />
+            </svg>
+            <span className="truncate max-w-[200px]">{attachment.filename}</span>
+            <span className="text-xs text-gray-400">
+              ({formatFileSize(attachment.size)})
+            </span>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+// Custom CodeBlock component for fenced code blocks
+function CodeBlock({
+  children,
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLElement>) {
+  const match = /language-(\w+)/.exec(className || "");
+  const language = match ? match[1] : null;
+  const isInline = !className && typeof children === "string" && !children.includes("\n");
+
+  if (isInline) {
+    return (
+      <code
+        className="rounded bg-gray-200 px-1.5 py-0.5 text-sm font-mono"
+        {...props}
+      >
+        {children}
+      </code>
+    );
+  }
+
+  return (
+    <div className="relative my-3 rounded-lg bg-gray-900 text-gray-100">
+      {language && (
+        <div className="flex items-center justify-between rounded-t-lg border-b border-gray-700 bg-gray-800 px-4 py-1.5">
+          <span className="text-xs font-medium text-gray-400">{language}</span>
+        </div>
+      )}
+      <pre className="overflow-x-auto p-4">
+        <code className="text-sm font-mono" {...props}>
+          {children}
+        </code>
+      </pre>
+    </div>
+  );
+}
+
+// Custom ExternalLink component: opens cross-origin links in new tab
+function ExternalLink({
+  href,
+  children,
+  ...props
+}: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+  const isCrossOrigin = (() => {
+    if (!href) return false;
+    try {
+      const linkUrl = new URL(href, window.location.origin);
+      return linkUrl.origin !== window.location.origin;
+    } catch {
+      return false;
+    }
+  })();
+
+  return (
+    <a
+      href={href}
+      className="text-blue-600 underline hover:text-blue-800"
+      {...(isCrossOrigin
+        ? { target: "_blank", rel: "noopener noreferrer" }
+        : {})}
+      {...props}
+    >
+      {children}
+    </a>
+  );
+}
+
+// Custom components map for ReactMarkdown
+const markdownComponents: Components = {
+  code: CodeBlock as Components["code"],
+  a: ExternalLink as Components["a"],
+};
 
 type ChatMessageProps = {
   message: ChatMessageType;
@@ -183,7 +336,24 @@ export default function ChatMessage({
       <p className="text-sm font-semibold text-gray-600">
         {message.role === "user" ? "You" : "Assistant"}
       </p>
-      <p className="mt-1 whitespace-pre-wrap">{message.content}</p>
+      {message.role === "assistant" ? (
+        <div className="mt-1 prose prose-sm max-w-none prose-headings:mt-4 prose-headings:mb-2 prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-blockquote:my-2 prose-pre:my-0 prose-pre:p-0 prose-pre:bg-transparent">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeSanitize]}
+            components={markdownComponents}
+          >
+            {message.content}
+          </ReactMarkdown>
+        </div>
+      ) : (
+        <p className="mt-1 whitespace-pre-wrap">{message.content}</p>
+      )}
+
+      {/* Render attachments below message content */}
+      {message.attachments && message.attachments.length > 0 && (
+        <MessageAttachments attachments={message.attachments} />
+      )}
 
       {/* Copied confirmation */}
       {copied && (

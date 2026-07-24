@@ -255,12 +255,17 @@ class IdentityResolutionPolicy(BaseModel):
         retrieval_policy: Governs channel plans, IRS mappings, and adequacy.
         widening_budget: Governs adaptive widening resource limits.
         pending_re_evaluation_policy: Governs pending decision re-evaluation.
+        permitted_embedding_model_versions: Explicit allowlist of embedding model
+            versions permitted for identity resolution. Fail-closed: if the list
+            is empty, NO embeddings are permitted. If a model version is not in
+            this list, the embedding is excluded.
     """
 
     policy_version: str
     retrieval_policy: RetrievalPolicy
     widening_budget: WideningBudgetPolicy
     pending_re_evaluation_policy: ReEvaluationPolicy
+    permitted_embedding_model_versions: list[str]
 
 
 # ---------------------------------------------------------------------------

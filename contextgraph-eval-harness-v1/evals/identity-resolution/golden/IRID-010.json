@@ -1,0 +1,116 @@
+{
+  "id": "IRID-010",
+  "title": "Extraction repair — earlier assignment was an engine mistake, semantic repair needed",
+  "tags": ["identity-resolution", "extraction-repair", "correction", "representative", "software-architecture"],
+  "category": "extraction_repair",
+  "domain": "software-architecture",
+  "length": "long",
+  "difficulty": "representative",
+  "existingGraph": {
+    "concerns": [
+      {
+        "concernId": "concern-caching",
+        "title": "Application Caching Strategy",
+        "identitySummary": "Redis-based caching architecture including cache invalidation patterns, TTL strategies, cache-aside vs write-through decisions, and hot-key distribution.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["caching strategy", "Redis caching", "cache invalidation"],
+        "lastActiveAt": "2024-06-13T10:00:00Z"
+      },
+      {
+        "concernId": "concern-database-perf",
+        "title": "Database Query Performance",
+        "identitySummary": "PostgreSQL query optimization including index strategy, query plan analysis, connection pooling, and slow-query remediation.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["query performance", "database optimization", "index strategy"],
+        "lastActiveAt": "2024-06-12T15:00:00Z"
+      }
+    ],
+    "propositions": [
+      {
+        "propositionId": "prop-misassigned-001",
+        "concernId": "concern-caching",
+        "canonicalMeaning": "The N+1 query in the user-list endpoint should be fixed with a JOIN and covering index",
+        "note": "This was incorrectly assigned to caching — it belongs to database-perf"
+      }
+    ],
+    "associations": [
+      {
+        "propositionId": "prop-misassigned-001",
+        "concernId": "concern-caching",
+        "role": "PRIMARY_OWNER"
+      }
+    ]
+  },
+  "newMessages": [
+    {
+      "role": "user",
+      "messageId": "msg-010-a",
+      "content": "Wait, looking back at the graph — the N+1 query fix for the user-list endpoint got put under caching, but that's wrong. That's a database query optimization, not a caching decision. The fix is a JOIN with a covering index, which is purely a query-layer concern."
+    },
+    {
+      "role": "user",
+      "messageId": "msg-010-b",
+      "content": "Also, while we're fixing assignments, the connection pooling timeout discussion should stay under database performance, not get pulled into caching just because we mentioned Redis connection pools in the same conversation."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "pkt-irid-010",
+    "userEvidenceMessageIds": ["msg-010-a", "msg-010-b"],
+    "assistantContextMessageIds": [],
+    "conciseMeaning": "User identifies a prior engine misassignment (N+1 query fix assigned to caching instead of database performance) and requests semantic correction.",
+    "retentionRoles": ["INDEPENDENT_CONCERN_CANDIDATE", "DURABLE_PROPOSITION"]
+  },
+  "propositions": [
+    {
+      "propositionId": "prop-irid-010-a",
+      "speakerRole": "USER",
+      "canonicalMeaning": "The N+1 query fix was incorrectly assigned to caching; it belongs to database query performance",
+      "retentionLevels": ["DURABLE_PROPOSITION"]
+    },
+    {
+      "propositionId": "prop-irid-010-b",
+      "speakerRole": "USER",
+      "canonicalMeaning": "Connection pooling timeout discussion belongs under database performance, not caching",
+      "retentionLevels": ["DURABLE_PROPOSITION"]
+    }
+  ],
+  "retrieval": {
+    "initialCandidates": [
+      { "concernId": "concern-caching", "rank": 1, "score": 0.82 },
+      { "concernId": "concern-database-perf", "rank": 2, "score": 0.78 }
+    ]
+  },
+  "expectedIdentityResult": {
+    "outcome": "YES",
+    "action": "ASSIGN_EXISTING",
+    "matchedConcernId": "concern-database-perf",
+    "proposedNewConcern": null,
+    "identityConfidence": "HIGH",
+    "sufficiencyConfidence": null,
+    "mustWiden": false,
+    "reactivation": false,
+    "mergeRedirectFollowed": false,
+    "substantiveResumption": false
+  },
+  "forbiddenOutcomes": [
+    {
+      "outcome": "YES",
+      "action": "ASSIGN_EXISTING",
+      "matchedConcernId": "concern-caching",
+      "reason": "The user is explicitly correcting a prior misassignment to caching"
+    },
+    {
+      "outcome": "NO",
+      "action": "PROPOSE_NEW",
+      "reason": "This is a correction to an existing concern, not a new concern"
+    }
+  ],
+  "criticalAssertions": [
+    "matched_concern=concern-database-perf",
+    "engine_mistake_not_treated_as_state_evolution",
+    "semantic_repair_signal_emitted"
+  ],
+  "qualityMetrics": ["false_assignment"]
+}

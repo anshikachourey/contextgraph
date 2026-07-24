@@ -1,0 +1,103 @@
+{
+  "id": "IRID-009",
+  "title": "Assistant-generated material — assistant suggests a concern but user hasn't grounded it",
+  "tags": ["identity-resolution", "assistant-attribution", "adversarial", "machine-learning"],
+  "category": "assistant_attribution",
+  "domain": "machine-learning",
+  "length": "short",
+  "difficulty": "adversarial",
+  "existingGraph": {
+    "concerns": [
+      {
+        "concernId": "concern-model-serving",
+        "title": "Model Serving Infrastructure",
+        "identitySummary": "How trained models are deployed, served, scaled, and monitored in production, including A/B test routing and canary deployment strategy.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["model serving", "inference infrastructure", "deployment pipeline"],
+        "lastActiveAt": "2024-06-11T13:00:00Z"
+      },
+      {
+        "concernId": "concern-data-pipeline",
+        "title": "Training Data Pipeline",
+        "identitySummary": "How training data is collected, cleaned, versioned, validated, and fed into the training loop, including data drift detection.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["data pipeline", "training data", "data versioning"],
+        "lastActiveAt": "2024-06-09T10:00:00Z"
+      }
+    ],
+    "propositions": [],
+    "associations": []
+  },
+  "newMessages": [
+    {
+      "role": "assistant",
+      "messageId": "msg-009-a",
+      "content": "Based on your recent work on model serving, you might also want to consider implementing a feature store. A feature store would centralize feature computation, ensure training-serving skew is minimized, and let you reuse engineered features across multiple models. This could become its own significant concern."
+    },
+    {
+      "role": "user",
+      "messageId": "msg-009-b",
+      "content": "Interesting thought. Let me think about that."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "pkt-irid-009",
+    "userEvidenceMessageIds": ["msg-009-b"],
+    "assistantContextMessageIds": ["msg-009-a"],
+    "conciseMeaning": "User acknowledges assistant's suggestion of a feature store but does not commit to it as a concern or provide substantive user-grounded evidence.",
+    "retentionRoles": ["SUPPORTING_EVIDENCE"]
+  },
+  "propositions": [
+    {
+      "propositionId": "prop-irid-009-a",
+      "speakerRole": "ASSISTANT",
+      "canonicalMeaning": "Suggests implementing a feature store to centralize features and prevent training-serving skew",
+      "retentionLevels": ["SUPPORTING_EVIDENCE"]
+    },
+    {
+      "propositionId": "prop-irid-009-b",
+      "speakerRole": "USER",
+      "canonicalMeaning": "User acknowledges the suggestion without committing or adding substantive detail",
+      "retentionLevels": ["SUPPORTING_EVIDENCE"]
+    }
+  ],
+  "retrieval": {
+    "initialCandidates": [
+      { "concernId": "concern-model-serving", "rank": 1, "score": 0.71 },
+      { "concernId": "concern-data-pipeline", "rank": 2, "score": 0.65 }
+    ]
+  },
+  "expectedIdentityResult": {
+    "outcome": "UNRESOLVED",
+    "action": "RETAIN_PENDING",
+    "matchedConcernId": null,
+    "proposedNewConcern": null,
+    "identityConfidence": "LOW",
+    "sufficiencyConfidence": null,
+    "mustWiden": false,
+    "reactivation": false,
+    "mergeRedirectFollowed": false,
+    "substantiveResumption": false
+  },
+  "forbiddenOutcomes": [
+    {
+      "outcome": "NO",
+      "action": "PROPOSE_NEW",
+      "reason": "Assistant-authored material SHALL NOT independently establish a durable user concern"
+    },
+    {
+      "outcome": "YES",
+      "action": "ASSIGN_EXISTING",
+      "matchedConcernId": "concern-model-serving",
+      "reason": "No user-grounded evidence establishes ownership by model-serving concern"
+    }
+  ],
+  "criticalAssertions": [
+    "assistant_content_does_not_create_concern",
+    "no_new_concern_from_assistant_suggestion",
+    "user_acknowledgment_insufficient_for_ownership"
+  ],
+  "qualityMetrics": ["false_novelty", "false_assignment"]
+}

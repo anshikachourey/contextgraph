@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Header from "@/src/components/layout/Header";
 import ConversationSidebar from "@/src/components/layout/ConversationSidebar";
 import ChatPanel from "@/src/components/chat/ChatPanel";
 import GraphDrawer from "@/src/components/graph/GraphDrawer";
 import V2GraphPreview from "@/src/components/graph-v2/V2GraphPreview";
+import { useStreamChat } from "@/src/hooks/useStreamChat";
 import type { ContextNode } from "@/src/types/node";
 import type { ChatMessage } from "@/src/types/message";
 import type { SemanticEdge } from "@/src/types/edge";
@@ -51,6 +52,108 @@ export default function Home() {
   // V2 Node Workspace state (separate from V1 because V2 objects are not in `nodes`)
   const [v2WorkspaceNode, setV2WorkspaceNode] = useState<ContextNode | null>(null);
   const [v2WorkspaceLinkedMessages, setV2WorkspaceLinkedMessages] = useState<ChatMessage[]>([]);
+
+  // ─── Streaming chat hook ──────────────────────────────────────────────────
+  const streamingAssistantIdRef = useRef<string | null>(null);
+  const streamingConversationIdRef = useRef<string | null>(null);
+  const streamingUserMessageRef = useRef<ChatMessage | null>(null);
+  const streamingBranchInfoRef = useRef<{ parentNodeId: string | null; branchRootMessageId: string | null } | null>(null);
+  const streamingV2ContinuationRef = useRef<V2ContinuationContext | null>(null);
+
+  const { sendMessage: streamSendMessage, isStreaming } = useStreamChat({
+    onToken: (content: string) => {
+      const assistantId = streamingAssistantIdRef.current;
+      if (!assistantId) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId ? { ...m, content: m.content + content } : m,
+        ),
+      );
+    },
+    onComplete: (fullContent: string, _stopReason: string) => {
+      const assistantId = streamingAssistantIdRef.current;
+      if (!assistantId) return;
+
+      // Finalize the assistant message content
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId ? { ...m, content: fullContent } : m,
+        ),
+      );
+
+      // Persist the complete messages and refresh graph
+      const convId = streamingConversationIdRef.current;
+      const userMsg = streamingUserMessageRef.current;
+      const v2Ctx = streamingV2ContinuationRef.current;
+
+      if (convId) {
+        const assistantMsg: ChatMessage = {
+          id: assistantId,
+          role: "assistant",
+          content: fullContent,
+          parentNodeId: streamingBranchInfoRef.current?.parentNodeId ?? null,
+          branchRootMessageId: streamingBranchInfoRef.current?.branchRootMessageId ?? null,
+        };
+
+        (async () => {
+          try {
+            const messagesToPersist = userMsg ? [userMsg, assistantMsg] : [assistantMsg];
+            const persistRes = await fetch("/api/messages", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                conversationId: convId,
+                messages: messagesToPersist,
+                ...(v2Ctx ? { v2ContinuationObjectId: v2Ctx.sourceObjectId } : {}),
+              }),
+            });
+
+            if (persistRes.ok) {
+              const persistData = await persistRes.json();
+              console.log(`[frontend] Messages persisted, engine result:`, persistData);
+            }
+
+            // Refetch graph state
+            const res = await fetch(`/api/conversation?id=${convId}`);
+            if (res.ok) {
+              const conv = (await res.json()) as ConversationRouteResponse;
+              setNodes(conv.nodes);
+              setSemanticEdges(conv.edges);
+            }
+          } catch {
+            // Non-fatal
+          }
+        })();
+      }
+
+      // Cleanup refs
+      streamingAssistantIdRef.current = null;
+      streamingConversationIdRef.current = null;
+      streamingUserMessageRef.current = null;
+      streamingBranchInfoRef.current = null;
+      streamingV2ContinuationRef.current = null;
+    },
+    onError: (error: string, _partialContent: string) => {
+      const assistantId = streamingAssistantIdRef.current;
+      if (!assistantId) return;
+
+      // Append error indicator to the partial content
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? { ...m, content: m.content + `\n\n⚠️ Error: ${error}` }
+            : m,
+        ),
+      );
+
+      // Cleanup refs
+      streamingAssistantIdRef.current = null;
+      streamingConversationIdRef.current = null;
+      streamingUserMessageRef.current = null;
+      streamingBranchInfoRef.current = null;
+      streamingV2ContinuationRef.current = null;
+    },
+  });
 
   // ─── Load conversation list + initial conversation on mount ────────────────
   useEffect(() => {
@@ -512,7 +615,7 @@ export default function Home() {
     }
   }
 
-  async function handleSendMessage(content: string) {
+  async function handleSendMessage(content: string, attachments?: import("@/src/types/message").AttachmentMeta[]) {
     const isBranching = activeBranchNodeId !== null && activeBranchNode !== null;
     const isV2Continuing = v2Continuation !== null && isBranching;
     const branchRootId = isBranching ? crypto.randomUUID() : undefined;
@@ -521,155 +624,88 @@ export default function Home() {
       id: branchRootId ?? crypto.randomUUID(),
       role: "user",
       content,
+      attachments: attachments ?? null,
       parentNodeId: isBranching ? activeBranchNodeId : null,
       branchRootMessageId: isBranching ? branchRootId : null,
     };
     const updatedMessages = [...messages, userMessage];
 
-    // Optimistic update
+    // Optimistic update — add user message
     setMessages(updatedMessages);
-    setIsAssistantResponding(true);
 
-    let assistantMessage: ChatMessage;
+    // Create placeholder assistant message for streaming
+    const assistantId = crypto.randomUUID();
+    const placeholderAssistant: ChatMessage = {
+      id: assistantId,
+      role: "assistant",
+      content: "",
+      parentNodeId: isBranching ? activeBranchNodeId : null,
+      branchRootMessageId: isBranching ? branchRootId : null,
+    };
+    setMessages((prev) => [...prev, placeholderAssistant]);
 
-    try {
-      let requestBody: Record<string, unknown>;
+    // Store refs for the streaming callbacks
+    streamingAssistantIdRef.current = assistantId;
+    streamingConversationIdRef.current = conversationId;
+    streamingUserMessageRef.current = userMessage;
+    streamingBranchInfoRef.current = {
+      parentNodeId: isBranching ? activeBranchNodeId : null,
+      branchRootMessageId: isBranching ? (branchRootId ?? null) : null,
+    };
+    streamingV2ContinuationRef.current = isV2Continuing ? v2Continuation : null;
 
-      if (isV2Continuing) {
-        // V2 continuation mode — use focused object context
-        requestBody = {
-          messages: [{ role: "user", content }],
-          branchContext: {
-            nodeTitle: v2Continuation!.sourceObjectTitle,
-            nodeSummary: v2Continuation!.sourceObjectDescription,
-            evidenceSummary: buildV2ContinuationPrompt(v2Continuation!),
-            linkedMessages: v2Continuation!.sourceMessages.map((m) => ({
-              role: m.role as "user" | "assistant",
-              content: m.content,
-            })),
-          },
-        };
-      } else if (isBranching) {
-        const priorBranchMessages = messages
-          .filter((m) => m.parentNodeId === activeBranchNodeId)
-          .map((m) => ({ role: m.role, content: m.content }));
+    // Build the messages array and options for the stream hook
+    let chatMessages: Array<{ role: string; content: string }>;
+    let options: Parameters<typeof streamSendMessage>[1] = {};
 
-        const linkedMsgs = messages
-          .filter((m) => activeBranchNode!.messageIds.includes(m.id))
-          .map((m) => ({ role: m.role, content: m.content }));
-
-        requestBody = {
-          messages: [...priorBranchMessages, { role: "user", content }],
-          branchContext: {
-            nodeTitle: activeBranchNode!.title,
-            nodeSummary: activeBranchNode!.summary,
-            linkedMessages: linkedMsgs,
-          },
-        };
-      } else {
-        requestBody = {
-          conversationId,
-          messages: updatedMessages.map((m) => ({
-            role: m.role,
+    if (isV2Continuing) {
+      chatMessages = [{ role: "user", content }];
+      options = {
+        branchContext: {
+          nodeTitle: v2Continuation!.sourceObjectTitle,
+          nodeSummary: v2Continuation!.sourceObjectDescription,
+          evidenceSummary: buildV2ContinuationPrompt(v2Continuation!),
+          linkedMessages: v2Continuation!.sourceMessages.map((m) => ({
+            role: m.role as "user" | "assistant",
             content: m.content,
           })),
-        };
-      }
-
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
-
-      const data = (await response.json()) as ChatResponse | ChatErrorResponse;
-
-      if (!response.ok) {
-        throw new Error(
-          (data as ChatErrorResponse).error ?? "Unknown error from /api/chat",
-        );
-      }
-
-      assistantMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: (data as ChatResponse).content,
-        parentNodeId: isBranching ? activeBranchNodeId : null,
-        branchRootMessageId: isBranching ? branchRootId : null,
+        },
       };
-    } catch (err) {
-      const errorText = err instanceof Error ? err.message : "Something went wrong.";
-      assistantMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: `Sorry, I couldn't respond right now. (${errorText})`,
-        parentNodeId: isBranching ? activeBranchNodeId : null,
-        branchRootMessageId: isBranching ? branchRootId : null,
+    } else if (isBranching) {
+      const priorBranchMessages = messages
+        .filter((m) => m.parentNodeId === activeBranchNodeId)
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      const linkedMsgs = messages
+        .filter((m) => activeBranchNode!.messageIds.includes(m.id))
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      chatMessages = [...priorBranchMessages, { role: "user", content }];
+      options = {
+        branchContext: {
+          nodeTitle: activeBranchNode!.title,
+          nodeSummary: activeBranchNode!.summary,
+          linkedMessages: linkedMsgs,
+        },
       };
-    } finally {
-      setIsAssistantResponding(false);
+    } else {
+      chatMessages = updatedMessages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+      options = { conversationId: conversationId ?? undefined };
     }
 
-    setMessages((current) => [...current, assistantMessage!]);
+    // Start streaming
+    if (attachments && attachments.length > 0) {
+      options.attachments = attachments;
+    }
+    streamSendMessage(chatMessages, options);
 
-    // Persist both messages + run engine + refetch graph state
-    if (conversationId) {
-      // Use async IIFE so we can properly await and catch errors
-      (async () => {
-        try {
-          // Log continuation provenance
-          if (isV2Continuing) {
-            console.log("[frontend] V2 continuation message persisted:", {
-              sourceObjectId: v2Continuation!.sourceObjectId,
-              sourceObjectTitle: v2Continuation!.sourceObjectTitle,
-              userMessageId: userMessage.id,
-            });
-          }
-
-          // 1. Persist messages — engine runs inside this call
-          const persistRes = await fetch("/api/messages", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              conversationId,
-              messages: [userMessage, assistantMessage!],
-              // V2 continuation provenance metadata
-              ...(isV2Continuing ? { v2ContinuationObjectId: v2Continuation!.sourceObjectId } : {}),
-            }),
-          });
-
-          if (persistRes.ok) {
-            const persistData = await persistRes.json();
-            console.log(`[frontend] Messages persisted, engine result:`, persistData);
-          }
-
-          // 2. Refetch full conversation state (engine already ran)
-          const res = await fetch(`/api/conversation?id=${conversationId}`);
-          if (res.ok) {
-            const conv = (await res.json()) as ConversationRouteResponse;
-            console.log(`[frontend] Refetch after chat:`, {
-              conversationId,
-              messages: conv.messages.length,
-              nodes: conv.nodes.length,
-              edges: conv.edges.length,
-            });
-            setNodes(conv.nodes);
-            setSemanticEdges(conv.edges);
-          } else {
-            console.warn(`[frontend] Refetch failed: ${res.status} ${res.statusText}`);
-          }
-        } catch {
-          // Non-fatal — graph will update on next interaction or refresh
-        }
-      })();
-
-      // Update conversation title after first user message (if it's still "New conversation")
+    // Update conversation title after first user message (if it's still "New conversation")
+    if (conversationId && !isBranching) {
       const currentConv = conversations.find((c) => c.id === conversationId);
-      if (
-        currentConv &&
-        currentConv.title === "New conversation" &&
-        !isBranching
-      ) {
+      if (currentConv && currentConv.title === "New conversation") {
         const derivedTitle = content.slice(0, 40) + (content.length > 40 ? "…" : "");
         fetch("/api/conversations", {
           method: "POST",
@@ -799,7 +835,8 @@ export default function Home() {
         <ChatPanel
           messages={displayMessages}
           highlightedMessageIds={highlightedMessageIds}
-          isAssistantResponding={isAssistantResponding || isLoadingConversation}
+          isAssistantResponding={isAssistantResponding || isStreaming || isLoadingConversation}
+          conversationId={conversationId}
           workspaceNode={activeBranchNode}
           workspaceLinkedMessages={branchLinkedMessages}
           onExitWorkspace={handleExitBranch}

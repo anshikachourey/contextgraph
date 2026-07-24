@@ -156,6 +156,7 @@ def _make_full_policy() -> IdentityResolutionPolicy:
         retrieval_policy=_make_retrieval_policy(),
         widening_budget=_make_widening_budget(),
         pending_re_evaluation_policy=_make_re_evaluation_policy(),
+        permitted_embedding_model_versions=["v1.0"],
     )
 
 
@@ -580,6 +581,7 @@ class TestValidatePolicyAgainstRegistry:
             ),
             widening_budget=_make_widening_budget(),
             pending_re_evaluation_policy=_make_re_evaluation_policy(),
+            permitted_embedding_model_versions=["v1.0"],
         )
         registry = _make_registry()
         result = validate_policy_against_registry(policy, registry)
@@ -603,6 +605,7 @@ class TestValidatePolicyAgainstRegistry:
             ),
             widening_budget=_make_widening_budget(),
             pending_re_evaluation_policy=_make_re_evaluation_policy(),
+            permitted_embedding_model_versions=["v1.0"],
         )
         registry = _make_registry()
         result = validate_policy_against_registry(policy, registry)
@@ -628,6 +631,7 @@ class TestValidatePolicyAgainstRegistry:
             ),
             widening_budget=_make_widening_budget(),
             pending_re_evaluation_policy=_make_re_evaluation_policy(),
+            permitted_embedding_model_versions=["v1.0"],
         )
         registry = _make_registry()
         result = validate_policy_against_registry(policy, registry)
@@ -646,6 +650,7 @@ class TestValidatePolicyAgainstRegistry:
             ),
             widening_budget=_make_widening_budget(),
             pending_re_evaluation_policy=_make_re_evaluation_policy(),
+            permitted_embedding_model_versions=["v1.0"],
         )
         registry = _make_registry()
         result = validate_policy_against_registry(policy, registry)
@@ -692,6 +697,7 @@ class TestValidatePolicyOrDefer:
             ),
             widening_budget=_make_widening_budget(),
             pending_re_evaluation_policy=_make_re_evaluation_policy(),
+            permitted_embedding_model_versions=["v1.0"],
         )
         registry = _make_registry()
         result = validate_policy_or_defer(policy, registry)

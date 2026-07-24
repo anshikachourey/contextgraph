@@ -11,10 +11,12 @@ Design authority: design-corrections.md §6 (Retrieval Architecture), §7.1 (IRS
 """
 
 from .channel_protocol import (
+    RetrievalCandidate,
     ChannelRegistry,
     RetrievalChannel,
     RetrievalResult,
 )
+from .retrieval_coordinator import RetrievalCoordinator
 from .channels import (
     AliasNormalizedChannel,
     AlternateFormulationChannel,
@@ -28,8 +30,20 @@ from .channels import (
 from .downstream_separator import DownstreamDecision, DownstreamSeparator
 from .irs_assessor import IRSAssessor
 from .novelty_checker import NoveltyChecker, NoveltyResult
+from .pending_decision_manager import (
+    PendingDecisionBundle,
+    PendingDecisionManager,
+    PendingIdentityDetail,
+    PendingPropositionMembership,
+    ReEvaluationEligibility,
+    ResolutionResult,
+)
+from .proposition_validator import PropositionDetailValidator, PropositionValidationResult
+from .provisional_overlay import ProvisionalOverlay
+from .shared_proposal_coalescer import CoalescedProposalResult, SharedProposalCoalescer
 
 __all__ = [
+    "CoalescedProposalResult",
     "DownstreamDecision",
     "DownstreamSeparator",
     "AliasNormalizedChannel",
@@ -43,7 +57,19 @@ __all__ = [
     "LexicalEntityChannel",
     "NoveltyChecker",
     "NoveltyResult",
+    "PendingDecisionBundle",
+    "PendingDecisionManager",
+    "PendingIdentityDetail",
+    "PendingPropositionMembership",
+    "PropositionDetailValidator",
+    "PropositionValidationResult",
+    "ProvisionalOverlay",
+    "ReEvaluationEligibility",
+    "ResolutionResult",
     "RetrievalChannel",
+    "RetrievalCoordinator",
+    "RetrievalCandidate",
     "RetrievalResult",
+    "SharedProposalCoalescer",
     "create_all_default_channels",
 ]

@@ -55,6 +55,117 @@
         "title": "BehavioralConfidenceBand",
         "type": "string"
       },
+      "CandidateRecord": {
+        "description": "An evaluated identity candidate with contributing retrieval attempts.\n\nUses contributing_attempt_ids (not contributing_channels).\nUses confidence (not confidence_band).",
+        "properties": {
+          "channel_local_diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelDiagnostic"
+            },
+            "title": "Channel Local Diagnostics",
+            "type": "array"
+          },
+          "concern_id": {
+            "title": "Concern Id",
+            "type": "string"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/BehavioralConfidenceBand"
+          },
+          "contrary_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceReference"
+            },
+            "title": "Contrary Evidence",
+            "type": "array"
+          },
+          "contributing_attempt_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Contributing Attempt Ids",
+            "type": "array"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "identity_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceReference"
+            },
+            "title": "Identity Evidence",
+            "type": "array"
+          },
+          "lifecycle_status": {
+            "$ref": "#/components/schemas/ConcernStatus"
+          },
+          "resolved_merge_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Merge Target"
+          }
+        },
+        "required": [
+          "concern_id",
+          "lifecycle_status",
+          "contributing_attempt_ids",
+          "channel_local_diagnostics",
+          "identity_evidence",
+          "contrary_evidence",
+          "confidence",
+          "explanation"
+        ],
+        "title": "CandidateRecord",
+        "type": "object"
+      },
+      "ChannelDiagnostic": {
+        "description": "Channel-local diagnostic score or metadata.\n\nRetrieval scores are channel-local diagnostics only.\nNo score, rank, or threshold can directly cause YES.",
+        "properties": {
+          "channel_id": {
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "metric_name": {
+            "title": "Metric Name",
+            "type": "string"
+          },
+          "metric_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Value"
+          }
+        },
+        "required": [
+          "channel_id",
+          "metric_name"
+        ],
+        "title": "ChannelDiagnostic",
+        "type": "object"
+      },
       "ClusterRequest": {
         "properties": {
           "messages": {
@@ -143,6 +254,67 @@
         ],
         "title": "CohesionStatus",
         "type": "string"
+      },
+      "ConcernAlias": {
+        "description": "Normalized alias for a concern used in alias-based retrieval.\n\nAliases are normalized forms of how a concern has been referenced\nacross conversation history.",
+        "properties": {
+          "alias_text": {
+            "title": "Alias Text",
+            "type": "string"
+          },
+          "concern_id": {
+            "title": "Concern Id",
+            "type": "string"
+          },
+          "normalized_form": {
+            "title": "Normalized Form",
+            "type": "string"
+          }
+        },
+        "required": [
+          "concern_id",
+          "alias_text",
+          "normalized_form"
+        ],
+        "title": "ConcernAlias",
+        "type": "object"
+      },
+      "ConcernEmbedding": {
+        "description": "Version-matched embedding for a concern used in identity retrieval.\n\nEmbeddings are bound to a specific graph version, embedding model version,\nand source text hash. Stale embeddings (where source text or model has changed)\nare excluded from context and marked unavailable.",
+        "properties": {
+          "concern_id": {
+            "title": "Concern Id",
+            "type": "string"
+          },
+          "embedding": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Embedding",
+            "type": "array"
+          },
+          "embedding_model_version": {
+            "title": "Embedding Model Version",
+            "type": "string"
+          },
+          "graph_version": {
+            "title": "Graph Version",
+            "type": "integer"
+          },
+          "source_text_hash": {
+            "title": "Source Text Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "concern_id",
+          "embedding",
+          "source_text_hash",
+          "embedding_model_version",
+          "graph_version"
+        ],
+        "title": "ConcernEmbedding",
+        "type": "object"
       },
       "ConcernProposal": {
         "description": "Proposal for a new Persistent Concern from identity resolution.\n\nThe proposed_concern_id is an opaque ID resolved from concern_creation_key\nthrough the entity registry. Parent resolution defaults to PARENT_DEFERRED.",
@@ -245,6 +417,17 @@
             "title": "Last Active At",
             "type": "string"
           },
+          "merged_into_concern_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merged Into Concern Id"
+          },
           "parent_resolution_state": {
             "$ref": "#/components/schemas/ParentResolutionState"
           },
@@ -269,14 +452,84 @@
         "title": "ConcernSummary",
         "type": "object"
       },
+      "EvidenceReference": {
+        "description": "A reference to grounding evidence used in identity evaluation.\n\nPoints to a stable entity (proposition, concern, etc.) and optionally\na source-message span for audit traceability.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "source_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Message Id"
+          },
+          "span_end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span End"
+          },
+          "span_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span Start"
+          }
+        },
+        "required": [
+          "entity_id",
+          "entity_type"
+        ],
+        "title": "EvidenceReference",
+        "type": "object"
+      },
       "GraphStateContext": {
-        "description": "Graph state provided by TypeScript for Python to reason over.\n\nContains the current state of concerns, propositions, associations, and\npending decisions. The graph_version must match the base_graph_version\nin the enclosing ProcessRequest.",
+        "description": "Graph state provided by TypeScript for Python to reason over.\n\nContains the current state of concerns, propositions, associations, and\npending decisions. The graph_version must match the base_graph_version\nin the enclosing ProcessRequest.\n\nExtended fields for identity resolution:\n- snapshot_token: Opaque token binding the exact graph state snapshot.\n- snapshot_digest: Hash of snapshot content for payload fingerprinting.\n- concern_embeddings: Version-matched embeddings for retrieval.\n- normalized_aliases: Normalized concern aliases for alias-based retrieval.\n- pending_identity_details: Pending identity decisions with full detail.\n- privacy_suppressed_concern_ids: IDs of suppressed concerns (already excluded).\n- packet_lineage: Packet split/merge lineage summaries.",
         "properties": {
           "active_associations": {
             "items": {
               "$ref": "#/components/schemas/AssociationSummary"
             },
             "title": "Active Associations",
+            "type": "array"
+          },
+          "concern_embeddings": {
+            "items": {
+              "$ref": "#/components/schemas/ConcernEmbedding"
+            },
+            "title": "Concern Embeddings",
             "type": "array"
           },
           "concerns": {
@@ -290,11 +543,39 @@
             "title": "Graph Version",
             "type": "integer"
           },
+          "normalized_aliases": {
+            "items": {
+              "$ref": "#/components/schemas/ConcernAlias"
+            },
+            "title": "Normalized Aliases",
+            "type": "array"
+          },
+          "packet_lineage": {
+            "items": {
+              "$ref": "#/components/schemas/PacketLineageSummary"
+            },
+            "title": "Packet Lineage",
+            "type": "array"
+          },
           "pending_decisions": {
             "items": {
               "$ref": "#/components/schemas/PendingDecisionSummary"
             },
             "title": "Pending Decisions",
+            "type": "array"
+          },
+          "pending_identity_details": {
+            "items": {
+              "$ref": "#/components/schemas/PendingIdentityDetailSummary"
+            },
+            "title": "Pending Identity Details",
+            "type": "array"
+          },
+          "privacy_suppressed_concern_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Privacy Suppressed Concern Ids",
             "type": "array"
           },
           "propositions": {
@@ -303,10 +584,22 @@
             },
             "title": "Propositions",
             "type": "array"
+          },
+          "snapshot_digest": {
+            "description": "Hash of snapshot content for fingerprinting",
+            "title": "Snapshot Digest",
+            "type": "string"
+          },
+          "snapshot_token": {
+            "description": "Opaque token binding the exact graph state snapshot",
+            "title": "Snapshot Token",
+            "type": "string"
           }
         },
         "required": [
           "graph_version",
+          "snapshot_token",
+          "snapshot_digest",
           "concerns",
           "propositions",
           "active_associations"
@@ -327,9 +620,246 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
-      "IdentityResolutionResult": {
-        "description": "Result of identity resolution (performed in Python).\n\nEnforces a discriminated-result invariant:\n- For YES outcome: exactly one of matched_concern_id or new_concern_proposal\n  must be set (match OR new-concern, never both).\n- For UNRESOLVED/DEFER/NO/RETRIEVAL_INCONCLUSIVE/REQUIRES_VALIDATION:\n  both matched_concern_id and new_concern_proposal must be None.",
+      "IRSSignal": {
+        "description": "An Intelligent Retrieval Signal indicating a retrieval gap or concern.\n\nEvery signal must be grounded in source evidence.",
         "properties": {
+          "confidence": {
+            "$ref": "#/components/schemas/BehavioralConfidenceBand"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "resolved": {
+            "title": "Resolved",
+            "type": "boolean"
+          },
+          "resolved_by_attempt_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Resolved By Attempt Ids",
+            "type": "array"
+          },
+          "signal_type": {
+            "$ref": "#/components/schemas/IRSSignalType"
+          },
+          "source_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceReference"
+            },
+            "title": "Source Evidence",
+            "type": "array"
+          }
+        },
+        "required": [
+          "signal_type",
+          "confidence",
+          "source_evidence",
+          "explanation",
+          "resolved",
+          "resolved_by_attempt_ids"
+        ],
+        "title": "IRSSignal",
+        "type": "object"
+      },
+      "IRSSignalType": {
+        "description": "Intelligent Retrieval Signal types that indicate retrieval gaps.",
+        "enum": [
+          "REVISIT_LANGUAGE",
+          "HISTORICAL_REFERENT",
+          "IMPLIED_PRIOR_STATE",
+          "BROAD_CANDIDATE_MISMATCH",
+          "ALIAS_OR_VOCABULARY_DRIFT",
+          "CONTINUATION_HISTORY_MISMATCH"
+        ],
+        "title": "IRSSignalType",
+        "type": "string"
+      },
+      "IdentityResolutionRecord": {
+        "description": "Complete append-only identity resolution decision record.\n\nStores the full reasoning, diagnostics, and version-bound context for\none packet's identity resolution. This is the first-class record returned\nin ProcessResult.identity_resolution_records.\n\nStage confidence rules:\n- COMPLETED stage status requires non-null confidence.\n- NOT_RUN/FAILED stage status requires null confidence.",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ResolutionAction"
+          },
+          "candidates_considered": {
+            "items": {
+              "$ref": "#/components/schemas/CandidateRecord"
+            },
+            "title": "Candidates Considered",
+            "type": "array"
+          },
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "evidence_references": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceReference"
+            },
+            "title": "Evidence References",
+            "type": "array"
+          },
+          "graph_snapshot_token": {
+            "title": "Graph Snapshot Token",
+            "type": "string"
+          },
+          "graph_version_analyzed": {
+            "title": "Graph Version Analyzed",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "identity_confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BehavioralConfidenceBand"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "identity_stage_status": {
+            "$ref": "#/components/schemas/StageExecutionStatus"
+          },
+          "irs_signals": {
+            "items": {
+              "$ref": "#/components/schemas/IRSSignal"
+            },
+            "title": "Irs Signals",
+            "type": "array"
+          },
+          "matched_concern_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Concern Id"
+          },
+          "model_config_version": {
+            "title": "Model Config Version",
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/PipelineOutcome"
+          },
+          "packet_id": {
+            "title": "Packet Id",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "proposed_concern_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Concern Id"
+          },
+          "proposed_dependency_group_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Dependency Group Id"
+          },
+          "proposition_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Proposition Ids",
+            "type": "array"
+          },
+          "reasoning": {
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "retrieval_attempts": {
+            "items": {
+              "$ref": "#/components/schemas/RetrievalAttemptRecord"
+            },
+            "title": "Retrieval Attempts",
+            "type": "array"
+          },
+          "retrieval_policy_version": {
+            "title": "Retrieval Policy Version",
+            "type": "string"
+          },
+          "semantic_policy_version": {
+            "title": "Semantic Policy Version",
+            "type": "string"
+          },
+          "sufficiency_confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BehavioralConfidenceBand"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sufficiency_stage_status": {
+            "$ref": "#/components/schemas/StageExecutionStatus"
+          }
+        },
+        "required": [
+          "record_id",
+          "request_id",
+          "idempotency_key",
+          "conversation_id",
+          "packet_id",
+          "proposition_ids",
+          "graph_version_analyzed",
+          "graph_snapshot_token",
+          "outcome",
+          "action",
+          "identity_stage_status",
+          "sufficiency_stage_status",
+          "candidates_considered",
+          "irs_signals",
+          "retrieval_attempts",
+          "evidence_references",
+          "reasoning",
+          "semantic_policy_version",
+          "retrieval_policy_version",
+          "model_config_version",
+          "prompt_version"
+        ],
+        "title": "IdentityResolutionRecord",
+        "type": "object"
+      },
+      "IdentityResolutionResult": {
+        "description": "Result of identity resolution (performed in Python).\n\nEnforces the discriminated-result invariant per the finalized design:\n- YES/ASSIGN_EXISTING: matched_concern_id IS NOT NULL,\n  new_concern_proposal IS NULL. Requires completed identity stage\n  with HIGH confidence.\n- NO/PROPOSE_NEW: matched_concern_id IS NULL,\n  new_concern_proposal IS NOT NULL. Requires completed sufficiency\n  stage with HIGH confidence.\n- Pending outcomes (UNRESOLVED, DEFER, RETRIEVAL_INCONCLUSIVE,\n  REQUIRES_VALIDATION): both matched_concern_id and\n  new_concern_proposal must be None.\n\nStage-status/confidence coupling:\n- COMPLETED stage requires non-null confidence.\n- NOT_RUN or FAILED stage requires null confidence.",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ResolutionAction"
+          },
           "candidates_considered": {
             "items": {
               "type": "string"
@@ -337,8 +867,18 @@
             "title": "Candidates Considered",
             "type": "array"
           },
-          "confidence": {
-            "$ref": "#/components/schemas/BehavioralConfidenceBand"
+          "identity_confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BehavioralConfidenceBand"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "identity_stage_status": {
+            "$ref": "#/components/schemas/StageExecutionStatus"
           },
           "matched_concern_id": {
             "anyOf": [
@@ -371,12 +911,27 @@
           "rationale": {
             "title": "Rationale",
             "type": "string"
+          },
+          "sufficiency_confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BehavioralConfidenceBand"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sufficiency_stage_status": {
+            "$ref": "#/components/schemas/StageExecutionStatus"
           }
         },
         "required": [
           "packet_id",
           "outcome",
-          "confidence",
+          "action",
+          "identity_stage_status",
+          "sufficiency_stage_status",
           "rationale"
         ],
         "title": "IdentityResolutionResult",
@@ -425,6 +980,42 @@
           "content"
         ],
         "title": "Message",
+        "type": "object"
+      },
+      "PacketLineageSummary": {
+        "description": "Summary of packet split/merge lineage for graph-state context.\n\nTracks how packets were derived from splits so identity resolution\ncan reason about shared provenance across sibling packets.",
+        "properties": {
+          "packet_id": {
+            "title": "Packet Id",
+            "type": "string"
+          },
+          "split_from_packet_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split From Packet Id"
+          },
+          "split_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split Reason"
+          }
+        },
+        "required": [
+          "packet_id"
+        ],
+        "title": "PacketLineageSummary",
         "type": "object"
       },
       "PacketMembership": {
@@ -558,6 +1149,42 @@
         "title": "PendingDecisionSummary",
         "type": "object"
       },
+      "PendingIdentityDetailSummary": {
+        "description": "Summary of a pending identity decision provided as graph-state context.\n\nSurfaced so Python can account for prior unresolved identity decisions\nwhen evaluating new packets — e.g., avoiding duplicate proposals or\nrecognizing that earlier evidence now resolves a pending decision.",
+        "properties": {
+          "decision_id": {
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "graph_version_analyzed": {
+            "title": "Graph Version Analyzed",
+            "type": "integer"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/PipelineOutcome"
+          },
+          "packet_id": {
+            "title": "Packet Id",
+            "type": "string"
+          },
+          "proposition_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Proposition Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "decision_id",
+          "packet_id",
+          "outcome",
+          "proposition_ids",
+          "graph_version_analyzed"
+        ],
+        "title": "PendingIdentityDetailSummary",
+        "type": "object"
+      },
       "PipelineDiagnostics": {
         "description": "Diagnostics from the semantic processing pipeline.\n\nIncludes stage versions for traceability, any warnings generated during\nprocessing, and entity IDs that were deferred for later resolution.",
         "properties": {
@@ -603,7 +1230,7 @@
         "type": "string"
       },
       "ProcessRequest": {
-        "description": "Full semantic processing pipeline request.\n\nInput: messages + current graph state (concerns, associations).\nPython performs ALL semantic decisions. TypeScript only needs to validate\nstructural invariants and commit.\n\nContract invariant: current_graph_state.graph_version == base_graph_version.",
+        "description": "Full semantic processing pipeline request.\n\nInput: messages + current graph state (concerns, associations).\nPython performs ALL semantic decisions. TypeScript only needs to validate\nstructural invariants and commit.\n\nContract invariant: current_graph_state.graph_version == base_graph_version.\n\nThe processing_mode controls which pipeline stages execute:\n- FULL_PIPELINE: All stages from extraction through identity resolution.\n- IDENTITY_RESOLUTION_ONLY: Requires complete proposition detail and all\n  primary/secondary retention roles pre-supplied.\n- PENDING_RE_EVALUATION: Re-evaluate previously pending identity decisions.",
         "properties": {
           "api_contract_version": {
             "title": "Api Contract Version",
@@ -658,9 +1285,50 @@
             "title": "Pipeline Version",
             "type": "string"
           },
+          "processing_mode": {
+            "$ref": "#/components/schemas/ProcessingMode",
+            "default": "FULL_PIPELINE"
+          },
+          "re_evaluation_trigger": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Event trigger for PENDING_RE_EVALUATION mode. Must be a configured trigger in the re-evaluation policy.",
+            "title": "Re Evaluation Trigger"
+          },
           "request_id": {
             "title": "Request Id",
             "type": "string"
+          },
+          "retrieval_policy_version": {
+            "description": "Version of the retrieval policy governing channel plans",
+            "title": "Retrieval Policy Version",
+            "type": "string"
+          },
+          "semantic_policy_version": {
+            "description": "Version of the semantic evaluation policy governing this request",
+            "title": "Semantic Policy Version",
+            "type": "string"
+          },
+          "targeted_decision_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional list of specific pending-decision IDs to re-evaluate. If None, all eligible pending decisions in the conversation are considered.",
+            "title": "Targeted Decision Ids"
           }
         },
         "required": [
@@ -675,13 +1343,15 @@
           "message_seq_start",
           "message_seq_end",
           "messages",
-          "current_graph_state"
+          "current_graph_state",
+          "semantic_policy_version",
+          "retrieval_policy_version"
         ],
         "title": "ProcessRequest",
         "type": "object"
       },
       "ProcessResult": {
-        "description": "Full semantic processing pipeline result.\n\nContains all semantic decisions made by Python: retention decisions,\npropositions, packets, memberships, splits, identity resolutions,\nnew concern proposals, proposed associations, dependency groups,\nand pipeline diagnostics.",
+        "description": "Full semantic processing pipeline result.\n\nContains all semantic decisions made by Python: retention decisions,\npropositions, packets, memberships, splits, identity resolutions,\nnew concern proposals, proposed associations, dependency groups,\nand pipeline diagnostics.\n\nThe identity_resolution_records field is the first-class append-only\ndecision record for identity resolution — not hidden in diagnostics.\nidentity_mutations and identity_dependency_groups carry proposed\nidentity-specific mutations and their atomic grouping.",
         "properties": {
           "api_contract_version": {
             "title": "Api Contract Version",
@@ -716,6 +1386,31 @@
           "idempotency_key": {
             "title": "Idempotency Key",
             "type": "string"
+          },
+          "identity_dependency_groups": {
+            "description": "Identity-specific semantic dependency groups",
+            "items": {
+              "$ref": "#/components/schemas/SemanticDependencyGroupRef"
+            },
+            "title": "Identity Dependency Groups",
+            "type": "array"
+          },
+          "identity_mutations": {
+            "description": "Proposed identity mutations (concern creation, reactivation, merge)",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Identity Mutations",
+            "type": "array"
+          },
+          "identity_resolution_records": {
+            "description": "First-class append-only identity resolution decision records",
+            "items": {
+              "$ref": "#/components/schemas/IdentityResolutionRecord"
+            },
+            "title": "Identity Resolution Records",
+            "type": "array"
           },
           "identity_resolutions": {
             "items": {
@@ -813,6 +1508,16 @@
         ],
         "title": "ProcessResult",
         "type": "object"
+      },
+      "ProcessingMode": {
+        "description": "Processing mode determining which pipeline stages to execute.\n\n- FULL_PIPELINE: Execute all upstream stages (extraction, retention,\n  packet formation, cohesion) followed by identity resolution.\n- IDENTITY_RESOLUTION_ONLY: Skip upstream stages; requires complete\n  proposition detail and all primary/secondary retention roles pre-supplied.\n- PENDING_RE_EVALUATION: Re-evaluate previously pending identity decisions\n  with new evidence or policy changes.",
+        "enum": [
+          "FULL_PIPELINE",
+          "IDENTITY_RESOLUTION_ONLY",
+          "PENDING_RE_EVALUATION"
+        ],
+        "title": "ProcessingMode",
+        "type": "string"
       },
       "Proposition": {
         "description": "Smallest semantic unit with full provenance.\n\nPermanent ID is resolved through the creation-key registry (not derived\nfrom mutable model text like canonical_meaning). All applicable retention\nlevels (primary + secondary) are preserved in retention_levels.",
@@ -1103,6 +1808,17 @@
         "title": "ProvisionalConcernBoundary",
         "type": "object"
       },
+      "ResolutionAction": {
+        "description": "Identity resolution action taken for a semantic packet.",
+        "enum": [
+          "ASSIGN_EXISTING",
+          "PROPOSE_NEW",
+          "RETAIN_PENDING",
+          "NONE"
+        ],
+        "title": "ResolutionAction",
+        "type": "string"
+      },
       "RetentionDecision": {
         "description": "Result of retention assessment. All retention roles are preserved downstream.",
         "properties": {
@@ -1196,6 +1912,112 @@
           "INDEPENDENT_CONCERN_CANDIDATE"
         ],
         "title": "RetentionLevel",
+        "type": "string"
+      },
+      "RetrievalAttemptRecord": {
+        "description": "Record of a single retrieval attempt with full diagnostics.\n\ncandidate_count must equal len(candidate_ids).\nquery_mode, query_reference, and scope_description are required.",
+        "properties": {
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "candidate_count": {
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "candidate_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Candidate Ids",
+            "type": "array"
+          },
+          "channel_family": {
+            "title": "Channel Family",
+            "type": "string"
+          },
+          "channel_id": {
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "query_mode": {
+            "title": "Query Mode",
+            "type": "string"
+          },
+          "query_reference": {
+            "title": "Query Reference",
+            "type": "string"
+          },
+          "retrieval_policy_version": {
+            "title": "Retrieval Policy Version",
+            "type": "string"
+          },
+          "scope_description": {
+            "title": "Scope Description",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RetrievalAttemptStatus"
+          },
+          "triggered_by_signal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IRSSignalType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "attempt_id",
+          "channel_id",
+          "channel_family",
+          "query_mode",
+          "query_reference",
+          "scope_description",
+          "status",
+          "candidate_ids",
+          "candidate_count",
+          "retrieval_policy_version"
+        ],
+        "title": "RetrievalAttemptRecord",
+        "type": "object"
+      },
+      "RetrievalAttemptStatus": {
+        "description": "Outcome status of a single retrieval attempt.",
+        "enum": [
+          "SUCCESS_WITH_CANDIDATES",
+          "SUCCESS_EMPTY",
+          "ERROR",
+          "TIMEOUT",
+          "UNAVAILABLE",
+          "SKIPPED_WITH_REASON"
+        ],
+        "title": "RetrievalAttemptStatus",
         "type": "string"
       },
       "SIEMessage": {
@@ -1499,6 +2321,16 @@
         "title": "SemanticState",
         "type": "string"
       },
+      "StageExecutionStatus": {
+        "description": "Execution status of a pipeline stage (identity or sufficiency).",
+        "enum": [
+          "COMPLETED",
+          "NOT_RUN",
+          "FAILED"
+        ],
+        "title": "StageExecutionStatus",
+        "type": "string"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -1598,7 +2430,7 @@
     },
     "/sie/process-messages": {
       "post": {
-        "description": "Accepts a batch of messages with current graph state and produces semantic decisions including retention, propositions, packets, and identity resolutions. Requires approved stage implementations to be installed and the SIE endpoint to be enabled via configuration.",
+        "description": "Accepts a batch of messages with current graph state and produces semantic decisions including retention, propositions, packets, and identity resolutions. Dispatches by processing_mode:\n- FULL_PIPELINE: upstream stages (503 until implemented)\n- IDENTITY_RESOLUTION_ONLY: identity resolution on preformed packets\n- PENDING_RE_EVALUATION: re-evaluate pending identity decisions",
         "operationId": "process_messages_sie_process_messages_post",
         "requestBody": {
           "content": {
@@ -1622,20 +2454,13 @@
             "description": "Successful Response"
           },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "Invalid request (contract validation failure)"
           },
           "503": {
             "content": {
               "application/json": {
                 "example": {
-                  "detail": "SIE pipeline not available: no approved stage implementations installed"
+                  "detail": "SIE pipeline not available: endpoint disabled by configuration"
                 }
               }
             },

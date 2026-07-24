@@ -820,6 +820,7 @@ def _make_valid_policy() -> IdentityResolutionPolicy:
             max_re_evaluation_attempts=3,
             cooldown_between_attempts_ms=60000,
         ),
+        permitted_embedding_model_versions=["v1.0"],
     )
 
 
@@ -873,6 +874,7 @@ class TestPolicyFailClosed:
                 max_re_evaluation_attempts=3,
                 cooldown_between_attempts_ms=60000,
             ),
+            permitted_embedding_model_versions=["v1.0"],
         )
         result = validate_policy_or_defer(policy, registry)
         assert result is not None
@@ -911,6 +913,7 @@ class TestPolicyFailClosed:
                 max_re_evaluation_attempts=3,
                 cooldown_between_attempts_ms=60000,
             ),
+            permitted_embedding_model_versions=["v1.0"],
         )
         result = validate_policy_or_defer(policy, registry)
         assert result is not None

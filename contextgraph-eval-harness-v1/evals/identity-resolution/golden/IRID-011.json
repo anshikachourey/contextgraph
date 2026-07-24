@@ -1,0 +1,95 @@
+{
+  "id": "IRID-011",
+  "title": "Channel failure — primary retrieval fails, must not declare novelty",
+  "tags": ["identity-resolution", "channel-failure", "retrieval-inconclusive", "representative", "maritime"],
+  "category": "channel_failure",
+  "domain": "maritime-logistics",
+  "length": "short",
+  "difficulty": "representative",
+  "existingGraph": {
+    "concerns": [
+      {
+        "concernId": "concern-fuel-bunkering",
+        "title": "Fuel Bunkering Strategy",
+        "identitySummary": "Where and when to bunker fuel across the fleet's routes, considering port pricing differentials, tank capacity, and weather-driven consumption variance.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["bunkering", "fuel strategy", "bunker purchasing"],
+        "lastActiveAt": "2024-06-11T08:00:00Z"
+      },
+      {
+        "concernId": "concern-emissions",
+        "title": "Fleet Emissions Compliance",
+        "identitySummary": "Meeting IMO 2030 carbon intensity targets through slow-steaming, route optimization, and alternative fuel adoption timeline.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["emissions compliance", "CII rating", "IMO targets"],
+        "lastActiveAt": "2024-06-10T16:00:00Z"
+      }
+    ],
+    "propositions": [],
+    "associations": []
+  },
+  "newMessages": [
+    {
+      "role": "user",
+      "messageId": "msg-011",
+      "content": "The Singapore bunker prices just spiked 12% overnight. Should we shift our next two Asia-bound vessels to bunker at Fujairah instead, or does the extra deviation cost cancel out the savings?"
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "pkt-irid-011",
+    "userEvidenceMessageIds": ["msg-011"],
+    "assistantContextMessageIds": [],
+    "conciseMeaning": "User asks whether to redirect bunkering from Singapore to Fujairah given a 12% price spike, weighing deviation cost against fuel savings.",
+    "retentionRoles": ["INDEPENDENT_CONCERN_CANDIDATE", "DURABLE_PROPOSITION"]
+  },
+  "propositions": [
+    {
+      "propositionId": "prop-irid-011-a",
+      "speakerRole": "USER",
+      "canonicalMeaning": "Singapore bunker prices spiked 12% overnight",
+      "retentionLevels": ["DURABLE_PROPOSITION"]
+    },
+    {
+      "propositionId": "prop-irid-011-b",
+      "speakerRole": "USER",
+      "canonicalMeaning": "Considering Fujairah as alternative bunkering port for next two Asia-bound vessels",
+      "retentionLevels": ["INDEPENDENT_CONCERN_CANDIDATE"]
+    }
+  ],
+  "retrieval": {
+    "initialCandidates": [],
+    "simulatedChannelFailures": ["embedding_primary", "identity_summary"]
+  },
+  "expectedIdentityResult": {
+    "outcome": "RETRIEVAL_INCONCLUSIVE",
+    "action": "RETAIN_PENDING",
+    "matchedConcernId": null,
+    "proposedNewConcern": null,
+    "identityConfidence": null,
+    "sufficiencyConfidence": "LOW",
+    "mustWiden": true,
+    "reactivation": false,
+    "mergeRedirectFollowed": false,
+    "substantiveResumption": false
+  },
+  "forbiddenOutcomes": [
+    {
+      "outcome": "NO",
+      "action": "PROPOSE_NEW",
+      "reason": "Channel failure means retrieval is not adequate — cannot declare novelty"
+    },
+    {
+      "outcome": "YES",
+      "action": "ASSIGN_EXISTING",
+      "reason": "Cannot assign without successful retrieval"
+    }
+  ],
+  "criticalAssertions": [
+    "retrieval_failure_not_converted_to_novelty",
+    "retrieval_failure_not_converted_to_low_confidence",
+    "pending_or_inconclusive_outcome"
+  ],
+  "qualityMetrics": ["retrieval_sufficiency_error", "false_novelty"]
+}

@@ -1,0 +1,104 @@
+{
+  "id": "IRID-004",
+  "title": "Retired concern reopened — user substantively returns to a concluded clinical trial concern",
+  "tags": ["identity-resolution", "retired-reopening", "domain-diverse", "clinical-trials"],
+  "category": "retired_reopening",
+  "domain": "clinical-trial-coordination",
+  "length": "long",
+  "difficulty": "representative",
+  "existingGraph": {
+    "concerns": [
+      {
+        "concernId": "concern-trial-phase2",
+        "title": "Phase 2 Dosing Protocol Design",
+        "identitySummary": "The dose-escalation strategy, patient cohort size, safety monitoring schedule, and interim analysis triggers for the Phase 2 trial of compound XR-447.",
+        "status": "RETIRED",
+        "parentConcernId": null,
+        "aliases": ["Phase 2 dosing", "XR-447 dose escalation", "cohort design"],
+        "lastActiveAt": "2024-01-15T09:00:00Z"
+      },
+      {
+        "concernId": "concern-trial-phase3",
+        "title": "Phase 3 Pivotal Trial Planning",
+        "identitySummary": "Design of the pivotal Phase 3 registration trial including endpoint selection, site activation timeline, and statistical analysis plan.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["Phase 3 planning", "pivotal trial", "registration trial"],
+        "lastActiveAt": "2024-06-10T16:00:00Z"
+      }
+    ],
+    "propositions": [],
+    "associations": []
+  },
+  "newMessages": [
+    {
+      "role": "assistant",
+      "messageId": "msg-004-a",
+      "content": "The Phase 3 protocol is locked and site activation is underway. Is there anything else on the clinical program?"
+    },
+    {
+      "role": "user",
+      "messageId": "msg-004-b",
+      "content": "Actually yes — the DSMB flagged a hepatotoxicity signal in the Phase 2 long-term follow-up data. We need to reopen the Phase 2 dosing analysis. Specifically, I want to look at whether the 400mg cohort had disproportionate ALT elevations compared to 200mg, and whether we need to amend the Phase 3 dose selection."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "pkt-irid-004",
+    "userEvidenceMessageIds": ["msg-004-b"],
+    "assistantContextMessageIds": ["msg-004-a"],
+    "conciseMeaning": "User reopens the retired Phase 2 dosing concern due to a hepatotoxicity signal in follow-up data, requiring reanalysis of dose-response relationship.",
+    "retentionRoles": ["INDEPENDENT_CONCERN_CANDIDATE", "DURABLE_PROPOSITION"]
+  },
+  "propositions": [
+    {
+      "propositionId": "prop-irid-004-a",
+      "speakerRole": "USER",
+      "canonicalMeaning": "DSMB flagged hepatotoxicity signal in Phase 2 long-term follow-up data",
+      "retentionLevels": ["DURABLE_PROPOSITION"]
+    },
+    {
+      "propositionId": "prop-irid-004-b",
+      "speakerRole": "USER",
+      "canonicalMeaning": "Need to reanalyze whether 400mg cohort had disproportionate ALT elevations vs 200mg",
+      "retentionLevels": ["INDEPENDENT_CONCERN_CANDIDATE"]
+    }
+  ],
+  "retrieval": {
+    "initialCandidates": [
+      { "concernId": "concern-trial-phase3", "rank": 1, "score": 0.78 },
+      { "concernId": "concern-trial-phase2", "rank": 2, "score": 0.74 }
+    ]
+  },
+  "expectedIdentityResult": {
+    "outcome": "YES",
+    "action": "ASSIGN_EXISTING",
+    "matchedConcernId": "concern-trial-phase2",
+    "proposedNewConcern": null,
+    "identityConfidence": "HIGH",
+    "sufficiencyConfidence": null,
+    "mustWiden": false,
+    "reactivation": true,
+    "mergeRedirectFollowed": false,
+    "substantiveResumption": true
+  },
+  "forbiddenOutcomes": [
+    {
+      "outcome": "YES",
+      "action": "ASSIGN_EXISTING",
+      "matchedConcernId": "concern-trial-phase3",
+      "reason": "Phase 3 is a different concern; the reopened topic is Phase 2 dosing"
+    },
+    {
+      "outcome": "NO",
+      "action": "PROPOSE_NEW",
+      "reason": "This substantively reopens an existing retired concern"
+    }
+  ],
+  "criticalAssertions": [
+    "matched_concern=concern-trial-phase2",
+    "reactivation_proposed",
+    "retired_status_preserved_identity",
+    "substantive_return_not_historical_mention"
+  ],
+  "qualityMetrics": ["missed_reactivation", "false_novelty", "false_assignment"]
+}

@@ -1,0 +1,91 @@
+{
+  "version": "1.0",
+  "individualCasePassRule": {
+    "allCriticalAssertionsMustPass": true,
+    "forbiddenOutcomeViolationsMustEqual": 0
+  },
+  "deterministicScorers": [
+    {
+      "name": "IdentityOutcome",
+      "checks": [
+        "expected outcome matches actual outcome",
+        "expected action matches actual action"
+      ]
+    },
+    {
+      "name": "MatchedConcern",
+      "checks": [
+        "matchedConcernId exact match when outcome is YES",
+        "matchedConcernId is null when outcome is not YES"
+      ]
+    },
+    {
+      "name": "IdentityConfidence",
+      "checks": [
+        "identity confidence band matches expected",
+        "HIGH required for ASSIGN_EXISTING"
+      ]
+    },
+    {
+      "name": "SufficiencyConfidence",
+      "checks": [
+        "sufficiency confidence matches expected when applicable"
+      ]
+    },
+    {
+      "name": "WideningDecision",
+      "checks": [
+        "mustWiden matches expected",
+        "widening triggered only on RETRIEVAL_INCONCLUSIVE"
+      ]
+    },
+    {
+      "name": "ReactivationDecision",
+      "checks": [
+        "reactivation proposed when expected",
+        "substantive resumption correctly identified"
+      ]
+    },
+    {
+      "name": "MergeRedirect",
+      "checks": [
+        "merge redirect followed when expected",
+        "merged concern never receives direct assignment"
+      ]
+    },
+    {
+      "name": "ForbiddenOutcomeViolations",
+      "checks": [
+        "no forbidden outcome/action/matchedConcernId combination produced"
+      ]
+    },
+    {
+      "name": "NoveltyGuard",
+      "checks": [
+        "PROPOSE_NEW never produced without adequate retrieval",
+        "PROPOSE_NEW never produced from assistant-only material",
+        "PROPOSE_NEW never produced when channel failure exists"
+      ]
+    },
+    {
+      "name": "PendingDecisionHandling",
+      "checks": [
+        "RETAIN_PENDING produced for unresolvable ambiguity",
+        "previously pending decisions resolved when new evidence available"
+      ]
+    }
+  ],
+  "reportingMetrics": [
+    "false_assignment_rate",
+    "false_novelty_rate",
+    "missed_reactivation_rate",
+    "unresolved_defer_calibration",
+    "retrieval_sufficiency_error_rate",
+    "retry_version_determinism",
+    "identity_outcome_accuracy",
+    "identity_confidence_accuracy",
+    "merge_redirect_accuracy",
+    "widening_trigger_accuracy",
+    "pending_resolution_accuracy"
+  ]
+}

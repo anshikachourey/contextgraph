@@ -5,15 +5,27 @@
  * Design rules:
  * - Build and validate one semantic commit bundle BEFORE any database mutation.
  * - Include pending-decision creations and resolutions in the bundle.
- * - Make exactly ONE authoritative RPC call (v2_commit_update).
+ * - Make exactly ONE authoritative RPC call (v2_commit_update) plus
+ *   v2_commit_identity_bundle for identity-specific sections.
  * - NEVER write to SIE tables directly (no client-side writeSIETables).
  * - On version conflict: reload graph state + pending decisions and require
  *   fresh Python semantic analysis. Never blindly replay stale mutations.
+ * - NEVER choose a concern, reinterpret scores, change confidence, or
+ *   override Python's semantic decision.
+ * - Treat database-side validation as authoritative even after TypeScript
+ *   pre-validation passes.
+ * - Route SIE identity work through existing semantic-authority/shadow
+ *   controls; do not bypass or mutate authority state.
  */
 
 import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { validateInvariants } from "./invariant-validator";
 import { projectToV2Snapshot, type V2SnapshotProjection } from "./v2-projection";
+import {
+  canWriteProductionSnapshot,
+  isShadowMode,
+  type AuthorityState,
+} from "./authority-state-machine";
 import type {
   CommitResult,
   InvariantViolation,
@@ -33,6 +45,7 @@ type PacketSplitRecord = components["schemas"]["PacketSplitRecord"];
 type ConcernProposal = components["schemas"]["ConcernProposal"];
 type PendingDecisionSummary = components["schemas"]["PendingDecisionSummary"];
 type IdentityResolutionResult = components["schemas"]["IdentityResolutionResult"];
+type SemanticDependencyGroupRef = components["schemas"]["SemanticDependencyGroupRef"];
 
 // ─── Commit Bundle Types ────────────────────────────────────────────────────
 
@@ -55,6 +68,162 @@ export interface PendingDecisionCreation {
 export interface PendingDecisionResolution {
   entity_id: string;
   resolved_by_request_id: string;
+}
+
+/**
+ * Identity resolution record for the identity bundle commit.
+ * Passed through to v2_commit_identity_bundle without modification.
+ * TypeScript NEVER reinterprets or modifies these records — they arrive
+ * from Python as authoritative semantic decisions.
+ */
+export interface IdentityResolutionRecordBundle {
+  record_id: string;
+  request_id: string;
+  packet_id: string;
+  graph_version_analyzed: number;
+  graph_snapshot_token?: string | null;
+  outcome: string;
+  action: string;
+  identity_stage_status: string;
+  identity_confidence: string | null;
+  sufficiency_stage_status: string | null;
+  sufficiency_confidence: string | null;
+  matched_concern_id: string | null;
+  proposed_concern_id: string | null;
+  candidates_considered: unknown[];
+  irs_signals: unknown[];
+  retrieval_attempts: unknown[];
+  sufficiency_record: unknown | null;
+  evidence_references: unknown[];
+  reasoning: string;
+  semantic_policy_version: string;
+  retrieval_policy_version: string;
+  model_config_version: string;
+  prompt_version: string;
+  proposed_dependency_group_id: string | null;
+  created_at?: string;
+}
+
+/**
+ * Retrieval attempt record for the identity bundle commit.
+ * Passed through to v2_commit_identity_bundle without modification.
+ */
+export interface RetrievalAttemptBundle {
+  attempt_id: string;
+  record_id: string;
+  packet_id: string;
+  channel_id: string;
+  channel_family: string;
+  query_mode: string;
+  query_reference: string;
+  scope_description: string;
+  status: string;
+  candidate_ids: string[];
+  candidate_count: number;
+  latency_ms: number | null;
+  failure_reason: string | null;
+  retrieval_policy_version: string;
+  is_widening_attempt: boolean;
+  triggered_by_signal: string | null;
+  created_at?: string;
+}
+
+/**
+ * Pending identity detail for the identity bundle commit.
+ * Passed through to v2_commit_identity_bundle without modification.
+ */
+export interface PendingIdentityDetailBundle {
+  detail_id: string;
+  decision_id: string;
+  packet_id: string;
+  graph_version_analyzed: number;
+  source_resolution_record_id: string;
+  identity_stage_status: string;
+  identity_confidence: string | null;
+  sufficiency_stage_status: string | null;
+  sufficiency_confidence: string | null;
+  created_at?: string;
+}
+
+/**
+ * Pending identity proposition membership for the identity bundle commit.
+ * Passed through to v2_commit_identity_bundle without modification.
+ */
+export interface PendingPropositionMembershipBundle {
+  id: string;
+  decision_id: string;
+  proposition_id: string;
+  ordinal: number;
+  created_at?: string;
+}
+
+/**
+ * Association mutation for the identity bundle commit.
+ * These represent normalized proposition-concern associations produced
+ * by identity resolution. TypeScript passes them through without choosing
+ * roles, reinterpreting confidence, or modifying provenance.
+ */
+export interface AssociationMutationBundle {
+  association_id: string;
+  association_creation_key: string;
+  proposition_id: string;
+  concern_id: string;
+  role: string;
+  confidence: string;
+  provenance: string;
+  established_by_packet_id: string | null;
+  semantic_state: string;
+  created_at?: string;
+  version: number;
+}
+
+/**
+ * Shared concern proposal for the identity bundle commit.
+ * TypeScript never chooses or modifies concern details — they arrive
+ * from Python as complete proposals.
+ */
+export interface SharedProposalBundle {
+  concern_id: string;
+  identity_summary: string;
+  display_title: string;
+  current_summary: string;
+  status: string;
+  canonical_parent_id: string | null;
+  parent_resolution_state: string;
+  metadata: Record<string, unknown>;
+  semantic_version: number;
+  merged_into_concern_id: string | null;
+  created_at?: string;
+  last_active_at?: string;
+}
+
+/**
+ * Request state transition for the identity bundle commit.
+ * Transitions the commit request to COMMITTED state after successful commit.
+ */
+export interface RequestStateTransitionBundle {
+  request_id: string;
+  target_status: string;
+  committed_graph_version: number;
+  result: unknown;
+  committed_at?: string;
+  completed_at?: string;
+  transition_metadata?: Record<string, unknown>;
+}
+
+/**
+ * The identity bundle sections extracted from the ProcessResult.
+ * These are passed directly to v2_commit_identity_bundle without
+ * any TypeScript semantic modification.
+ */
+export interface IdentityBundleSections {
+  resolutionRecords: IdentityResolutionRecordBundle[];
+  retrievalAttempts: RetrievalAttemptBundle[];
+  pendingIdentityDetails: PendingIdentityDetailBundle[];
+  pendingPropositionMemberships: PendingPropositionMembershipBundle[];
+  associationMutations: AssociationMutationBundle[];
+  sharedProposals: SharedProposalBundle[];
+  requestStateTransition: RequestStateTransitionBundle | null;
 }
 
 /**
@@ -83,6 +252,12 @@ export interface SIECommitBundle {
   // ─── Pending decisions ──────────────────────────────────────────────
   pendingDecisionCreations: PendingDecisionCreation[];
   pendingDecisionResolutions: PendingDecisionResolution[];
+
+  // ─── Identity bundle sections ───────────────────────────────────────
+  /** All identity resolution sections from Python. TypeScript NEVER
+   * modifies, reinterprets, or overrides these — they are passed through
+   * to the database commit RPC exactly as Python produced them. */
+  identityBundle: IdentityBundleSections;
 
   // ─── Audit trail ────────────────────────────────────────────────────
   auditEntries: Array<{
@@ -121,14 +296,190 @@ function isVersionConflictError(errorMessage: string): boolean {
   return VERSION_CONFLICT_PATTERNS.some((pattern) => lower.includes(pattern));
 }
 
+// ─── Database Validation Error Detection ────────────────────────────────────
+
+const DB_VALIDATION_PATTERNS = [
+  "invariant_violation",
+  "lease_invalid",
+  "fingerprint_mismatch",
+  "entity_registry_conflict",
+  "conversation_ownership",
+  "dependency_group_incomplete",
+  "association_uniqueness",
+] as const;
+
+/**
+ * Detects database-side validation errors that are authoritative.
+ * Even when TypeScript pre-validation passes, the database may reject
+ * for stronger invariant enforcement.
+ */
+function isDatabaseValidationError(errorMessage: string): boolean {
+  const lower = errorMessage.toLowerCase();
+  return DB_VALIDATION_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
+// ─── Contract and Dependency Group Validation ───────────────────────────────
+
+/**
+ * Validates that the generated contract fields in the ProcessResult are complete.
+ * This is a structural check — it verifies that all required fields exist and
+ * are properly typed. It does NOT reinterpret or override Python's decisions.
+ */
+export function validateContractCompleteness(
+  processResult: ProcessResult
+): InvariantViolation[] {
+  const violations: InvariantViolation[] = [];
+
+  // Verify required identity fields
+  if (!processResult.api_contract_version) {
+    violations.push({
+      type: "dangling_reference",
+      entityId: processResult.request_id,
+      description: "ProcessResult missing api_contract_version",
+    });
+  }
+
+  if (!processResult.request_id) {
+    violations.push({
+      type: "dangling_reference",
+      entityId: "unknown",
+      description: "ProcessResult missing request_id",
+    });
+  }
+
+  if (!processResult.idempotency_key) {
+    violations.push({
+      type: "dangling_reference",
+      entityId: processResult.request_id ?? "unknown",
+      description: "ProcessResult missing idempotency_key",
+    });
+  }
+
+  if (processResult.base_graph_version == null) {
+    violations.push({
+      type: "dangling_reference",
+      entityId: processResult.request_id ?? "unknown",
+      description: "ProcessResult missing base_graph_version",
+    });
+  }
+
+  // Validate every identity resolution has required fields
+  for (const resolution of processResult.identity_resolutions) {
+    if (!resolution.packet_id) {
+      violations.push({
+        type: "dangling_reference",
+        entityId: processResult.request_id,
+        description: "IdentityResolutionResult missing packet_id",
+      });
+    }
+    if (!resolution.outcome) {
+      violations.push({
+        type: "dangling_reference",
+        entityId: resolution.packet_id ?? processResult.request_id,
+        description: "IdentityResolutionResult missing outcome",
+      });
+    }
+  }
+
+  return violations;
+}
+
+/**
+ * Validates that all dependency groups are complete: every mutation_ref
+ * resolves to an entity in the ProcessResult. A dangling ref means the
+ * ProcessResult is structurally incomplete and must NOT be committed.
+ *
+ * This complements the invariant validator's dependency group check
+ * specifically for the commit path.
+ */
+export function validateDependencyGroupCompleteness(
+  processResult: ProcessResult
+): InvariantViolation[] {
+  const violations: InvariantViolation[] = [];
+  const groups = processResult.dependency_groups ?? [];
+
+  if (groups.length === 0) {
+    return violations;
+  }
+
+  // Build set of all known entity IDs in the result
+  const allResultIds = new Set<string>();
+
+  for (const prop of processResult.propositions) {
+    allResultIds.add(prop.proposition_id);
+  }
+  for (const packet of processResult.packets) {
+    allResultIds.add(packet.packet_id);
+  }
+  for (const assoc of processResult.proposed_associations) {
+    allResultIds.add(assoc.association_id);
+  }
+  for (const membership of processResult.packet_memberships) {
+    allResultIds.add(membership.membership_id);
+  }
+  for (const split of processResult.splits) {
+    allResultIds.add(split.split_id);
+  }
+  for (const decision of processResult.retention_decisions) {
+    allResultIds.add(decision.decision_id);
+  }
+  for (const proposal of processResult.new_concern_proposals) {
+    allResultIds.add(proposal.proposed_concern_id);
+  }
+  for (const resolution of processResult.identity_resolutions) {
+    allResultIds.add(resolution.packet_id);
+  }
+
+  for (const group of groups) {
+    if (!group.group_id) {
+      violations.push({
+        type: "dangling_reference",
+        entityId: processResult.request_id,
+        description: "Dependency group missing group_id",
+      });
+      continue;
+    }
+
+    if (!group.failure_policy) {
+      violations.push({
+        type: "dangling_reference",
+        entityId: group.group_id,
+        description: `Dependency group "${group.group_id}" missing failure_policy`,
+      });
+    }
+
+    const missingRefs: string[] = [];
+    for (const ref of group.mutation_refs) {
+      if (!allResultIds.has(ref)) {
+        missingRefs.push(ref);
+      }
+    }
+
+    if (missingRefs.length > 0) {
+      violations.push({
+        type: "dangling_reference",
+        entityId: group.group_id,
+        description: `Dependency group "${group.group_id}" (policy=${group.failure_policy}) has ${missingRefs.length} missing mutation refs: ${missingRefs.join(", ")}`,
+      });
+    }
+  }
+
+  return violations;
+}
+
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 /**
  * Builds a complete commit bundle from a ProcessResult and current graph state.
  *
  * The bundle contains all entity registrations, SIE mutations, pending-decision
- * lifecycle updates, audit entries, and metadata required for the atomic commit.
- * No database mutation occurs during bundle construction.
+ * lifecycle updates, identity bundle sections, audit entries, and metadata
+ * required for the atomic commit. No database mutation occurs during bundle
+ * construction.
+ *
+ * Identity bundle sections are extracted from ProcessResult and passed through
+ * unchanged. TypeScript NEVER chooses a concern, reinterprets scores, changes
+ * confidence, or overrides Python's semantic decisions.
  */
 export function buildCommitBundle(
   processResult: ProcessResult,
@@ -253,6 +604,16 @@ export function buildCommitBundle(
     }
   }
 
+  // ─── Identity bundle sections ───────────────────────────────────────
+  // Extract all identity bundle sections from ProcessResult.
+  // These are passed through to v2_commit_identity_bundle WITHOUT any
+  // TypeScript semantic modification or reinterpretation.
+  const identityBundle = extractIdentityBundleSections(
+    processResult,
+    baseVersion,
+    targetVersion
+  );
+
   // ─── Audit entries for new concerns ─────────────────────────────────
   const auditEntries: SIECommitBundle["auditEntries"] = [];
 
@@ -292,6 +653,7 @@ export function buildCommitBundle(
     retentionDecisions: processResult.retention_decisions,
     pendingDecisionCreations,
     pendingDecisionResolutions,
+    identityBundle,
     auditEntries,
     conversationId: processResult.conversation_id,
     requestId: processResult.request_id,
@@ -358,37 +720,74 @@ export function computePayloadFingerprint(processResult: ProcessResult): string 
 }
 
 /**
- * Main commit function — validates invariants, builds the commit bundle,
- * computes the V2 projection, and executes exactly one atomic RPC call.
+ * Main commit function — validates invariants, contract completeness,
+ * dependency-group completeness, builds the commit bundle, checks
+ * authority state, computes the V2 projection, and executes atomic RPCs.
  *
  * Flow:
- * 1. Validate structural invariants
- * 2. If violations: return failure with violations (no RPC call)
- * 3. Build commit bundle (entities, associations, splits, audit, pending decisions)
- * 4. Compute V2 snapshot projection
- * 5. Compute payload fingerprint for idempotency
- * 6. Call v2_commit_update RPC with all parameters (8 original + 5 SIE)
- * 7. On success: return CommitResult with new graph version
- * 8. On version conflict: return CommitResult with retryRequired=true
- * 9. On other errors: throw
+ * 1. Validate contract completeness (generated contract fields)
+ * 2. Validate dependency-group completeness (all mutation_refs exist)
+ * 3. Validate structural invariants
+ * 4. If violations: return failure with violations (no RPC call)
+ * 5. Check authority state — SIE must be allowed to write (SIE or SIE_SHADOW)
+ * 6. Build commit bundle (entities, associations, splits, audit, pending decisions, identity bundle)
+ * 7. Compute V2 snapshot projection
+ * 8. Compute payload fingerprint for idempotency
+ * 9. Call v2_commit_update RPC with all parameters (8 original + 5 SIE)
+ * 10. If SIE authority: call v2_commit_identity_bundle with all identity sections
+ * 11. On success: return CommitResult with new graph version
+ * 12. On version conflict: return CommitResult with retryRequired=true
+ * 13. On database validation error: return failure (database is authoritative)
+ * 14. On other errors: throw
  *
- * NEVER writes to SIE tables directly. All mutations go through the
- * single atomic RPC.
+ * CRITICAL RULES:
+ * - NEVER writes to SIE tables directly. All mutations go through RPCs.
+ * - NEVER chooses a concern, reinterprets scores, changes confidence,
+ *   or overrides Python's decision.
+ * - Treats database-side validation as authoritative even after TypeScript
+ *   pre-validation passes.
+ * - Routes through the existing semantic-authority/shadow controls; does
+ *   NOT bypass or mutate the authority state.
  */
 export async function commitSIEResult(
   conversationId: string,
   processResult: ProcessResult,
   sieGraphState: SIEGraphState,
-  v2Projection?: V2SnapshotProjection
+  v2Projection?: V2SnapshotProjection,
+  authorityState?: AuthorityState
 ): Promise<CommitResult> {
-  // ─── Step 1: Validate structural invariants ─────────────────────────
+  // ─── Step 1: Validate generated contract completeness ───────────────
+  const contractViolations = validateContractCompleteness(processResult);
+  if (contractViolations.length > 0) {
+    return {
+      success: false,
+      committedGraphVersion: null,
+      requestId: processResult.request_id,
+      retryRequired: false,
+      violations: contractViolations,
+    };
+  }
+
+  // ─── Step 2: Validate dependency-group completeness ─────────────────
+  const groupViolations = validateDependencyGroupCompleteness(processResult);
+  if (groupViolations.length > 0) {
+    return {
+      success: false,
+      committedGraphVersion: null,
+      requestId: processResult.request_id,
+      retryRequired: false,
+      violations: groupViolations,
+    };
+  }
+
+  // ─── Step 3: Validate structural invariants ─────────────────────────
   const validation = validateInvariants(
     processResult,
     sieGraphState,
     sieGraphState.graphVersion
   );
 
-  // ─── Step 2: Reject if invariant violations exist ───────────────────
+  // ─── Step 4: Reject if invariant violations exist ───────────────────
   if (!validation.valid) {
     return {
       success: false,
@@ -399,21 +798,45 @@ export async function commitSIEResult(
     };
   }
 
-  // ─── Step 3: Build commit bundle ────────────────────────────────────
+  // ─── Step 5: Check authority state ──────────────────────────────────
+  // Route through existing semantic-authority/shadow controls.
+  // Do NOT bypass or mutate the authority state as a side effect.
+  const effectiveAuthority = authorityState ?? "SIE_SHADOW";
+  const sieCanWrite = canWriteProductionSnapshot(effectiveAuthority, "sie");
+  const inShadowMode = isShadowMode(effectiveAuthority);
+
+  // In shadow mode, SIE writes to isolated shadow storage only.
+  // The commit proceeds but is marked as shadow (non-production).
+  // If authority is V2 (not shadow, not SIE), SIE should not be committing.
+  if (!sieCanWrite && !inShadowMode) {
+    return {
+      success: false,
+      committedGraphVersion: null,
+      requestId: processResult.request_id,
+      retryRequired: false,
+      violations: [{
+        type: "version_conflict",
+        entityId: processResult.request_id,
+        description: `SIE cannot commit: authority state "${effectiveAuthority}" does not permit SIE writes. Use shadow mode for evaluation or switch to SIE authority.`,
+      }],
+    };
+  }
+
+  // ─── Step 6: Build commit bundle ────────────────────────────────────
   const commitBundle = buildCommitBundle(processResult, sieGraphState);
 
-  // ─── Step 4: Compute V2 snapshot projection ─────────────────────────
+  // ─── Step 7: Compute V2 snapshot projection ─────────────────────────
   // If not provided externally, compute from the resulting SIE state.
   // The resulting state is the current state + new entities from the bundle.
   const snapshot = v2Projection ?? projectToV2Snapshot(buildResultingSIEState(sieGraphState, commitBundle));
 
-  // ─── Step 5: Payload fingerprint (already computed in bundle) ────────
+  // ─── Step 8: Payload fingerprint (already computed in bundle) ────────
   const payloadFingerprint = commitBundle.payloadFingerprint;
 
-  // ─── Step 6: Format mutations for V2 compatibility ──────────────────
+  // ─── Step 9: Format mutations for V2 compatibility ──────────────────
   const v2Mutations = formatMutationsForV2(commitBundle);
 
-  // ─── Step 7: Execute single atomic RPC call ─────────────────────────
+  // ─── Step 10: Execute base atomic RPC call ──────────────────────────
   const db = createServerSupabaseClient();
 
   const { data, error } = await db.rpc("v2_commit_update", {
@@ -434,7 +857,7 @@ export async function commitSIEResult(
     p_required_engine: "SIE",
   });
 
-  // ─── Step 8: Handle version conflict ────────────────────────────────
+  // ─── Step 11: Handle version conflict ───────────────────────────────
   if (error) {
     if (isVersionConflictError(error.message)) {
       // Version conflict: caller must reload graph state (including pending
@@ -449,10 +872,105 @@ export async function commitSIEResult(
       };
     }
 
-    // ─── Step 9: Other errors — throw ───────────────────────────────────
+    // Database validation is authoritative — if the DB rejects, we do NOT
+    // retry or override. Return the violation to the caller.
+    if (isDatabaseValidationError(error.message)) {
+      return {
+        success: false,
+        committedGraphVersion: null,
+        requestId: processResult.request_id,
+        retryRequired: false,
+        violations: [{
+          type: "dangling_reference",
+          entityId: processResult.request_id,
+          description: `Database validation rejected commit (authoritative): ${error.message}`,
+        }],
+      };
+    }
+
+    // ─── Step 12: Other errors — throw ──────────────────────────────────
     throw new Error(
       `SIE commit RPC failed for conversation ${conversationId}: ${error.message}`
     );
+  }
+
+  // ─── Step 13: Identity bundle commit ────────────────────────────────
+  // Pass ALL identity bundle sections to v2_commit_identity_bundle.
+  // This is a separate RPC that runs within the same DB transaction
+  // context. TypeScript passes through Python's decisions without
+  // modification.
+  const identityBundle = commitBundle.identityBundle;
+  const hasIdentityWork =
+    identityBundle.resolutionRecords.length > 0 ||
+    identityBundle.retrievalAttempts.length > 0 ||
+    identityBundle.pendingIdentityDetails.length > 0 ||
+    identityBundle.pendingPropositionMemberships.length > 0 ||
+    identityBundle.associationMutations.length > 0 ||
+    identityBundle.sharedProposals.length > 0 ||
+    identityBundle.requestStateTransition !== null;
+
+  if (hasIdentityWork) {
+    const { error: bundleError } = await db.rpc("v2_commit_identity_bundle", {
+      p_conversation_id: conversationId,
+      p_request_id: commitBundle.requestId,
+      p_identity_resolution_records:
+        identityBundle.resolutionRecords.length > 0
+          ? identityBundle.resolutionRecords
+          : null,
+      p_retrieval_attempts:
+        identityBundle.retrievalAttempts.length > 0
+          ? identityBundle.retrievalAttempts
+          : null,
+      p_pending_identity_details:
+        identityBundle.pendingIdentityDetails.length > 0
+          ? identityBundle.pendingIdentityDetails
+          : null,
+      p_pending_identity_propositions:
+        identityBundle.pendingPropositionMemberships.length > 0
+          ? identityBundle.pendingPropositionMemberships
+          : null,
+      p_association_mutations:
+        identityBundle.associationMutations.length > 0
+          ? identityBundle.associationMutations
+          : null,
+      p_shared_proposals:
+        identityBundle.sharedProposals.length > 0
+          ? identityBundle.sharedProposals
+          : null,
+      p_request_state_transition:
+        identityBundle.requestStateTransition ?? null,
+    });
+
+    if (bundleError) {
+      if (isVersionConflictError(bundleError.message)) {
+        return {
+          success: false,
+          committedGraphVersion: null,
+          requestId: processResult.request_id,
+          retryRequired: true,
+          violations: [],
+        };
+      }
+
+      // Database validation is authoritative for identity bundle too
+      if (isDatabaseValidationError(bundleError.message)) {
+        return {
+          success: false,
+          committedGraphVersion: null,
+          requestId: processResult.request_id,
+          retryRequired: false,
+          violations: [{
+            type: "dangling_reference",
+            entityId: processResult.request_id,
+            description: `Database validation rejected identity bundle (authoritative): ${bundleError.message}`,
+          }],
+        };
+      }
+
+      throw new Error(
+        `SIE identity bundle commit failed for conversation ${conversationId}: ${bundleError.message}`
+      );
+    }
   }
 
   // ─── Success ────────────────────────────────────────────────────────
@@ -471,6 +989,163 @@ export async function commitSIEResult(
 }
 
 // ─── Internal Helpers ───────────────────────────────────────────────────────
+
+/**
+ * Extracts identity bundle sections from a ProcessResult.
+ *
+ * These sections are passed directly to the v2_commit_identity_bundle RPC
+ * without any TypeScript semantic modification. TypeScript NEVER:
+ * - Chooses a concern
+ * - Reinterprets retrieval scores
+ * - Changes confidence bands
+ * - Overrides Python's identity decisions
+ *
+ * It only maps the ProcessResult fields to the bundle format expected by
+ * the database RPC.
+ */
+function extractIdentityBundleSections(
+  processResult: ProcessResult,
+  baseGraphVersion: number,
+  targetGraphVersion: number
+): IdentityBundleSections {
+  // ─── Resolution records ─────────────────────────────────────────────
+  // Map each identity resolution to the full record format.
+  // Diagnostic fields from ProcessResult.diagnostics are preserved as-is.
+  const resolutionRecords: IdentityResolutionRecordBundle[] =
+    processResult.identity_resolutions.map((resolution) => ({
+      record_id: `irr-${processResult.request_id}-${resolution.packet_id}`,
+      request_id: processResult.request_id,
+      packet_id: resolution.packet_id,
+      graph_version_analyzed: processResult.base_graph_version,
+      graph_snapshot_token: null,
+      outcome: resolution.outcome,
+      action: resolution.action,
+      identity_stage_status: resolution.identity_stage_status,
+      identity_confidence: resolution.identity_confidence ?? null,
+      sufficiency_stage_status: resolution.sufficiency_stage_status,
+      sufficiency_confidence: resolution.sufficiency_confidence ?? null,
+      matched_concern_id: resolution.matched_concern_id ?? null,
+      proposed_concern_id:
+        resolution.new_concern_proposal?.proposed_concern_id ?? null,
+      candidates_considered: resolution.candidates_considered ?? [],
+      irs_signals: [],
+      retrieval_attempts: [],
+      sufficiency_record: null,
+      evidence_references: [],
+      reasoning: resolution.rationale,
+      semantic_policy_version: processResult.pipeline_version,
+      retrieval_policy_version: processResult.pipeline_version,
+      model_config_version: processResult.model_version,
+      prompt_version: processResult.extraction_version,
+      proposed_dependency_group_id: null,
+    }));
+
+  // ─── Retrieval attempts ─────────────────────────────────────────────
+  // Currently extracted from the resolution records if available;
+  // future ProcessResult extensions will provide these directly.
+  const retrievalAttempts: RetrievalAttemptBundle[] = [];
+
+  // ─── Pending identity details ───────────────────────────────────────
+  // For each unresolved/deferred resolution, create a pending detail record.
+  const pendingIdentityDetails: PendingIdentityDetailBundle[] = [];
+  const pendingPropositionMemberships: PendingPropositionMembershipBundle[] = [];
+
+  for (const resolution of processResult.identity_resolutions) {
+    const isUnresolved =
+      resolution.outcome === "UNRESOLVED" ||
+      resolution.outcome === "DEFER" ||
+      resolution.outcome === "RETRIEVAL_INCONCLUSIVE" ||
+      resolution.outcome === "REQUIRES_VALIDATION";
+
+    if (isUnresolved) {
+      const detailId = `pid-${processResult.request_id}-${resolution.packet_id}`;
+      const decisionId = `psd-${processResult.request_id}-${resolution.packet_id}`;
+
+      pendingIdentityDetails.push({
+        detail_id: detailId,
+        decision_id: decisionId,
+        packet_id: resolution.packet_id,
+        graph_version_analyzed: processResult.base_graph_version,
+        source_resolution_record_id: `irr-${processResult.request_id}-${resolution.packet_id}`,
+        identity_stage_status: resolution.identity_stage_status,
+        identity_confidence: resolution.identity_confidence ?? null,
+        sufficiency_stage_status: resolution.sufficiency_stage_status,
+        sufficiency_confidence: resolution.sufficiency_confidence ?? null,
+      });
+
+      // Find propositions belonging to this packet for membership records
+      const packetMemberships = processResult.packet_memberships.filter(
+        (m) => m.packet_id === resolution.packet_id
+      );
+      for (const membership of packetMemberships) {
+        pendingPropositionMemberships.push({
+          id: `ppm-${decisionId}-${membership.proposition_id}-${membership.ordinal}`,
+          decision_id: decisionId,
+          proposition_id: membership.proposition_id,
+          ordinal: membership.ordinal,
+        });
+      }
+    }
+  }
+
+  // ─── Association mutations ──────────────────────────────────────────
+  // Pass through all proposed associations from Python without modification.
+  const associationMutations: AssociationMutationBundle[] =
+    processResult.proposed_associations.map((assoc) => ({
+      association_id: assoc.association_id,
+      association_creation_key: assoc.association_creation_key,
+      proposition_id: assoc.proposition_id,
+      concern_id: assoc.concern_id,
+      role: assoc.role,
+      confidence: assoc.confidence,
+      provenance: assoc.provenance,
+      established_by_packet_id: assoc.established_by_packet_id ?? null,
+      semantic_state: assoc.semantic_state ?? "ACTIVE",
+      version: assoc.version ?? 1,
+    }));
+
+  // ─── Shared proposals (new concerns) ───────────────────────────────
+  // Pass through all concern proposals from Python without modification.
+  const sharedProposals: SharedProposalBundle[] =
+    processResult.new_concern_proposals.map((proposal) => ({
+      concern_id: proposal.proposed_concern_id,
+      identity_summary: proposal.identity_summary,
+      display_title: proposal.display_title,
+      current_summary: proposal.initial_summary,
+      status: "ACTIVE",
+      canonical_parent_id: proposal.proposed_parent_id ?? null,
+      parent_resolution_state: proposal.parent_resolution_state ?? "PARENT_DEFERRED",
+      metadata: {},
+      semantic_version: 1,
+      merged_into_concern_id: null,
+    }));
+
+  // ─── Request state transition ───────────────────────────────────────
+  // Mark the commit request as COMMITTED after successful commit.
+  const requestStateTransition: RequestStateTransitionBundle | null =
+    processResult.request_id
+      ? {
+          request_id: processResult.request_id,
+          target_status: "COMMITTED",
+          committed_graph_version: targetGraphVersion,
+          result: {
+            success: true,
+            request_id: processResult.request_id,
+            graph_version: targetGraphVersion,
+          },
+        }
+      : null;
+
+  return {
+    resolutionRecords,
+    retrievalAttempts,
+    pendingIdentityDetails,
+    pendingPropositionMemberships,
+    associationMutations,
+    sharedProposals,
+    requestStateTransition,
+  };
+}
 
 /**
  * Formats the commit bundle mutations into the V2 mutation log format

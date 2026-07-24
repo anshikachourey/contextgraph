@@ -1,0 +1,109 @@
+{
+  "id": "IRID-005",
+  "title": "Merge redirect — packet targets a merged concern that redirects to survivor",
+  "tags": ["identity-resolution", "merge-redirect", "representative", "software-architecture"],
+  "category": "merge_redirect",
+  "domain": "software-architecture",
+  "length": "short",
+  "difficulty": "representative",
+  "existingGraph": {
+    "concerns": [
+      {
+        "concernId": "concern-auth-old",
+        "title": "Authentication Token Management",
+        "identitySummary": "How JWT tokens are issued, refreshed, rotated, and revoked in the authentication service.",
+        "status": "MERGED",
+        "parentConcernId": null,
+        "mergeTargetId": "concern-auth-unified",
+        "aliases": ["JWT management", "token rotation"],
+        "lastActiveAt": "2024-03-01T10:00:00Z"
+      },
+      {
+        "concernId": "concern-auth-unified",
+        "title": "Unified Authentication and Session Architecture",
+        "identitySummary": "The complete authentication architecture including token issuance, session management, refresh flows, device binding, and revocation across all client platforms.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["auth architecture", "session management", "token + session"],
+        "lastActiveAt": "2024-06-12T15:00:00Z"
+      },
+      {
+        "concernId": "concern-api-gateway",
+        "title": "API Gateway Rate Limiting",
+        "identitySummary": "Rate limiting strategy, quota management, and throttling behavior at the API gateway layer.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["rate limiting", "API throttling"],
+        "lastActiveAt": "2024-06-08T11:00:00Z"
+      }
+    ],
+    "propositions": [],
+    "associations": []
+  },
+  "newMessages": [
+    {
+      "role": "user",
+      "messageId": "msg-005",
+      "content": "The token rotation interval should be 15 minutes for mobile and 30 minutes for web. Also, when a token is revoked on one device, all other device sessions for that user should get a soft-invalidation signal within 60 seconds."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "pkt-irid-005",
+    "userEvidenceMessageIds": ["msg-005"],
+    "assistantContextMessageIds": [],
+    "conciseMeaning": "User specifies token rotation intervals per platform and cross-device revocation propagation behavior.",
+    "retentionRoles": ["INDEPENDENT_CONCERN_CANDIDATE", "DURABLE_PROPOSITION"]
+  },
+  "propositions": [
+    {
+      "propositionId": "prop-irid-005-a",
+      "speakerRole": "USER",
+      "canonicalMeaning": "Token rotation: 15 min for mobile, 30 min for web",
+      "retentionLevels": ["DURABLE_PROPOSITION"]
+    },
+    {
+      "propositionId": "prop-irid-005-b",
+      "speakerRole": "USER",
+      "canonicalMeaning": "Cross-device revocation propagation within 60 seconds via soft-invalidation signal",
+      "retentionLevels": ["DURABLE_PROPOSITION"]
+    }
+  ],
+  "retrieval": {
+    "initialCandidates": [
+      { "concernId": "concern-auth-old", "rank": 1, "score": 0.91 },
+      { "concernId": "concern-auth-unified", "rank": 2, "score": 0.85 },
+      { "concernId": "concern-api-gateway", "rank": 3, "score": 0.42 }
+    ]
+  },
+  "expectedIdentityResult": {
+    "outcome": "YES",
+    "action": "ASSIGN_EXISTING",
+    "matchedConcernId": "concern-auth-unified",
+    "proposedNewConcern": null,
+    "identityConfidence": "HIGH",
+    "sufficiencyConfidence": null,
+    "mustWiden": false,
+    "reactivation": false,
+    "mergeRedirectFollowed": true,
+    "substantiveResumption": false
+  },
+  "forbiddenOutcomes": [
+    {
+      "outcome": "YES",
+      "action": "ASSIGN_EXISTING",
+      "matchedConcernId": "concern-auth-old",
+      "reason": "Merged concerns SHALL NOT receive new primary ownership"
+    },
+    {
+      "outcome": "NO",
+      "action": "PROPOSE_NEW",
+      "reason": "The unified auth concern already covers this identity"
+    }
+  ],
+  "criticalAssertions": [
+    "matched_concern=concern-auth-unified",
+    "merge_redirect_followed",
+    "merged_concern_not_assigned_directly"
+  ],
+  "qualityMetrics": ["false_assignment"]
+}

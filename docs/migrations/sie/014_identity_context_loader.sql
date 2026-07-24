@@ -255,10 +255,11 @@ BEGIN
                 ''source_text_hash'', ce.source_text_hash,
                 ''embedding_model_version'', ce.embedding_model_version,
                 ''graph_version'', ce.graph_version,
-                ''is_current'', (ce.graph_version = %s)
+                ''is_current'', (ce.graph_version = %s AND ce.is_active = TRUE)
             )), ''[]''::JSONB)
             FROM sie_concern_embeddings ce
             WHERE ce.conversation_id = %L
+              AND ce.is_active = TRUE
               AND ce.concern_id <> ALL(%L::TEXT[])',
             v_graph_version, p_conversation_id, v_suppressed_ids
         ) INTO v_concern_embeddings;
@@ -346,6 +347,14 @@ END $$;
 --    omitted. Omitting them would appear as successful empty retrieval, which
 --    violates SME-3 ("Retrieval absence is not semantic absence"). The caller
 --    can decide whether to use stale embeddings or treat them as unavailable.
+--    Validity is determined by: graph_version match AND is_active=TRUE.
+--    Invalidated embeddings (is_active=FALSE) due to source_text_hash changes
+--    or model_version retirement are excluded from the result entirely —
+--    they are not "stale but usable," they are "invalidated and replaced."
+--    Only active embeddings whose graph_version doesn't match the current
+--    snapshot are returned with is_current=false (stale but potentially usable
+--    pending refresh). Source_text_hash and embedding_model_version are included
+--    so the Python consumer can make further validity decisions per policy.
 --
 -- 4. When the embeddings table does not exist at all, the concern_embeddings
 --    field returns {status: "UNAVAILABLE", reason: "..."} rather than an empty

@@ -1,0 +1,108 @@
+{
+  "id": "IRID-006",
+  "title": "Parent-child ambiguity — packet could belong to broad parent or precise child",
+  "tags": ["identity-resolution", "parent-child-ambiguity", "adversarial", "esports"],
+  "category": "parent_child_ambiguity",
+  "domain": "competitive-gaming-esports",
+  "length": "short",
+  "difficulty": "adversarial",
+  "existingGraph": {
+    "concerns": [
+      {
+        "concernId": "concern-team-strategy",
+        "title": "Competitive Team Strategy and Meta",
+        "identitySummary": "Overall competitive strategy for the Valorant roster: agent compositions, map vetoes, default setups, and adaptation to the ranked meta.",
+        "status": "ACTIVE",
+        "parentConcernId": null,
+        "aliases": ["team strategy", "comp meta", "competitive approach"],
+        "lastActiveAt": "2024-06-14T20:00:00Z"
+      },
+      {
+        "concernId": "concern-haven-strats",
+        "title": "Haven Map-Specific Strategies",
+        "identitySummary": "Attack and defense strategies specifically for Haven including three-site rotations, garage control, and A-long aggression timings.",
+        "status": "ACTIVE",
+        "parentConcernId": "concern-team-strategy",
+        "aliases": ["Haven strats", "Haven rotations"],
+        "lastActiveAt": "2024-06-13T19:00:00Z"
+      },
+      {
+        "concernId": "concern-agent-pool",
+        "title": "Individual Agent Pool Development",
+        "identitySummary": "Which agents each player should master for flexibility in draft, including off-role comfort picks and counter-picks.",
+        "status": "ACTIVE",
+        "parentConcernId": "concern-team-strategy",
+        "aliases": ["agent pool", "player flexibility", "counter-picks"],
+        "lastActiveAt": "2024-06-12T18:00:00Z"
+      }
+    ],
+    "propositions": [],
+    "associations": []
+  },
+  "newMessages": [
+    {
+      "role": "user",
+      "messageId": "msg-006",
+      "content": "For Haven specifically, I think we should switch our A-long aggression from Jett to Neon. Neon's slide lets us take the timing fight faster, and if they stack A we can rotate through garage to C faster with her sprint. That changes our agent comp for Haven only."
+    }
+  ],
+  "semanticPacket": {
+    "packetId": "pkt-irid-006",
+    "userEvidenceMessageIds": ["msg-006"],
+    "assistantContextMessageIds": [],
+    "conciseMeaning": "User proposes a Haven-specific agent substitution (Jett→Neon) for A-long aggression with tactical reasoning about rotation speed.",
+    "retentionRoles": ["INDEPENDENT_CONCERN_CANDIDATE", "DURABLE_PROPOSITION"]
+  },
+  "propositions": [
+    {
+      "propositionId": "prop-irid-006-a",
+      "speakerRole": "USER",
+      "canonicalMeaning": "Switch Haven A-long aggression agent from Jett to Neon for faster timing fights and rotation via sprint",
+      "retentionLevels": ["INDEPENDENT_CONCERN_CANDIDATE"]
+    }
+  ],
+  "retrieval": {
+    "initialCandidates": [
+      { "concernId": "concern-team-strategy", "rank": 1, "score": 0.83 },
+      { "concernId": "concern-haven-strats", "rank": 2, "score": 0.81 },
+      { "concernId": "concern-agent-pool", "rank": 3, "score": 0.79 }
+    ]
+  },
+  "expectedIdentityResult": {
+    "outcome": "YES",
+    "action": "ASSIGN_EXISTING",
+    "matchedConcernId": "concern-haven-strats",
+    "proposedNewConcern": null,
+    "identityConfidence": "HIGH",
+    "sufficiencyConfidence": null,
+    "mustWiden": false,
+    "reactivation": false,
+    "mergeRedirectFollowed": false,
+    "substantiveResumption": false
+  },
+  "forbiddenOutcomes": [
+    {
+      "outcome": "YES",
+      "action": "ASSIGN_EXISTING",
+      "matchedConcernId": "concern-team-strategy",
+      "reason": "Broader parent exists but precise child is the exact identity"
+    },
+    {
+      "outcome": "YES",
+      "action": "ASSIGN_EXISTING",
+      "matchedConcernId": "concern-agent-pool",
+      "reason": "Agent pool is about which agents to learn, not map-specific tactics"
+    },
+    {
+      "outcome": "NO",
+      "action": "PROPOSE_NEW",
+      "reason": "Haven strats concern already exists for this identity"
+    }
+  ],
+  "criticalAssertions": [
+    "matched_concern=concern-haven-strats",
+    "precise_child_beats_broad_parent",
+    "exact_concern_continuity_outranks_broad_topic"
+  ],
+  "qualityMetrics": ["false_assignment"]
+}

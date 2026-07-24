@@ -579,7 +579,10 @@ describe("Invariant Validator", () => {
           {
             packet_id: "pkt-001",
             outcome: "YES",
-            confidence: "HIGH",
+            action: "ASSIGN_EXISTING",
+            identity_stage_status: "COMPLETED",
+            identity_confidence: "HIGH",
+            sufficiency_stage_status: "NOT_RUN",
             matched_concern_id: "concern-a",
             new_concern_proposal: null,
             candidates_considered: ["concern-a"],
