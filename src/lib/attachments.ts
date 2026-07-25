@@ -1,4 +1,3 @@
-import { createBrowserSupabaseClient } from "@/src/lib/supabase/client";
 import type { AttachmentMeta } from "@/src/types/message";
 
 export const ALLOWED_MIME_TYPES = [
@@ -16,6 +15,7 @@ export const MAX_ATTACHMENTS = 5;
 
 /**
  * Validates a file against allowed MIME types and size constraints.
+ * Client-side pre-check before uploading to server.
  */
 export function validateFile(file: File): { valid: boolean; error?: string } {
   if (!ALLOWED_MIME_TYPES.includes(file.type)) {
@@ -36,45 +36,62 @@ export function validateFile(file: File): { valid: boolean; error?: string } {
 }
 
 /**
- * Uploads a file to Supabase Storage and returns attachment metadata.
- * Upload path: chat-attachments/{conversationId}/{uuid}-{filename}
+ * Uploads a file through the server-side API which handles private storage.
+ * Returns attachment metadata with storage path and signed URL.
  */
 export async function uploadAttachment(
   file: File,
   conversationId: string,
 ): Promise<AttachmentMeta> {
-  const supabase = createBrowserSupabaseClient();
-  const uuid = crypto.randomUUID();
-  // Sanitize filename: replace spaces and special chars with hyphens
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
-  const path = `${conversationId}/${uuid}-${safeName}`;
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("conversationId", conversationId);
 
-  const { error, data } = await supabase.storage
-    .from("chat-attachments")
-    .upload(path, file, {
-      contentType: file.type,
-      upsert: false,
-    });
+  const res = await fetch("/api/attachments", {
+    method: "POST",
+    body: formData,
+  });
 
-  if (error) {
-    console.error(`[attachments] Upload failed:`, {
-      fileName: file.name,
-      fileSize: file.size,
-      fileType: file.type,
-      path,
-      error,
-    });
-    throw new Error(`Upload failed for "${file.name}": ${error.message}`);
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({ error: "Upload failed" }));
+    throw new Error(errBody.error ?? `Upload failed (${res.status})`);
   }
 
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("chat-attachments").getPublicUrl(path);
+  const data = await res.json();
 
   return {
-    url: publicUrl,
-    filename: file.name,
-    mimeType: file.type,
-    size: file.size,
+    storagePath: data.storagePath,
+    url: data.url,
+    filename: data.filename,
+    mimeType: data.mimeType,
+    size: data.size,
   };
+}
+
+/**
+ * Fetches fresh signed URLs for attachments that have storage paths.
+ * Used when loading conversations to refresh expired URLs.
+ */
+export async function refreshAttachmentUrls(
+  attachments: AttachmentMeta[],
+): Promise<AttachmentMeta[]> {
+  const pathsToRefresh = attachments.filter((a) => a.storagePath).map((a) => a.storagePath);
+
+  if (pathsToRefresh.length === 0) return attachments;
+
+  try {
+    const res = await fetch(`/api/attachments?paths=${encodeURIComponent(pathsToRefresh.join(","))}`);
+    if (!res.ok) return attachments; // Graceful fallback — keep existing URLs
+
+    const { urls } = await res.json() as { urls: Record<string, string | null> };
+
+    return attachments.map((a) => {
+      if (a.storagePath && urls[a.storagePath]) {
+        return { ...a, url: urls[a.storagePath]! };
+      }
+      return a;
+    });
+  } catch {
+    return attachments; // Network error — keep existing URLs
+  }
 }

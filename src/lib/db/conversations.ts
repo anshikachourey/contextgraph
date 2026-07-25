@@ -113,14 +113,24 @@ export async function deleteConversation(id: string): Promise<void> {
     .eq("conversation_id", id);
   if (nodeError) throw new Error(`Failed to delete nodes: ${nodeError.message}`);
 
-  // 5. Delete messages
+  // 5. Delete stored attachment files from private bucket
+  const { data: storageList } = await db.storage
+    .from("chat-attachments")
+    .list(id);
+
+  if (storageList && storageList.length > 0) {
+    const filePaths = storageList.map((f) => `${id}/${f.name}`);
+    await db.storage.from("chat-attachments").remove(filePaths);
+  }
+
+  // 6. Delete messages
   const { error: msgError } = await db
     .from("messages")
     .delete()
     .eq("conversation_id", id);
   if (msgError) throw new Error(`Failed to delete messages: ${msgError.message}`);
 
-  // 6. Delete the conversation itself
+  // 7. Delete the conversation itself
   const { error: convError } = await db
     .from("conversations")
     .delete()
@@ -203,6 +213,40 @@ async function loadConversationData(conversation: DbConversation): Promise<Conve
     parentNodeId: m.parent_node_id ?? null,
     branchRootMessageId: m.branch_root_message_id ?? null,
   }));
+
+  // Generate signed URLs for any attachments
+  const SIGNED_URL_EXPIRY = 3600; // 1 hour
+  const attachmentPaths: string[] = [];
+  for (const msg of messages) {
+    if (msg.attachments) {
+      for (const att of msg.attachments) {
+        if (att.storagePath) attachmentPaths.push(att.storagePath);
+      }
+    }
+  }
+
+  if (attachmentPaths.length > 0) {
+    const { data: signedData } = await db.storage
+      .from("chat-attachments")
+      .createSignedUrls(attachmentPaths, SIGNED_URL_EXPIRY);
+
+    if (signedData) {
+      const urlMap = new Map<string, string>();
+      for (const item of signedData) {
+        if (item.path && item.signedUrl) urlMap.set(item.path, item.signedUrl);
+      }
+
+      for (const msg of messages) {
+        if (msg.attachments) {
+          for (const att of msg.attachments) {
+            if (att.storagePath && urlMap.has(att.storagePath)) {
+              att.url = urlMap.get(att.storagePath)!;
+            }
+          }
+        }
+      }
+    }
+  }
 
   // Load neighborhood hues for color derivation
   const neighborhoodIds = (dbNodes ?? [])

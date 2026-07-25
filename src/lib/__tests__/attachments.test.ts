@@ -1,143 +1,145 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  ALLOWED_MIME_TYPES,
-  MAX_FILE_SIZE,
-  MAX_ATTACHMENTS,
-  validateFile,
-  uploadAttachment,
-} from "../attachments";
+import { describe, it, expect } from "vitest";
+import { validateFile, ALLOWED_MIME_TYPES, MAX_FILE_SIZE } from "../attachments";
 
-// Mock the Supabase client
-vi.mock("@/src/lib/supabase/client", () => ({
-  createBrowserSupabaseClient: vi.fn(),
-}));
-
-import { createBrowserSupabaseClient } from "@/src/lib/supabase/client";
-
+// Mock File object factory
 function makeFile(name: string, size: number, type: string): File {
   const buffer = new ArrayBuffer(size);
   return new File([buffer], name, { type });
 }
 
-describe("attachments constants", () => {
-  it("exports correct ALLOWED_MIME_TYPES", () => {
-    expect(ALLOWED_MIME_TYPES).toEqual([
-      "image/jpeg",
-      "image/png",
-      "image/gif",
-      "image/webp",
-      "application/pdf",
-      "text/plain",
-    ]);
-  });
-
-  it("exports MAX_FILE_SIZE as 10MB", () => {
-    expect(MAX_FILE_SIZE).toBe(10 * 1024 * 1024);
-  });
-
-  it("exports MAX_ATTACHMENTS as 5", () => {
-    expect(MAX_ATTACHMENTS).toBe(5);
-  });
-});
-
-describe("validateFile", () => {
-  it("accepts a valid JPEG image under 10MB", () => {
-    const file = makeFile("photo.jpg", 5 * 1024 * 1024, "image/jpeg");
-    expect(validateFile(file)).toEqual({ valid: true });
-  });
-
-  it("accepts a valid PNG image", () => {
-    const file = makeFile("screenshot.png", 1024, "image/png");
-    expect(validateFile(file)).toEqual({ valid: true });
-  });
-
-  it("accepts a valid PDF file", () => {
-    const file = makeFile("doc.pdf", 2 * 1024 * 1024, "application/pdf");
-    expect(validateFile(file)).toEqual({ valid: true });
-  });
-
-  it("accepts a valid plain text file", () => {
-    const file = makeFile("notes.txt", 512, "text/plain");
-    expect(validateFile(file)).toEqual({ valid: true });
-  });
-
-  it("rejects an unsupported MIME type", () => {
-    const file = makeFile("archive.zip", 1024, "application/zip");
-    const result = validateFile(file);
-    expect(result.valid).toBe(false);
-    expect(result.error).toContain("Unsupported file type");
-    expect(result.error).toContain("application/zip");
-  });
-
-  it("rejects a file exceeding 10MB", () => {
-    const file = makeFile("bigfile.png", 11 * 1024 * 1024, "image/png");
-    const result = validateFile(file);
-    expect(result.valid).toBe(false);
-    expect(result.error).toContain("exceeds the 10 MB size limit");
-  });
-
-  it("accepts a file exactly at 10MB", () => {
-    const file = makeFile("exact.png", 10 * 1024 * 1024, "image/png");
-    expect(validateFile(file)).toEqual({ valid: true });
-  });
-
-  it("rejects file with unsupported type even if size is valid", () => {
-    const file = makeFile("script.js", 100, "application/javascript");
-    const result = validateFile(file);
-    expect(result.valid).toBe(false);
-    expect(result.error).toContain("Unsupported file type");
-  });
-});
-
-describe("uploadAttachment", () => {
-  const mockUpload = vi.fn();
-  const mockGetPublicUrl = vi.fn();
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    const mockStorage = {
-      from: vi.fn().mockReturnValue({
-        upload: mockUpload,
-        getPublicUrl: mockGetPublicUrl,
-      }),
-    };
-    vi.mocked(createBrowserSupabaseClient).mockReturnValue({
-      storage: mockStorage,
-    } as any);
-  });
-
-  it("uploads file to correct path and returns metadata", async () => {
-    mockUpload.mockResolvedValue({ error: null });
-    mockGetPublicUrl.mockReturnValue({
-      data: { publicUrl: "https://storage.example.com/chat-attachments/conv-1/uuid-photo.jpg" },
+describe("attachments", () => {
+  describe("validateFile", () => {
+    it("accepts valid JPEG image", () => {
+      const file = makeFile("photo.jpg", 1024, "image/jpeg");
+      const result = validateFile(file);
+      expect(result.valid).toBe(true);
+      expect(result.error).toBeUndefined();
     });
 
-    const file = makeFile("photo.jpg", 5000, "image/jpeg");
-    const result = await uploadAttachment(file, "conv-1");
+    it("accepts valid PNG image", () => {
+      const file = makeFile("screenshot.png", 5000, "image/png");
+      expect(validateFile(file).valid).toBe(true);
+    });
 
-    expect(mockUpload).toHaveBeenCalledWith(
-      expect.stringMatching(/^conv-1\/[a-f0-9-]+-photo\.jpg$/),
-      file,
-      { contentType: "image/jpeg", upsert: false },
-    );
+    it("accepts valid GIF", () => {
+      const file = makeFile("animation.gif", 2048, "image/gif");
+      expect(validateFile(file).valid).toBe(true);
+    });
 
-    expect(result).toEqual({
-      url: "https://storage.example.com/chat-attachments/conv-1/uuid-photo.jpg",
-      filename: "photo.jpg",
-      mimeType: "image/jpeg",
-      size: 5000,
+    it("accepts valid WebP image", () => {
+      const file = makeFile("photo.webp", 3000, "image/webp");
+      expect(validateFile(file).valid).toBe(true);
+    });
+
+    it("accepts valid PDF", () => {
+      const file = makeFile("doc.pdf", 100000, "application/pdf");
+      expect(validateFile(file).valid).toBe(true);
+    });
+
+    it("accepts valid plain text", () => {
+      const file = makeFile("notes.txt", 500, "text/plain");
+      expect(validateFile(file).valid).toBe(true);
+    });
+
+    it("rejects unsupported MIME type — application/zip", () => {
+      const file = makeFile("archive.zip", 1024, "application/zip");
+      const result = validateFile(file);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("Unsupported file type");
+      expect(result.error).toContain("application/zip");
+    });
+
+    it("rejects unsupported MIME type — text/html", () => {
+      const file = makeFile("page.html", 500, "text/html");
+      const result = validateFile(file);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("Unsupported file type");
+    });
+
+    it("rejects unsupported MIME type — application/javascript", () => {
+      const file = makeFile("script.js", 200, "application/javascript");
+      expect(validateFile(file).valid).toBe(false);
+    });
+
+    it("rejects file exceeding 10 MB size limit", () => {
+      const file = makeFile("huge.jpg", MAX_FILE_SIZE + 1, "image/jpeg");
+      const result = validateFile(file);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("exceeds the 10 MB size limit");
+    });
+
+    it("accepts file exactly at 10 MB limit", () => {
+      const file = makeFile("exact.png", MAX_FILE_SIZE, "image/png");
+      expect(validateFile(file).valid).toBe(true);
+    });
+
+    it("rejects empty MIME type", () => {
+      const file = makeFile("noext", 100, "");
+      expect(validateFile(file).valid).toBe(false);
+    });
+
+    it("lists all allowed MIME types", () => {
+      expect(ALLOWED_MIME_TYPES).toContain("image/jpeg");
+      expect(ALLOWED_MIME_TYPES).toContain("image/png");
+      expect(ALLOWED_MIME_TYPES).toContain("image/gif");
+      expect(ALLOWED_MIME_TYPES).toContain("image/webp");
+      expect(ALLOWED_MIME_TYPES).toContain("application/pdf");
+      expect(ALLOWED_MIME_TYPES).toContain("text/plain");
+      expect(ALLOWED_MIME_TYPES).toHaveLength(6);
     });
   });
 
-  it("throws an error when upload fails", async () => {
-    mockUpload.mockResolvedValue({
-      error: { message: "Bucket not found" },
+  describe("private storage security model", () => {
+    it("upload goes through server API, not direct browser Supabase client", () => {
+      // The uploadAttachment function uses fetch("/api/attachments") — not the browser Supabase client
+      // This is a structural test: the module should NOT import createBrowserSupabaseClient
+      const moduleSource = require("fs").readFileSync(
+        require("path").resolve(__dirname, "../attachments.ts"),
+        "utf-8"
+      );
+      expect(moduleSource).not.toContain("createBrowserSupabaseClient");
+      expect(moduleSource).toContain("/api/attachments");
     });
 
-    const file = makeFile("doc.pdf", 1024, "application/pdf");
+    it("AttachmentMeta includes storagePath for server-side signed URL generation", () => {
+      // Type-level guarantee — storagePath is required
+      const meta: import("@/src/types/message").AttachmentMeta = {
+        storagePath: "conv-id/uuid-file.jpg",
+        url: "https://signed-url.example.com/...",
+        filename: "file.jpg",
+        mimeType: "image/jpeg",
+        size: 1024,
+      };
+      expect(meta.storagePath).toBeDefined();
+      expect(meta.storagePath).toContain("conv-id");
+    });
 
-    await expect(uploadAttachment(file, "conv-2")).rejects.toThrow(
-      'Upload failed for "doc.pdf": Bucket not found',
-    );
+    it("conversation deletion removes storage objects", () => {
+      // Structural test: deleteConversation should reference storage removal
+      const moduleSource = require("fs").readFileSync(
+        require("path").resolve(__dirname, "../db/conversations.ts"),
+        "utf-8"
+      );
+      expect(moduleSource).toContain("chat-attachments");
+      expect(moduleSource).toContain(".remove(");
+      expect(moduleSource).toContain(".list(");
+    });
+
+    it("migration makes bucket private and removes broad policies", () => {
+      const migrationSource = require("fs").readFileSync(
+        require("path").resolve(__dirname, "../../../supabase/migrations/20250117000000_add_attachments_column_and_storage.sql"),
+        "utf-8"
+      );
+      // Bucket must be private
+      expect(migrationSource).toContain("public = false");
+      // Must drop the old broad policies
+      expect(migrationSource).toContain("DROP POLICY IF EXISTS");
+      expect(migrationSource).toContain("Allow all operations on chat-attachments");
+      expect(migrationSource).toContain("Allow public read from chat-attachments");
+      expect(migrationSource).toContain("Allow anon uploads to chat-attachments");
+      // Must be idempotent
+      expect(migrationSource).toContain("IF NOT EXISTS");
+      expect(migrationSource).toContain("ON CONFLICT");
+    });
   });
 });

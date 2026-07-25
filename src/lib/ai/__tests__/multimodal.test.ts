@@ -17,6 +17,7 @@ describe("buildMultimodalContent", () => {
 
   it("always includes the user text as the first content part", () => {
     const attachment: AttachmentMeta = {
+      storagePath: "conv/file",
       url: "https://storage.example.com/photo.png",
       filename: "photo.png",
       mimeType: "image/png",
@@ -30,6 +31,7 @@ describe("buildMultimodalContent", () => {
 
   it("formats image attachments as image_url parts for OpenAI", () => {
     const attachment: AttachmentMeta = {
+      storagePath: "conv/file",
       url: "https://storage.example.com/photo.jpg",
       filename: "photo.jpg",
       mimeType: "image/jpeg",
@@ -44,8 +46,8 @@ describe("buildMultimodalContent", () => {
 
   it("handles multiple image attachments for OpenAI", () => {
     const attachments: AttachmentMeta[] = [
-      { url: "https://s.com/a.png", filename: "a.png", mimeType: "image/png", size: 100 },
-      { url: "https://s.com/b.gif", filename: "b.gif", mimeType: "image/gif", size: 200 },
+      { storagePath: "path/file", url: "https://s.com/a.png", filename: "a.png", mimeType: "image/png", size: 100 },
+      { storagePath: "path/file", url: "https://s.com/b.gif", filename: "b.gif", mimeType: "image/gif", size: 200 },
     ];
     const result = buildMultimodalContent(textContent, attachments, "openai");
     expect(result).toHaveLength(3);
@@ -57,6 +59,7 @@ describe("buildMultimodalContent", () => {
 
   it("formats image attachments as image blocks for Anthropic", () => {
     const attachment: AttachmentMeta = {
+      storagePath: "conv/file",
       url: "https://storage.example.com/photo.webp",
       filename: "photo.webp",
       mimeType: "image/webp",
@@ -75,6 +78,7 @@ describe("buildMultimodalContent", () => {
 
   it("uses the correct media_type from the attachment mimeType for Anthropic", () => {
     const attachment: AttachmentMeta = {
+      storagePath: "conv/file",
       url: "https://s.com/pic.png",
       filename: "pic.png",
       mimeType: "image/png",
@@ -92,6 +96,7 @@ describe("buildMultimodalContent", () => {
 
   it("formats PDF attachments as text content parts with file reference", () => {
     const attachment: AttachmentMeta = {
+      storagePath: "conv/file",
       url: "https://storage.example.com/doc.pdf",
       filename: "doc.pdf",
       mimeType: "application/pdf",
@@ -106,6 +111,7 @@ describe("buildMultimodalContent", () => {
 
   it("formats plain text attachments as text content parts with file reference", () => {
     const attachment: AttachmentMeta = {
+      storagePath: "conv/file",
       url: "https://storage.example.com/notes.txt",
       filename: "notes.txt",
       mimeType: "text/plain",
@@ -122,9 +128,9 @@ describe("buildMultimodalContent", () => {
 
   it("handles a mix of image and non-image attachments", () => {
     const attachments: AttachmentMeta[] = [
-      { url: "https://s.com/photo.jpg", filename: "photo.jpg", mimeType: "image/jpeg", size: 3000 },
-      { url: "https://s.com/report.pdf", filename: "report.pdf", mimeType: "application/pdf", size: 10000 },
-      { url: "https://s.com/diagram.png", filename: "diagram.png", mimeType: "image/png", size: 2000 },
+      { storagePath: "path/file", url: "https://s.com/photo.jpg", filename: "photo.jpg", mimeType: "image/jpeg", size: 3000 },
+      { storagePath: "path/file", url: "https://s.com/report.pdf", filename: "report.pdf", mimeType: "application/pdf", size: 10000 },
+      { storagePath: "path/file", url: "https://s.com/diagram.png", filename: "diagram.png", mimeType: "image/png", size: 2000 },
     ];
     const result = buildMultimodalContent(textContent, attachments, "openai");
 
@@ -140,11 +146,11 @@ describe("buildMultimodalContent", () => {
 
   it("all attachments are represented in the output", () => {
     const attachments: AttachmentMeta[] = [
-      { url: "https://s.com/a.jpg", filename: "a.jpg", mimeType: "image/jpeg", size: 100 },
-      { url: "https://s.com/b.pdf", filename: "b.pdf", mimeType: "application/pdf", size: 200 },
-      { url: "https://s.com/c.txt", filename: "c.txt", mimeType: "text/plain", size: 300 },
-      { url: "https://s.com/d.png", filename: "d.png", mimeType: "image/png", size: 400 },
-      { url: "https://s.com/e.webp", filename: "e.webp", mimeType: "image/webp", size: 500 },
+      { storagePath: "path/file", url: "https://s.com/a.jpg", filename: "a.jpg", mimeType: "image/jpeg", size: 100 },
+      { storagePath: "path/file", url: "https://s.com/b.pdf", filename: "b.pdf", mimeType: "application/pdf", size: 200 },
+      { storagePath: "path/file", url: "https://s.com/c.txt", filename: "c.txt", mimeType: "text/plain", size: 300 },
+      { storagePath: "path/file", url: "https://s.com/d.png", filename: "d.png", mimeType: "image/png", size: 400 },
+      { storagePath: "path/file", url: "https://s.com/e.webp", filename: "e.webp", mimeType: "image/webp", size: 500 },
     ];
     const result = buildMultimodalContent(textContent, attachments, "anthropic");
     // 1 text part + 5 attachment parts = 6 total

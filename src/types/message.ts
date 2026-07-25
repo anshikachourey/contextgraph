@@ -1,8 +1,14 @@
 export type AttachmentMeta = {
-  url: string;
+  /** Storage object path (e.g. "conv-id/uuid-filename.png"). Used for signed URL generation. */
+  storagePath: string;
+  /** Original filename for display */
   filename: string;
+  /** MIME type */
   mimeType: string;
+  /** File size in bytes */
   size: number;
+  /** Transient signed URL — generated on load, expires after a period. Not persisted to DB. */
+  url: string;
 };
 
 export type ChatMessage = {
