@@ -30,7 +30,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (messageIds.length > 0) {
       const { data } = await db
         .from("messages")
-        .select("id, role, content, created_at, parent_node_id")
+        .select("id, role, content, attachments, created_at, parent_node_id")
         .eq("conversation_id", conversationId)
         .in("id", messageIds)
         .order("created_at", { ascending: true });
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (parentNodeId) {
     const { data } = await db
       .from("messages")
-      .select("id, role, content, created_at, parent_node_id")
+      .select("id, role, content, attachments, created_at, parent_node_id")
       .eq("conversation_id", conversationId)
       .eq("parent_node_id", parentNodeId)
       .order("created_at", { ascending: true });
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       if (provMessageIds.length > 0) {
         const { data: provMsgs } = await db
           .from("messages")
-          .select("id, role, content, created_at, parent_node_id")
+          .select("id, role, content, attachments, created_at, parent_node_id")
           .eq("conversation_id", conversationId)
           .in("id", provMessageIds)
           .order("created_at", { ascending: true });

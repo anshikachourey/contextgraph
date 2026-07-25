@@ -92,7 +92,7 @@ export function materializeVariant(base: EvalFixture, variant: EvalVariant): Eva
   materialized.id = variant.id;
 
   for (const patch of variant.transformation.patches) {
-    applyPatch(materialized, patch.path, patch.op, patch.value);
+    applyPatch(materialized as unknown as Record<string, unknown>, patch.path, patch.op, patch.value);
   }
 
   return materialized;

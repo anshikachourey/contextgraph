@@ -6,17 +6,64 @@ import ConversationSidebar from "@/src/components/layout/ConversationSidebar";
 import ChatPanel from "@/src/components/chat/ChatPanel";
 import GraphDrawer from "@/src/components/graph/GraphDrawer";
 import V2GraphPreview from "@/src/components/graph-v2/V2GraphPreview";
+import SettingsModal from "@/src/components/settings/SettingsModal";
 import { useStreamChat } from "@/src/hooks/useStreamChat";
+import { useTheme } from "@/src/hooks/useTheme";
 import type { ContextNode } from "@/src/types/node";
 import type { ChatMessage } from "@/src/types/message";
 import type { SemanticEdge } from "@/src/types/edge";
-import type { ChatResponse, ChatErrorResponse } from "@/src/types/ai";
 import type { ConversationRouteResponse } from "@/app/api/conversation/route";
 import type { ConversationListItem } from "@/src/lib/db/conversations";
 import type { V2ContinuationContext } from "@/src/types/v2-continuation";
 import { buildV2ContinuationPrompt } from "@/src/types/v2-continuation";
 
+/**
+ * Reads an NDJSON streaming response from /api/chat and returns the full content.
+ * The stream sends lines like {"type":"token","content":"..."} and {"type":"done","stopReason":"..."}.
+ */
+async function readStreamToCompletion(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("Response body is not readable.");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed.type === "token") {
+          content += parsed.content;
+        } else if (parsed.type === "error") {
+          throw new Error(parsed.error);
+        }
+      } catch (e) {
+        if (e instanceof SyntaxError) continue; // skip malformed lines
+        throw e;
+      }
+    }
+  }
+
+  return content;
+}
+
 export default function Home() {
+  // ─── Theme ────────────────────────────────────────────────────────────────
+  const { mode: themeMode, setMode: setThemeMode } = useTheme();
+
+  // ─── Settings modal state ─────────────────────────────────────────────────
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   // ─── Conversation list state ──────────────────────────────────────────────
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
   const [archivedConversations, setArchivedConversations] = useState<ConversationListItem[]>([]);
@@ -236,11 +283,11 @@ export default function Home() {
         });
 
         if (chatRes.ok) {
-          const chatData = (await chatRes.json()) as ChatResponse;
+          const chatContent = await readStreamToCompletion(chatRes);
           const assistantMessage: ChatMessage = {
             id: crypto.randomUUID(),
             role: "assistant",
-            content: chatData.content,
+            content: chatContent,
             parentNodeId: null,
             branchRootMessageId: null,
           };
@@ -397,6 +444,78 @@ export default function Home() {
     }
   }
 
+  async function handleDelete(id: string) {
+    try {
+      const res = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "delete" }),
+      });
+
+      if (!res.ok) return;
+
+      // Remove from whichever list it's in
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      setArchivedConversations((prev) => prev.filter((c) => c.id !== id));
+
+      // If we deleted the active conversation, switch to another
+      if (id === conversationId) {
+        const remaining = conversations.filter((c) => c.id !== id);
+        if (remaining.length > 0) {
+          await loadConversation(remaining[0].id);
+        } else {
+          await handleNewChat();
+        }
+      }
+    } catch {
+      // Silently fail
+    }
+  }
+
+  async function handleRename(id: string, newTitle: string) {
+    try {
+      await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, title: newTitle }),
+      });
+
+      // Update in whichever list it's in
+      setConversations((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, title: newTitle } : c)),
+      );
+      setArchivedConversations((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, title: newTitle } : c)),
+      );
+    } catch {
+      // Silently fail
+    }
+  }
+
+  async function handleDeleteAllData() {
+    try {
+      // Delete all conversations (active + archived)
+      const allConvs = [...conversations, ...archivedConversations];
+      for (const conv of allConvs) {
+        await fetch("/api/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: conv.id, action: "delete" }),
+        });
+      }
+
+      // Clear local state
+      setConversations([]);
+      setArchivedConversations([]);
+
+      // Create a fresh conversation
+      await handleNewChat();
+      setIsSettingsOpen(false);
+    } catch {
+      // Silently fail
+    }
+  }
+
   // ─── Derived values ────────────────────────────────────────────────────────
 
   const activeNode = nodes.find((n) => n.id === activeNodeId) ?? null;
@@ -504,15 +623,22 @@ export default function Home() {
           body: JSON.stringify({ conversationId, messages: updatedHistory }),
         });
 
-        const data = (await response.json()) as ChatResponse | ChatErrorResponse;
-        console.log("[edit] /api/chat response:", { status: response.status, hasContent: "content" in data });
+        if (!response.ok) {
+          let errorMessage = `Request failed with status ${response.status}`;
+          try {
+            const errorData = await response.json();
+            if (errorData.error) errorMessage = errorData.error;
+          } catch { /* use default */ }
+          throw new Error(errorMessage);
+        }
 
-        if (!response.ok) throw new Error((data as ChatErrorResponse).error);
+        const content = await readStreamToCompletion(response);
+        console.log("[edit] /api/chat stream complete, content length:", content.length);
 
         const newAssistant: ChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: (data as ChatResponse).content,
+          content,
           parentNodeId: null,
           branchRootMessageId: null,
         };
@@ -816,7 +942,7 @@ export default function Home() {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <main className="relative min-h-screen bg-white text-black">
+    <main className="relative min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <Header onShowGraph={() => setIsGraphOpen(true)} onShowV2Preview={() => setIsV2PreviewOpen(true)} />
 
       <ConversationSidebar
@@ -828,10 +954,13 @@ export default function Home() {
         onNewChat={handleNewChat}
         onArchive={handleArchive}
         onRestore={handleRestore}
+        onDelete={handleDelete}
+        onRename={handleRename}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       {/* Main content — offset for sidebar */}
-      <div className="pl-64">
+      <div className="pl-[var(--sidebar-width)]">
         <ChatPanel
           messages={displayMessages}
           highlightedMessageIds={highlightedMessageIds}
@@ -923,6 +1052,22 @@ export default function Home() {
           }}
         />
       )}
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        themeMode={themeMode}
+        onThemeChange={setThemeMode}
+        archivedConversations={archivedConversations}
+        onRestoreConversation={(id) => {
+          handleRestore(id);
+        }}
+        onDeleteConversation={(id) => {
+          handleDelete(id);
+        }}
+        allConversationCount={conversations.length + archivedConversations.length}
+        onDeleteAllData={handleDeleteAllData}
+      />
 
     </main>
   );

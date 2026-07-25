@@ -323,7 +323,7 @@ describe("Gate 2: V2 Snapshot Format Compatibility", () => {
 
       for (const [sieStatus, expectedV2Status] of statusConcerns) {
         const state = makeGraphState({
-          concerns: [makeConcern("c-1", { status: sieStatus })],
+          concerns: [makeConcern("c-1", { status: sieStatus as "ACTIVE" | "DORMANT" | "RETIRED" | "MERGED" })],
         });
         const projection = projectToV2Snapshot(state);
         expect(projection.objects[0].status).toBe(expectedV2Status);

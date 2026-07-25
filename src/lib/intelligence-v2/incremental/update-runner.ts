@@ -118,12 +118,32 @@ async function processFromCursor(conversationId: string, v2ContinuationObjectId:
   const currentVersion = (stateRow?.update_version as number) ?? 0;
 
   // 2. Query ALL unprocessed messages after cursor
-  const { data: msgs } = await db
+  // Try with message_seq first; fall back to created_at ordering if column doesn't exist.
+  let msgs: Array<Record<string, unknown>> | null = null;
+
+  const { data: seqMsgs, error: seqErr } = await db
     .from("messages")
     .select("id, role, content, conversation_id, created_at, parent_node_id, branch_root_message_id, message_seq")
     .eq("conversation_id", conversationId)
     .gt("message_seq", cursor)
     .order("message_seq", { ascending: true });
+
+  if (seqErr && seqErr.message?.includes("does not exist")) {
+    // message_seq column missing — fall back to created_at based ordering
+    // Use offset to skip already-processed messages (cursor = count of processed)
+    const { data: fallbackMsgs } = await db
+      .from("messages")
+      .select("id, role, content, conversation_id, created_at, parent_node_id, branch_root_message_id")
+      .eq("conversation_id", conversationId)
+      .is("parent_node_id", null)
+      .order("created_at", { ascending: true })
+      .range(cursor, cursor + 999);
+
+    // Assign synthetic message_seq for downstream processing
+    msgs = (fallbackMsgs ?? []).map((m, idx) => ({ ...m, message_seq: cursor + idx + 1 }));
+  } else {
+    msgs = seqMsgs;
+  }
 
   if (!msgs || msgs.length === 0) {
     await setIdle(db, conversationId);

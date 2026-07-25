@@ -79,6 +79,55 @@ export async function restoreConversation(id: string): Promise<void> {
   if (error) throw new Error(`Failed to restore conversation: ${error.message}`);
 }
 
+// Permanently delete a conversation and all its related data.
+export async function deleteConversation(id: string): Promise<void> {
+  const db = createServerSupabaseClient();
+
+  // 1. Get all node IDs for this conversation (needed for node_messages cleanup)
+  const { data: nodeData } = await db
+    .from("nodes")
+    .select("id")
+    .eq("conversation_id", id);
+  const nodeIds = (nodeData ?? []).map((n: { id: string }) => n.id);
+
+  // 2. Delete node_messages links
+  if (nodeIds.length > 0) {
+    const { error: nmError } = await db
+      .from("node_messages")
+      .delete()
+      .in("node_id", nodeIds);
+    if (nmError) throw new Error(`Failed to delete node_messages: ${nmError.message}`);
+  }
+
+  // 3. Delete semantic edges
+  const { error: edgeError } = await db
+    .from("edges")
+    .delete()
+    .eq("conversation_id", id);
+  if (edgeError) throw new Error(`Failed to delete edges: ${edgeError.message}`);
+
+  // 4. Delete nodes
+  const { error: nodeError } = await db
+    .from("nodes")
+    .delete()
+    .eq("conversation_id", id);
+  if (nodeError) throw new Error(`Failed to delete nodes: ${nodeError.message}`);
+
+  // 5. Delete messages
+  const { error: msgError } = await db
+    .from("messages")
+    .delete()
+    .eq("conversation_id", id);
+  if (msgError) throw new Error(`Failed to delete messages: ${msgError.message}`);
+
+  // 6. Delete the conversation itself
+  const { error: convError } = await db
+    .from("conversations")
+    .delete()
+    .eq("id", id);
+  if (convError) throw new Error(`Failed to delete conversation: ${convError.message}`);
+}
+
 // Load a specific conversation by ID.
 export async function loadConversationById(id: string): Promise<ConversationData | null> {
   const db = createServerSupabaseClient();
@@ -149,6 +198,8 @@ async function loadConversationData(conversation: DbConversation): Promise<Conve
     id: m.id,
     role: m.role,
     content: m.content,
+    attachments: m.attachments ?? null,
+    createdAt: m.created_at,
     parentNodeId: m.parent_node_id ?? null,
     branchRootMessageId: m.branch_root_message_id ?? null,
   }));

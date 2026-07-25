@@ -23,6 +23,7 @@ export async function persistMessages(
     conversation_id: conversationId,
     role: m.role,
     content: m.content,
+    attachments: m.attachments && m.attachments.length > 0 ? m.attachments : null,
     parent_node_id: m.parentNodeId ?? null,
     branch_root_message_id: m.branchRootMessageId ?? null,
     created_at: new Date(baseTime + idx).toISOString(),

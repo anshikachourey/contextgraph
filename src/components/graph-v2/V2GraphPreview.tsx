@@ -77,8 +77,20 @@ type SnapshotResponse = {
   errorMessage?: string;
   lastUpdateError?: string | null;
   generatedAt?: string;
+  generationAttemptId?: string;
+  generationStartedAt?: string | null;
   loadedFromSnapshot?: boolean;
 };
+
+/** Format elapsed time since a given ISO timestamp */
+function formatElapsed(isoStart: string): string {
+  const elapsed = Date.now() - new Date(isoStart).getTime();
+  const seconds = Math.floor(elapsed / 1000);
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m ago`;
+}
 
 export default function V2GraphPreview({ conversationId, isOpen, onClose, onContinueFromNode }: V2GraphPreviewProps) {
   const [snapshot, setSnapshot] = useState<SnapshotResponse | null>(null);
@@ -100,6 +112,12 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
       const res = await fetch(`/api/v2/graph-snapshot?conversationId=${conversationId}`);
       const data = await res.json();
       setSnapshot(data);
+
+      // If the server reports active generation, start polling
+      if ((data.status === "generating" || data.snapshotStatus === "generating_initial") && !data.graphPayload) {
+        setGenerating(true);
+        pollUntilReady();
+      }
     } catch {
       setSnapshot({ status: "none" });
     }
@@ -108,16 +126,55 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
 
   async function generateSnapshot() {
     setGenerating(true);
-    setSnapshot({ status: "generating" });
     try {
       const res = await fetch("/api/v2/graph-snapshot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId }),
       });
-      if (res.ok) { await loadSnapshot(); }
-      else { const err = await res.json(); setSnapshot({ status: "failed", errorMessage: err.error }); }
-    } catch { setSnapshot({ status: "failed", errorMessage: "Network error" }); }
+      const data = await res.json();
+
+      if (res.status === 202 || res.ok) {
+        // Generation registered/in-progress — start polling
+        setSnapshot({ status: "generating", ...data });
+        pollUntilReady();
+      } else {
+        // POST returned an error — display it immediately
+        setSnapshot({ status: "failed", errorMessage: data.error ?? `Request failed (${res.status})` });
+        setGenerating(false);
+      }
+    } catch {
+      setSnapshot({ status: "failed", errorMessage: "Network error — could not reach the server." });
+      setGenerating(false);
+    }
+  }
+
+  async function pollUntilReady() {
+    const maxPolls = 120; // 10 minutes at 5s intervals
+    const interval = 5000;
+
+    for (let i = 0; i < maxPolls; i++) {
+      await new Promise((resolve) => setTimeout(resolve, interval));
+      try {
+        const res = await fetch(`/api/v2/graph-snapshot?conversationId=${conversationId}`);
+        const data = await res.json();
+        setSnapshot(data);
+
+        if (data.status === "ready" || data.snapshotStatus === "ready") {
+          setGenerating(false);
+          return;
+        }
+        if (data.status === "failed" || data.snapshotStatus === "failed") {
+          setGenerating(false);
+          return;
+        }
+        // Still generating — continue polling
+      } catch {
+        // Network blip — continue polling
+      }
+    }
+
+    // Exhausted polls — leave in current state, stop generating flag
     setGenerating(false);
   }
 
@@ -235,13 +292,29 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-purple-300 border-t-purple-600" />
               <p className="text-sm text-gray-600">Generating V2 graph…</p>
+              <p className="text-xs text-gray-400 max-w-xs">
+                {snapshot?.generationStartedAt
+                  ? `Started ${formatElapsed(snapshot.generationStartedAt as string)}. Large conversations may take several minutes.`
+                  : "This may take a few minutes for large conversations."}
+              </p>
+              {!generating && (
+                <button
+                  onClick={generateSnapshot}
+                  className="mt-2 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  Start fresh attempt
+                </button>
+              )}
             </div>
           )}
 
-          {!loading && snapshot?.snapshotStatus === "failed" && !snapshot?.graphPayload && (
+          {!loading && (snapshot?.snapshotStatus === "failed" || snapshot?.status === "failed") && !snapshot?.graphPayload && (
             <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-              <p className="text-sm text-red-600">{snapshot.errorMessage ?? "Generation failed"}</p>
-              <button onClick={generateSnapshot} disabled={generating} className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">Retry</button>
+              <div className="text-3xl opacity-40">⚠️</div>
+              <p className="text-sm text-red-600 max-w-sm">{snapshot.errorMessage ?? "Generation failed"}</p>
+              <button onClick={generateSnapshot} disabled={generating} className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50">
+                {generating ? "Generating…" : "Retry"}
+              </button>
             </div>
           )}
 

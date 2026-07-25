@@ -13,6 +13,7 @@ export type DbMessage = {
   conversation_id: string;
   role: "user" | "assistant";
   content: string;
+  attachments: Array<{ url: string; filename: string; mimeType: string; size: number }> | null;
   parent_node_id: string | null;
   branch_root_message_id: string | null;
   created_at: string;

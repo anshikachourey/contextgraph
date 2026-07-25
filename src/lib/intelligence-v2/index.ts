@@ -34,18 +34,43 @@ export async function runV2GraphPlan(conversationId: string, options?: { maxMess
   const db = createServerSupabaseClient();
 
   // Load main-thread messages, optionally bounded by message_seq
-  let query = db
-    .from("messages")
-    .select("id, role, content, conversation_id, created_at, parent_node_id, branch_root_message_id, message_seq")
-    .eq("conversation_id", conversationId)
-    .is("parent_node_id", null)
-    .order("created_at", { ascending: true });
+  let msgData: Array<Record<string, unknown>> | null = null;
+  let dbError: { message: string } | null = null;
 
   if (options?.maxMessageSeq !== undefined) {
-    query = query.lte("message_seq", options.maxMessageSeq);
-  }
+    // Try with message_seq filter first
+    const { data, error } = await db
+      .from("messages")
+      .select("id, role, content, conversation_id, created_at, parent_node_id, branch_root_message_id")
+      .eq("conversation_id", conversationId)
+      .is("parent_node_id", null)
+      .lte("message_seq", options.maxMessageSeq)
+      .order("created_at", { ascending: true });
 
-  const { data: msgData, error: dbError } = await query;
+    if (error && error.message?.includes("does not exist")) {
+      // message_seq column doesn't exist — fall back to loading all messages
+      const { data: fallbackData, error: fallbackError } = await db
+        .from("messages")
+        .select("id, role, content, conversation_id, created_at, parent_node_id, branch_root_message_id")
+        .eq("conversation_id", conversationId)
+        .is("parent_node_id", null)
+        .order("created_at", { ascending: true });
+      msgData = fallbackData as Array<Record<string, unknown>> | null;
+      dbError = fallbackError;
+    } else {
+      msgData = data as Array<Record<string, unknown>> | null;
+      dbError = error;
+    }
+  } else {
+    const { data, error } = await db
+      .from("messages")
+      .select("id, role, content, conversation_id, created_at, parent_node_id, branch_root_message_id")
+      .eq("conversation_id", conversationId)
+      .is("parent_node_id", null)
+      .order("created_at", { ascending: true });
+    msgData = data as Array<Record<string, unknown>> | null;
+    dbError = error;
+  }
 
   if (dbError) {
     throw new Error(`Database query failed: ${dbError.message}`);

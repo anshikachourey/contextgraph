@@ -15,6 +15,7 @@ export type CompletionMessage = {
 /** Multimodal content parts for messages with images */
 export type MultimodalContentPart =
   | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
   | { type: "image"; source: { type: "url"; url: string; media_type: string } }
   | { type: "image_url"; image_url: { url: string } };
 
@@ -84,7 +85,7 @@ async function openaiComplete(options: CompletionOptions): Promise<CompletionRes
 
   const completion = await client.chat.completions.create({
     model: options.model,
-    messages: options.messages,
+    messages: options.messages as Parameters<typeof client.chat.completions.create>[0]["messages"],
     temperature: options.temperature ?? 0.7,
     max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
   });
@@ -105,10 +106,10 @@ async function anthropicComplete(options: CompletionOptions): Promise<Completion
   const response = await client.messages.create({
     model: options.model,
     max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
-    system: systemMsg?.content,
+    system: systemMsg?.content as string | undefined,
     messages: nonSystem.map((m) => ({
       role: m.role as "user" | "assistant",
-      content: m.content,
+      content: m.content as string,
     })),
   });
 
@@ -154,7 +155,7 @@ async function openaiCompleteStream(options: StreamCompletionOptions): Promise<v
 
   const stream = await client.chat.completions.create({
     model: options.model,
-    messages: options.messages,
+    messages: options.messages as Parameters<typeof client.chat.completions.create>[0]["messages"],
     temperature: options.temperature ?? 0.7,
     max_tokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
     stream: true,
@@ -194,16 +195,20 @@ async function anthropicCompleteStream(options: StreamCompletionOptions): Promis
       role: m.role as "user" | "assistant",
       content: typeof m.content === "string"
         ? m.content
-        : m.content.map((part: any) => {
+        : m.content.map((part) => {
             if (part.type === "text") return { type: "text" as const, text: part.text };
-            if (part.type === "image") return {
-              type: "image" as const,
-              source: part.source,
-            };
-            // image_url (OpenAI format) — convert to Anthropic format
+            if (part.type === "image") {
+              return {
+                type: "image" as const,
+                source: part.source as
+                  | { type: "base64"; media_type: "image/jpeg" | "image/png" | "image/gif" | "image/webp"; data: string }
+                  | { type: "url"; url: string },
+              };
+            }
+            // image_url (OpenAI format) — convert to Anthropic URL source
             if (part.type === "image_url") return {
               type: "image" as const,
-              source: { type: "url" as const, url: part.image_url.url, media_type: "image/jpeg" },
+              source: { type: "url" as const, url: part.image_url.url },
             };
             return { type: "text" as const, text: "" };
           }),

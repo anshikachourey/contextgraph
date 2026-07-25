@@ -366,8 +366,8 @@ describe("SIE Orchestrator Metrics", () => {
         "failure",
       ];
 
-      expectedTypes.forEach((t) => {
-        expect(types.has(t)).toBe(true);
+      expectedTypes.forEach((t: string) => {
+        expect(types.has(t as typeof events[number]["event_type"])).toBe(true);
       });
     });
   });

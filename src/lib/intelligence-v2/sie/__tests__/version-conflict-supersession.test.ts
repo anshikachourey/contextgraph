@@ -37,7 +37,7 @@ const mockComputePayloadFingerprint = vi.fn(() => "fp_newprint1");
 
 vi.mock("../commit-manager", () => ({
   commitSIEResult: (...args: unknown[]) => mockCommitSIEResult(...args),
-  computePayloadFingerprint: (...args: unknown[]) => mockComputePayloadFingerprint(...args),
+  computePayloadFingerprint: (..._args: unknown[]) => mockComputePayloadFingerprint(),
 }));
 
 // ─── Test Helpers ───────────────────────────────────────────────────────────
@@ -49,7 +49,9 @@ function makeGraphStateContext(graphVersion: number): GraphStateContext {
     propositions: [],
     active_associations: [],
     pending_decisions: [],
-  };
+    snapshot_digest: "test-digest",
+    snapshot_token: "test-token",
+  } as GraphStateContext;
 }
 
 function makeSIEGraphState(graphVersion: number): SIEGraphState {
@@ -104,10 +106,11 @@ function makeProcessRequest(overrides?: Partial<ProcessRequest>): ProcessRequest
     base_graph_version: 5,
     message_seq_start: 1,
     message_seq_end: 5,
+    processing_mode: "FULL_PIPELINE",
     messages: [],
     current_graph_state: makeGraphStateContext(5),
     ...overrides,
-  };
+  } as ProcessRequest;
 }
 
 const defaultConfig: SupersessionConfig = {
@@ -362,8 +365,8 @@ describe("Version-Conflict Supersession", () => {
 
       // Both supersede calls use same semantic creation key
       expect(mockSupersede).toHaveBeenCalledTimes(2);
-      const call1 = mockSupersede.mock.calls[0][0];
-      const call2 = mockSupersede.mock.calls[1][0];
+      const call1 = (mockSupersede as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][0] as Record<string, unknown>;
+      const call2 = (mockSupersede as unknown as { mock: { calls: unknown[][] } }).mock.calls[1][0] as Record<string, unknown>;
       expect(call1.successorKey).toBe("conv-001:seq-1-5:pipe-0.1.0");
       expect(call2.successorKey).toBe("conv-001:seq-1-5:pipe-0.1.0");
     });

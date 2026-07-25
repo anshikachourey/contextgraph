@@ -6,6 +6,7 @@ import {
   updateConversationTitle,
   archiveConversation,
   restoreConversation,
+  deleteConversation,
 } from "@/src/lib/db/conversations";
 import type { ConversationListItem } from "@/src/lib/db/conversations";
 
@@ -81,6 +82,20 @@ export async function POST(
       const message = err instanceof Error ? err.message : "Unknown error";
       return NextResponse.json(
         { error: `Failed to restore: ${message}` },
+        { status: 500 },
+      );
+    }
+  }
+
+  // Permanent delete action
+  if (typeof body.id === "string" && body.action === "delete") {
+    try {
+      await deleteConversation(body.id);
+      return NextResponse.json({ id: body.id, title: "deleted" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return NextResponse.json(
+        { error: `Failed to delete: ${message}` },
         { status: 500 },
       );
     }

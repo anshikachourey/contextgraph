@@ -24,6 +24,7 @@ export default function ChatInput({
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -32,10 +33,7 @@ export default function ChatInput({
     const textarea = textareaRef.current;
     if (!textarea) return;
 
-    // Reset height to auto so scrollHeight recalculates from content
     textarea.style.height = "auto";
-
-    // Clamp to max 200px
     const scrollHeight = textarea.scrollHeight;
     if (scrollHeight > 200) {
       textarea.style.height = "200px";
@@ -45,6 +43,13 @@ export default function ChatInput({
       textarea.style.overflowY = "hidden";
     }
   }, [value]);
+
+  // Focus the textarea when component mounts
+  useEffect(() => {
+    if (!disabled && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [disabled]);
 
   function handleAttachmentClick() {
     fileInputRef.current?.click();
@@ -59,13 +64,11 @@ export default function ChatInput({
     const validFiles: File[] = [];
     const errors: string[] = [];
 
-    // Check total count limit
     const totalAfterAdd = pendingFiles.length + newFiles.length;
     if (totalAfterAdd > MAX_ATTACHMENTS) {
       setAttachmentError(
         `Maximum ${MAX_ATTACHMENTS} attachments allowed. You have ${pendingFiles.length}, tried to add ${newFiles.length}.`
       );
-      // Reset input so user can re-select
       e.target.value = "";
       return;
     }
@@ -87,7 +90,6 @@ export default function ChatInput({
       setPendingFiles((prev) => [...prev, ...validFiles]);
     }
 
-    // Reset input value so the same file can be re-selected
     e.target.value = "";
   }
 
@@ -100,7 +102,6 @@ export default function ChatInput({
     const trimmed = value.trim();
     if ((!trimmed && pendingFiles.length === 0) || disabled || isUploading) return;
 
-    // If there are pending files, upload them first
     if (pendingFiles.length > 0) {
       if (!conversationId) {
         setAttachmentError("Cannot upload attachments: no active conversation.");
@@ -117,7 +118,6 @@ export default function ChatInput({
           uploadedMetas.push(meta);
         }
 
-        // All uploads succeeded — send message with attachments
         onSendMessage(trimmed, uploadedMetas);
         setValue("");
         setPendingFiles([]);
@@ -126,19 +126,16 @@ export default function ChatInput({
         const errorMsg =
           err instanceof Error ? err.message : "Upload failed. Please try again.";
         setAttachmentError(errorMsg);
-        // Retain composer state — don't clear or send
         return;
       } finally {
         setIsUploading(false);
       }
     } else {
-      // No attachments, just send text
       if (!trimmed) return;
       onSendMessage(trimmed);
       setValue("");
     }
 
-    // Reset height after clearing
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = "auto";
@@ -151,42 +148,53 @@ export default function ChatInput({
       e.preventDefault();
       handleSend();
     }
-    // Shift+Enter: default behavior inserts newline
   }
 
   function isImageFile(file: File): boolean {
     return file.type.startsWith("image/");
   }
 
-  const isDisabled =
-    disabled || isUploading || (!value.trim() && pendingFiles.length === 0);
+  const hasContent = value.trim().length > 0 || pendingFiles.length > 0;
+  const isDisabled = disabled || isUploading || !hasContent;
 
   return (
-    <div className="rounded-2xl border border-gray-300 bg-white p-3 shadow-sm">
+    <div
+      className={`rounded-2xl border bg-[var(--surface)] p-3 shadow-lg shadow-black/[0.04] transition-all ${
+        isFocused
+          ? "border-[var(--accent)]/40 shadow-[var(--accent)]/5 ring-1 ring-[var(--accent)]/10"
+          : "border-[var(--border)]"
+      }`}
+    >
       {/* Attachment previews */}
       {pendingFiles.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2">
+        <div className="mb-2.5 flex flex-wrap gap-2">
           {pendingFiles.map((file, index) => (
             <div
               key={`${file.name}-${index}`}
-              className="relative flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1"
+              className="relative flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--muted)] p-1.5"
             >
               {isImageFile(file) ? (
                 <img
                   src={URL.createObjectURL(file)}
                   alt={file.name}
-                  className="rounded object-cover"
-                  style={{ maxWidth: "80px", maxHeight: "80px" }}
+                  className="rounded-md object-cover"
+                  style={{ maxWidth: "72px", maxHeight: "72px" }}
                 />
               ) : (
-                <span className="max-w-[120px] truncate px-2 py-1 text-xs text-gray-700">
-                  {file.name}
-                </span>
+                <div className="flex items-center gap-1.5 px-2 py-1">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[var(--muted-foreground)]">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" strokeLinecap="round" strokeLinejoin="round" />
+                    <polyline points="14 2 14 8 20 8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <span className="max-w-[100px] truncate text-[12px] text-[var(--foreground)]/70">
+                    {file.name}
+                  </span>
+                </div>
               )}
               <button
                 type="button"
                 onClick={() => handleRemoveFile(index)}
-                className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white hover:bg-red-600"
+                className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white shadow-sm hover:bg-red-600 transition-colors"
                 aria-label={`Remove ${file.name}`}
               >
                 ×
@@ -198,26 +206,30 @@ export default function ChatInput({
 
       {/* Error message */}
       {attachmentError && (
-        <div className="mb-2 rounded-md bg-red-50 px-3 py-1.5 text-xs text-red-600">
+        <div className="mb-2 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-[12px] text-red-600">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 8v4M12 16h.01" />
+          </svg>
           {attachmentError}
         </div>
       )}
 
       {/* Input row */}
-      <div className="flex items-end">
+      <div className="flex items-end gap-1">
         {/* Attachment button */}
         <button
           type="button"
           onClick={handleAttachmentClick}
           disabled={disabled || isUploading}
-          className="mr-2 flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
           aria-label="Attach file"
           title="Attach file"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            width="18"
-            height="18"
+            width="16"
+            height="16"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -240,32 +252,63 @@ export default function ChatInput({
           aria-hidden="true"
         />
 
+        {/* Textarea */}
         <textarea
           ref={textareaRef}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
           disabled={disabled || isUploading}
           rows={1}
-          className="flex-1 resize-none outline-none disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex-1 resize-none bg-transparent text-[14px] leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/50 disabled:cursor-not-allowed disabled:opacity-50"
           placeholder={
             disabled
-              ? "Assistant is responding…"
+              ? "Thinking…"
               : isUploading
-                ? "Uploading attachments…"
-                : "Ask ContextGraph..."
+                ? "Uploading…"
+                : "Message ContextGraph…"
           }
           style={{ maxHeight: "200px" }}
         />
 
+        {/* Send / Stop button */}
         <button
           onClick={handleSend}
           disabled={isDisabled}
-          className="ml-2 rounded-xl bg-black px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+          className={`ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all ${
+            hasContent && !disabled
+              ? "bg-[var(--foreground)] text-[var(--background)] hover:opacity-80 active:scale-95"
+              : "bg-[var(--muted)] text-[var(--muted-foreground)] cursor-not-allowed opacity-50"
+          }`}
+          aria-label={disabled ? "Stop generating" : "Send message"}
         >
-          {isUploading ? "Uploading…" : "Send"}
+          {isUploading ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
+              <path d="M21 12a9 9 0 11-6.219-8.56" />
+            </svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          )}
         </button>
       </div>
+
+      {/* Footer hint */}
+      {isFocused && !disabled && (
+        <div className="mt-2 flex items-center justify-between px-1">
+          <span className="text-[11px] text-[var(--muted-foreground)]/60">
+            <kbd className="rounded border border-[var(--border)] px-1 py-0.5 text-[10px]">Enter</kbd> to send · <kbd className="rounded border border-[var(--border)] px-1 py-0.5 text-[10px]">Shift+Enter</kbd> for new line
+          </span>
+          {value.length > 200 && (
+            <span className="text-[11px] text-[var(--muted-foreground)]/60">
+              {value.length.toLocaleString()} chars
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
