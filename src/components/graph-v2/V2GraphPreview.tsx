@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import V2GraphCanvas, { type EdgeMode } from "./V2GraphCanvas";
 import V2NodePanel from "./V2NodePanel";
+import ConceptualMapView from "./conceptual-map/ConceptualMapView";
+import { SYNTHETIC_ROOT_ID } from "./conceptual-map/derive-map";
 import { normalizeGraph, type DisplayGraph } from "@/src/lib/intelligence-v2/normalize-graph";
 
 type V2GraphPreviewProps = {
@@ -100,6 +102,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
   const [edgeMode, setEdgeMode] = useState<EdgeMode>("structure");
   const [panelWidth, setPanelWidth] = useState(320);
   const [isDragging, setIsDragging] = useState(false);
+  const [viewMode, setViewMode] = useState<"conceptual" | "network">("conceptual");
 
   useEffect(() => {
     if (!isOpen || !conversationId) return;
@@ -231,17 +234,33 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
       {/* Header */}
       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2">
         <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-gray-800">V2 Graph Preview</h2>
-          <span className="rounded bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700">ALPHA</span>
-          {displayGraph && (
+          <h2 className="text-sm font-semibold text-gray-800">Knowledge Map</h2>
+          {/* View mode toggle */}
+          {gp && (
+            <div className="flex items-center rounded-lg border border-gray-200 text-[11px]">
+              <button
+                onClick={() => setViewMode("conceptual")}
+                className={`px-3 py-1 rounded-l-lg transition ${viewMode === "conceptual" ? "bg-indigo-50 font-medium text-indigo-700" : "text-gray-500 hover:bg-gray-50"}`}
+              >
+                Conceptual
+              </button>
+              <button
+                onClick={() => setViewMode("network")}
+                className={`px-3 py-1 rounded-r-lg border-l border-gray-200 transition ${viewMode === "network" ? "bg-gray-100 font-medium text-gray-800" : "text-gray-500 hover:bg-gray-50"}`}
+              >
+                Full network
+              </button>
+            </div>
+          )}
+          {displayGraph && viewMode === "network" && (
             <span className="text-xs text-gray-400">
-              {displayGraph.diagnostics.totalObjects} nodes · {displayGraph.diagnostics.roots} roots · {displayGraph.diagnostics.trees} trees · depth {displayGraph.diagnostics.maxDepth}
+              {displayGraph.diagnostics.totalObjects} nodes · {displayGraph.diagnostics.roots} roots · depth {displayGraph.diagnostics.maxDepth}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          {/* Edge mode controls */}
-          {displayGraph && (
+          {/* Edge mode controls — only in network mode */}
+          {displayGraph && viewMode === "network" && (
             <div className="flex items-center rounded border border-gray-200 text-[11px]">
               <button
                 onClick={() => { setEdgeMode("structure"); setSelectedNodeId(null); }}
@@ -263,9 +282,11 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
               </button>
             </div>
           )}
-          <span className="text-[10px] text-gray-400">
-            {structuralEdgeCount} structural · {semanticEdgeCount} semantic
-          </span>
+          {viewMode === "network" && (
+            <span className="text-[10px] text-gray-400">
+              {structuralEdgeCount} structural · {semanticEdgeCount} semantic
+            </span>
+          )}
           <button onClick={onClose} className="rounded px-3 py-1 text-sm text-gray-600 hover:bg-gray-100">
             Close
           </button>
@@ -318,15 +339,24 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
             </div>
           )}
 
-          {!loading && (snapshot?.status === "ready" || snapshot?.snapshotStatus === "ready") && displayGraph && (
+          {!loading && (snapshot?.status === "ready" || snapshot?.snapshotStatus === "ready") && gp && (
             <div className="relative h-full">
-              <V2GraphCanvas
-                displayGraph={displayGraph}
-                overlapObjectIds={overlapObjectIds}
-                selectedNodeId={selectedNodeId}
-                edgeMode={edgeMode}
-                onNodeClick={handleNodeClick}
-              />
+              {viewMode === "conceptual" ? (
+                <ConceptualMapView
+                  graphPayload={gp}
+                  selectedNodeId={selectedNodeId === SYNTHETIC_ROOT_ID ? null : selectedNodeId}
+                  onNodeClick={handleNodeClick}
+                  onClearSelection={handleClearSelection}
+                />
+              ) : displayGraph ? (
+                <V2GraphCanvas
+                  displayGraph={displayGraph}
+                  overlapObjectIds={overlapObjectIds}
+                  selectedNodeId={selectedNodeId}
+                  edgeMode={edgeMode}
+                  onNodeClick={handleNodeClick}
+                />
+              ) : null}
               {/* Incremental update indicator */}
               {(snapshot?.updateStatus === "queued" || snapshot?.updateStatus === "updating") && (
                 <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-lg bg-white/90 border border-gray-200 px-3 py-1.5 shadow-sm">
