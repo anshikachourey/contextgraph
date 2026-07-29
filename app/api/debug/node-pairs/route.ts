@@ -1,3 +1,4 @@
+import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextRequest, NextResponse } from "next/server";
 import { loadLatestConversation } from "@/src/lib/db/conversations";
 import { loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
@@ -19,6 +20,9 @@ import {
  *   curl "http://localhost:3000/api/debug/node-pairs?q=marketing"
  */
 export async function GET(request: NextRequest) {
+  const debugAuthError = await requireDebugAccess();
+  if (debugAuthError) return debugAuthError;
+
   const query = request.nextUrl.searchParams.get("q")?.toLowerCase() ?? "";
 
   try {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
 
 const BUCKET = "chat-attachments";
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -20,6 +21,9 @@ const ALLOWED_MIME_TYPES = new Set([
  * Returns the storage path and a signed URL for immediate use.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const session = await requireSession();
+  if (isAuthError(session)) return session;
+
   const db = createServerSupabaseClient();
 
   let formData: FormData;
@@ -39,16 +43,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Missing 'conversationId' field." }, { status: 400 });
   }
 
-  // Validate conversation exists
-  const { data: conv, error: convErr } = await db
-    .from("conversations")
-    .select("id")
-    .eq("id", conversationId)
-    .single();
-
-  if (convErr || !conv) {
-    return NextResponse.json({ error: "Conversation not found." }, { status: 404 });
-  }
+  // Verify conversation ownership
+  const access = await requireConversationAccess(conversationId, session);
+  if (isAuthError(access)) return access;
 
   // Validate MIME type
   if (!ALLOWED_MIME_TYPES.has(file.type)) {
@@ -113,6 +110,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
  * Generate signed URLs for one or more stored attachments.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const session = await requireSession();
+  if (isAuthError(session)) return session;
+
   const { searchParams } = new URL(request.url);
   const pathsParam = searchParams.get("paths");
 
@@ -123,6 +123,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const paths = pathsParam.split(",").filter(Boolean);
   if (paths.length === 0 || paths.length > 20) {
     return NextResponse.json({ error: "Provide 1-20 paths." }, { status: 400 });
+  }
+
+  // Verify ownership: paths are formatted as {conversationId}/{uuid}-{filename}
+  // Extract unique conversation IDs and verify each
+  const conversationIds = new Set<string>();
+  for (const p of paths) {
+    const convId = p.split("/")[0];
+    if (convId) conversationIds.add(convId);
+  }
+
+  for (const convId of conversationIds) {
+    const access = await requireConversationAccess(convId, session);
+    if (isAuthError(access)) return access;
   }
 
   const db = createServerSupabaseClient();

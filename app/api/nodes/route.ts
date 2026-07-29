@@ -3,6 +3,7 @@ import { persistNode, loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
 import { persistEdges } from "@/src/lib/db/edges";
 import { computeSuggestedEdges } from "@/src/lib/edgeSuggestions";
 import { STRONGLY_RELATED_THRESHOLD } from "@/src/lib/similarityThresholds";
+import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
 import type { ContextNode } from "@/src/types/node";
 import type { ChatMessage } from "@/src/types/message";
 import type { NodeMetadata } from "@/src/types/db";
@@ -12,6 +13,9 @@ type ErrorResponse = { error: string };
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<Record<string, never> | ErrorResponse>> {
+  const session = await requireSession();
+  if (isAuthError(session)) return session;
+
   let body: unknown;
   try {
     body = await request.json();
@@ -37,6 +41,10 @@ export async function POST(
   }
 
   const conversationId = b.conversationId as string;
+
+  // Verify conversation ownership
+  const access = await requireConversationAccess(conversationId, session);
+  if (isAuthError(access)) return access;
 
   // ─── Step 1: Persist the node (with evidence summary + embedding) ───────
   try {

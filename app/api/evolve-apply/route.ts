@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
 
 type ApplyRequest = {
   conversationId: string;
@@ -18,6 +19,9 @@ type ErrorResponse = { error: string };
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<Record<string, never> | ErrorResponse>> {
+  const session = await requireSession();
+  if (isAuthError(session)) return session;
+
   let body: unknown;
   try {
     body = await request.json();
@@ -28,7 +32,7 @@ export async function POST(
     );
   }
 
-  const { nodeId, messageIds } = body as ApplyRequest;
+  const { conversationId, nodeId, messageIds } = body as ApplyRequest;
 
   if (!nodeId || !Array.isArray(messageIds) || messageIds.length === 0) {
     return NextResponse.json(
@@ -36,6 +40,17 @@ export async function POST(
       { status: 400 },
     );
   }
+
+  if (!conversationId) {
+    return NextResponse.json(
+      { error: "conversationId is required." },
+      { status: 400 },
+    );
+  }
+
+  // Verify conversation ownership
+  const access = await requireConversationAccess(conversationId, session);
+  if (isAuthError(access)) return access;
 
   try {
     const db = createServerSupabaseClient();

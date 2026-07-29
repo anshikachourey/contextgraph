@@ -1,3 +1,4 @@
+import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextResponse } from "next/server";
 import { loadLatestConversation } from "@/src/lib/db/conversations";
 import { loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
@@ -13,6 +14,9 @@ import { STRONGLY_RELATED_THRESHOLD } from "@/src/lib/similarityThresholds";
  * and which are "near misses." Useful for diagnosing edge sparsity.
  */
 export async function GET() {
+  const debugAuthError = await requireDebugAccess();
+  if (debugAuthError) return debugAuthError;
+
   try {
     const data = await loadLatestConversation();
     if (!data) {

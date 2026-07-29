@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateGraphSummary } from "@/src/lib/ai";
+import { requireSession, isAuthError } from "@/src/lib/auth";
 
 type SummaryRequest = {
   nodes: Array<{ title: string; summary: string }>;
@@ -17,6 +18,9 @@ type ErrorResponse = { error: string };
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<SummaryResponse | ErrorResponse>> {
+  const session = await requireSession();
+  if (isAuthError(session)) return session;
+
   let body: unknown;
   try {
     body = await request.json();

@@ -1,3 +1,4 @@
+import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 
@@ -8,6 +9,9 @@ import { createServerSupabaseClient } from "@/src/lib/supabase/server";
  * Safe to run multiple times — uses IF NOT EXISTS semantics via individual column adds.
  */
 export async function POST(): Promise<NextResponse> {
+  const debugAuthError = await requireDebugAccess();
+  if (debugAuthError) return debugAuthError;
+
   const db = createServerSupabaseClient();
   const results: string[] = [];
 

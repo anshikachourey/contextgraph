@@ -4,6 +4,7 @@ import {
   loadConversationById,
   createConversation,
 } from "@/src/lib/db/conversations";
+import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
 import { mockMessages } from "@/src/data/mockMessages";
 import type { ChatMessage } from "@/src/types/message";
 import type { ContextNode } from "@/src/types/node";
@@ -21,6 +22,9 @@ type ErrorResponse = { error: string };
 export async function GET(
   request: NextRequest,
 ): Promise<NextResponse<ConversationRouteResponse | ErrorResponse>> {
+  const session = await requireSession();
+  if (isAuthError(session)) return session;
+
   try {
     const { searchParams } = new URL(request.url);
     const idParam = searchParams.get("id");
@@ -28,30 +32,41 @@ export async function GET(
     let data;
 
     if (idParam) {
-      // Load specific conversation by ID
+      // Verify ownership before loading
+      const access = await requireConversationAccess(idParam, session);
+      if (isAuthError(access)) return access;
+
       data = await loadConversationById(idParam);
       if (!data) {
         return NextResponse.json(
           { error: `Conversation not found: ${idParam}` },
-          { status: 404 },
+          { status: 404, headers: { "Cache-Control": "no-store" } },
         );
       }
     } else {
-      // Load the most recent conversation
-      data = await loadLatestConversation();
+      // Load the most recent conversation for this workspace
+      data = await loadLatestConversation(session.workspace);
 
-      // No conversation yet — create one and seed with mock messages
+      // No conversation yet — create one (seed only for owner)
       if (!data) {
-        data = await createConversation("My first conversation", mockMessages);
+        const seedMessages = session.workspace === "owner" ? mockMessages : [];
+        data = await createConversation(
+          "New conversation",
+          seedMessages,
+          session.workspace,
+        );
       }
     }
 
-    return NextResponse.json({
-      conversationId: data.conversation.id,
-      messages: data.messages,
-      nodes: data.nodes,
-      edges: data.edges,
-    });
+    return NextResponse.json(
+      {
+        conversationId: data.conversation.id,
+        messages: data.messages,
+        nodes: data.nodes,
+        edges: data.edges,
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(

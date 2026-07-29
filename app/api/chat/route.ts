@@ -3,6 +3,7 @@ import { streamChatResponse } from "@/src/lib/ai/chat";
 import { validateMaxTokens, MaxTokensValidationError } from "@/src/lib/ai/provider";
 import { buildMultimodalContent } from "@/src/lib/ai/multimodal";
 import { AI_PROVIDER } from "@/src/lib/ai/models";
+import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
 import type { ChatErrorResponse } from "@/src/types/ai";
 import type { AttachmentMeta } from "@/src/types/message";
 
@@ -28,6 +29,9 @@ type BranchContext = {
 export async function POST(
   request: NextRequest,
 ): Promise<Response> {
+  const session = await requireSession();
+  if (isAuthError(session)) return session;
+
   let body: unknown;
   try {
     body = await request.json();
@@ -53,6 +57,12 @@ export async function POST(
   const messages = b.messages as Array<{ role: "user" | "assistant"; content: string; attachments?: AttachmentMeta[] }>;
   const branchContext = b.branchContext as BranchContext | undefined;
   const conversationId = b.conversationId as string | undefined;
+
+  // Verify conversation ownership if conversationId is provided
+  if (conversationId) {
+    const access = await requireConversationAccess(conversationId, session);
+    if (isAuthError(access)) return access;
+  }
   
   // Attachments can come either on the last message or as a top-level field
   const topLevelAttachments = b.attachments as AttachmentMeta[] | undefined;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { runV2GraphPlan } from "@/src/lib/intelligence-v2";
 import { triggerRecoveryOnce } from "@/src/lib/intelligence-v2/incremental/update-runner";
+import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
 
 export const maxDuration = 300;
 
@@ -11,12 +12,19 @@ export const maxDuration = 300;
  * Reports raw generation state — the frontend decides how to present it.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const session = await requireSession();
+  if (isAuthError(session)) return session;
+
   triggerRecoveryOnce();
 
   const conversationId = new URL(request.url).searchParams.get("conversationId");
   if (!conversationId) {
     return NextResponse.json({ error: "conversationId required" }, { status: 400 });
   }
+
+  // Verify conversation ownership
+  const access = await requireConversationAccess(conversationId, session);
+  if (isAuthError(access)) return access;
 
   const db = createServerSupabaseClient();
   const { data, error } = await db
@@ -84,6 +92,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * 4. Retry calls create a new attempt that supersedes any in-progress work.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const session = await requireSession();
+  if (isAuthError(session)) return session;
+
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -95,6 +106,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!conversationId || typeof conversationId !== "string") {
     return NextResponse.json({ error: "conversationId required" }, { status: 400 });
   }
+
+  // Verify conversation ownership
+  const access = await requireConversationAccess(conversationId as string, session);
+  if (isAuthError(access)) return access;
 
   const db = createServerSupabaseClient();
 

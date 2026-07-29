@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { complete } from "@/src/lib/ai";
 import { NODE_MODEL } from "@/src/lib/ai/models";
 import { parseJsonFromLLM, isTitleSummaryResponse } from "@/src/lib/llmJson";
+import { requireSession, isAuthError } from "@/src/lib/auth";
 import type {
   GenerateNodeSuggestionRequest,
   GenerateNodeSuggestionResponse,
@@ -32,6 +33,9 @@ function buildUserPrompt(
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<GenerateNodeSuggestionResponse | GenerateNodeSuggestionError>> {
+  const session = await requireSession();
+  if (isAuthError(session)) return session;
+
   // --- Parse and validate the request body ---
   let body: unknown;
   try {

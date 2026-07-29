@@ -19,13 +19,14 @@ export type ConversationListItem = {
   updatedAt: string | null;
 };
 
-// List all active (non-archived) conversations, most recent first.
-export async function listConversations(): Promise<ConversationListItem[]> {
+// List all active (non-archived) conversations for a workspace, most recent first.
+export async function listConversations(workspaceId: string): Promise<ConversationListItem[]> {
   const db = createServerSupabaseClient();
 
   const { data, error } = await db
     .from("conversations")
     .select("*")
+    .eq("workspace_id", workspaceId)
     .is("archived_at", null)
     .order("created_at", { ascending: false });
 
@@ -39,13 +40,14 @@ export async function listConversations(): Promise<ConversationListItem[]> {
   }));
 }
 
-// List archived conversations.
-export async function listArchivedConversations(): Promise<ConversationListItem[]> {
+// List archived conversations for a workspace.
+export async function listArchivedConversations(workspaceId: string): Promise<ConversationListItem[]> {
   const db = createServerSupabaseClient();
 
   const { data, error } = await db
     .from("conversations")
     .select("*")
+    .eq("workspace_id", workspaceId)
     .not("archived_at", "is", null)
     .order("archived_at", { ascending: false });
 
@@ -282,16 +284,22 @@ async function loadConversationData(conversation: DbConversation): Promise<Conve
   return { conversation, messages, nodes, edges };
 }
 
-// Load the most recent conversation with all its messages and nodes.
+// Load the most recent conversation for a workspace.
 // Returns null if no conversations exist yet.
-export async function loadLatestConversation(): Promise<ConversationData | null> {
+export async function loadLatestConversation(workspaceId?: string): Promise<ConversationData | null> {
   const db = createServerSupabaseClient();
 
-  const { data: conversations, error: convError } = await db
+  let query = db
     .from("conversations")
     .select("*")
     .order("created_at", { ascending: false })
     .limit(1);
+
+  if (workspaceId) {
+    query = query.eq("workspace_id", workspaceId);
+  }
+
+  const { data: conversations, error: convError } = await query;
 
   if (convError) throw new Error(`Failed to load conversation: ${convError.message}`);
   if (!conversations || conversations.length === 0) return null;
@@ -301,15 +309,22 @@ export async function loadLatestConversation(): Promise<ConversationData | null>
 }
 
 // Create a new conversation, optionally seeding it with messages.
+// workspaceId is required — must come from the authenticated session, never the client.
 export async function createConversation(
   title: string,
   seedMessages: ChatMessage[] = [],
+  workspaceId?: string,
 ): Promise<ConversationData> {
   const db = createServerSupabaseClient();
 
+  const insertData: Record<string, unknown> = { title };
+  if (workspaceId) {
+    insertData.workspace_id = workspaceId;
+  }
+
   const { data: convData, error: convError } = await db
     .from("conversations")
-    .insert({ title })
+    .insert(insertData)
     .select()
     .single();
 

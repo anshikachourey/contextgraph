@@ -1,3 +1,4 @@
+import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { loadLatestConversation } from "@/src/lib/db/conversations";
@@ -14,6 +15,9 @@ import { generateEmbedding, buildNodeEmbeddingText } from "@/src/lib/embeddings"
  * Only regenerates the embedding column.
  */
 export async function POST() {
+  const debugAuthError = await requireDebugAccess();
+  if (debugAuthError) return debugAuthError;
+
   try {
     const data = await loadLatestConversation();
     if (!data) {

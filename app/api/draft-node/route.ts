@@ -6,6 +6,7 @@ import { cosineSimilarity } from "@/src/lib/cosineSimilarity";
 import { DRAFT_SUPPRESS_THRESHOLD } from "@/src/lib/aiDraftConfig";
 import { loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
 import { parseJsonFromLLM, isTitleSummaryResponse } from "@/src/lib/llmJson";
+import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
 import type { ChatMessage } from "@/src/types/message";
 
 type DraftRequest = {
@@ -50,6 +51,9 @@ type ErrorResponse = { error: string };
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<DraftResponse | ErrorResponse>> {
+  const session = await requireSession();
+  if (isAuthError(session)) return session;
+
   // ─── Parse and validate ─────────────────────────────────────────────────
 
   let body: unknown;
@@ -78,6 +82,11 @@ export async function POST(
   }
 
   const conversationId = b.conversationId as string;
+
+  // Verify conversation ownership
+  const access = await requireConversationAccess(conversationId, session);
+  if (isAuthError(access)) return access;
+
   const messages = b.messages as ChatMessage[];
 
   // ─── Step 1: Embed the recent message window ────────────────────────────

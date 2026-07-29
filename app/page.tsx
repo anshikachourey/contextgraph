@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import Header from "@/src/components/layout/Header";
 import ConversationSidebar from "@/src/components/layout/ConversationSidebar";
 import ChatPanel from "@/src/components/chat/ChatPanel";
@@ -58,11 +59,25 @@ async function readStreamToCompletion(response: Response): Promise<string> {
 }
 
 export default function Home() {
+  // ─── Auth / workspace state ────────────────────────────────────────────────
+  const router = useRouter();
+  const [workspace, setWorkspace] = useState<string | null>(null);
+
   // ─── Theme ────────────────────────────────────────────────────────────────
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
 
   // ─── Settings modal state ─────────────────────────────────────────────────
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // ─── Sidebar state ────────────────────────────────────────────────────────
+  // Desktop: starts open. Mobile: starts closed.
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // Set initial sidebar state based on screen width (client-only)
+  useEffect(() => {
+    const isMobile = window.matchMedia("(max-width: 767px)").matches;
+    if (isMobile) setIsSidebarOpen(false);
+  }, []);
 
   // ─── Conversation list state ──────────────────────────────────────────────
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
@@ -158,6 +173,11 @@ export default function Home() {
             if (persistRes.ok) {
               const persistData = await persistRes.json();
               console.log(`[frontend] Messages persisted, engine result:`, persistData);
+
+              // Auto-generate title immediately after first user message is persisted (non-blocking)
+              if (userMsg && convId) {
+                maybeGenerateTitle(convId);
+              }
             }
 
             // Refetch graph state
@@ -206,6 +226,15 @@ export default function Home() {
   useEffect(() => {
     async function init() {
       try {
+        // Check session before loading data
+        const sessionRes = await fetch("/api/auth/session");
+        if (!sessionRes.ok) {
+          router.replace("/login");
+          return;
+        }
+        const sessionData = await sessionRes.json();
+        setWorkspace(sessionData.workspace);
+
         // Check URL for a specific conversation to open (used by branch-in-new-tab)
         const urlParams = new URLSearchParams(window.location.search);
         const urlConvId = urlParams.get("conversationId");
@@ -362,6 +391,36 @@ export default function Home() {
     setSummaryError(null);
   }
 
+  /**
+   * Non-blocking title generation for new conversations.
+   * Only generates if the current sidebar title is still "New conversation".
+   * The server loads the canonical first message — we don't send it from the client.
+   */
+  function maybeGenerateTitle(convId: string) {
+    // Check if the conversation still has the default title in sidebar state
+    const conv = conversations.find((c) => c.id === convId);
+    if (conv && conv.title !== "New conversation") return;
+
+    // Fire and forget — don't block anything
+    fetch("/api/conversations/generate-title", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId: convId }),
+    })
+      .then(async (res) => {
+        if (res.ok) {
+          const { title } = (await res.json()) as { title: string };
+          // Update sidebar title in state
+          setConversations((prev) =>
+            prev.map((c) => (c.id === convId ? { ...c, title } : c)),
+          );
+        }
+      })
+      .catch(() => {
+        // Non-fatal — title stays as "New conversation"
+      });
+  }
+
   async function handleSelectConversation(id: string) {
     if (id === conversationId) return;
     await loadConversation(id);
@@ -514,6 +573,27 @@ export default function Home() {
     } catch {
       // Silently fail
     }
+  }
+
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Continue with redirect even if the call fails
+    }
+
+    // Clear ALL client state to prevent cached owner data from showing
+    setConversations([]);
+    setArchivedConversations([]);
+    resetConversationState();
+    setConversationId(null);
+    setWorkspace(null);
+    setIsV2PreviewOpen(false);
+    setV2Continuation(null);
+    setV2WorkspaceNode(null);
+    setV2WorkspaceLinkedMessages([]);
+
+    router.replace("/login");
   }
 
   // ─── Derived values ────────────────────────────────────────────────────────
@@ -827,27 +907,6 @@ export default function Home() {
       options.attachments = attachments;
     }
     streamSendMessage(chatMessages, options);
-
-    // Update conversation title after first user message (if it's still "New conversation")
-    if (conversationId && !isBranching) {
-      const currentConv = conversations.find((c) => c.id === conversationId);
-      if (currentConv && currentConv.title === "New conversation") {
-        const derivedTitle = content.slice(0, 40) + (content.length > 40 ? "…" : "");
-        fetch("/api/conversations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: conversationId, title: derivedTitle }),
-        })
-          .then(() => {
-            setConversations((prev) =>
-              prev.map((c) =>
-                c.id === conversationId ? { ...c, title: derivedTitle } : c,
-              ),
-            );
-          })
-          .catch(() => {});
-      }
-    }
   }
 
   function handleCloseGraph() {
@@ -943,13 +1002,15 @@ export default function Home() {
 
   return (
     <main className="relative min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <Header onShowGraph={() => setIsGraphOpen(true)} onShowV2Preview={() => setIsV2PreviewOpen(true)} />
+      <Header onShowGraph={() => setIsGraphOpen(true)} onShowV2Preview={() => setIsV2PreviewOpen(true)} workspace={workspace} onLogout={handleLogout} sidebarOpen={isSidebarOpen} onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)} />
 
       <ConversationSidebar
         conversations={conversations}
         archivedConversations={archivedConversations}
         activeConversationId={conversationId}
         isCreating={isCreatingConversation}
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
         onSelect={handleSelectConversation}
         onNewChat={handleNewChat}
         onArchive={handleArchive}
@@ -960,7 +1021,7 @@ export default function Home() {
       />
 
       {/* Main content — offset for sidebar */}
-      <div className="pl-[var(--sidebar-width)]">
+      <div className={`transition-[padding-left] duration-200 ease-in-out ${isSidebarOpen ? "pl-[var(--sidebar-width)]" : "pl-0"}`}>
         <ChatPanel
           messages={displayMessages}
           highlightedMessageIds={highlightedMessageIds}

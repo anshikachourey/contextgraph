@@ -1,3 +1,4 @@
+import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { repairMessageOrder, isValidAlternating } from "@/src/lib/repairMessageOrder";
@@ -13,6 +14,9 @@ import type { ChatMessage } from "@/src/types/message";
  * - Anomalies detected
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const debugAuthError = await requireDebugAccess();
+  if (debugAuthError) return debugAuthError;
+
   const { searchParams } = new URL(request.url);
   const conversationId = searchParams.get("id");
 

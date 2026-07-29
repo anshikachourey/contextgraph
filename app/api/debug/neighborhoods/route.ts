@@ -1,3 +1,4 @@
+import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextResponse } from "next/server";
 import { loadLatestConversation } from "@/src/lib/db/conversations";
 import { loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
@@ -17,6 +18,9 @@ import {
  * Dev-only: runs neighborhood detection with top-K adjacency + coherence guard.
  */
 export async function GET() {
+  const debugAuthError = await requireDebugAccess();
+  if (debugAuthError) return debugAuthError;
+
   try {
     const data = await loadLatestConversation();
     if (!data) {

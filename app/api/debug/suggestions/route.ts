@@ -1,3 +1,4 @@
+import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextResponse } from "next/server";
 import { loadLatestConversation } from "@/src/lib/db/conversations";
 import { loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
@@ -20,6 +21,9 @@ type ErrorResponse = { error: string };
 export async function GET(): Promise<
   NextResponse<SuccessResponse | ErrorResponse>
 > {
+  const debugAuthError = await requireDebugAccess();
+  if (debugAuthError) return debugAuthError;
+
   try {
     const data = await loadLatestConversation();
     if (!data) {

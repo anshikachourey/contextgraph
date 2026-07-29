@@ -9,6 +9,7 @@ import {
   detectMergeCandidates,
   detectParentCandidates,
 } from "@/src/lib/evolutionEngine";
+import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
 import type { ChatMessage } from "@/src/types/message";
 import type { DbMessage, DbNodeMessage } from "@/src/types/db";
 import type {
@@ -34,6 +35,9 @@ type ErrorResponse = { error: string };
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<EvolveGraphResponse | ErrorResponse>> {
+  const session = await requireSession();
+  if (isAuthError(session)) return session;
+
   const startTime = Date.now();
 
   let body: unknown;
@@ -53,6 +57,10 @@ export async function POST(
       { status: 400 },
     );
   }
+
+  // Verify conversation ownership
+  const access = await requireConversationAccess(conversationId, session);
+  if (isAuthError(access)) return access;
 
   try {
     const db = createServerSupabaseClient();

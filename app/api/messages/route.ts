@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { persistMessages } from "@/src/lib/db/messages";
 import { runIntelligenceEngine } from "@/src/lib/intelligence";
 import { enqueueV2Update } from "@/src/lib/intelligence-v2/incremental/update-runner";
+import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
 import type { ChatMessage } from "@/src/types/message";
 
 type ErrorResponse = { error: string };
@@ -13,6 +14,9 @@ type SuccessResponse = { engineRan: boolean; nodesCreated: number; nodesExtended
  * Fetch specific messages by ID for the node inspection panel.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const session = await requireSession();
+  if (isAuthError(session)) return session;
+
   const { searchParams } = new URL(request.url);
   const conversationId = searchParams.get("conversationId");
   const messageIdsParam = searchParams.get("messageIds");
@@ -20,6 +24,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const continuationEntityId = searchParams.get("continuationEntityId");
 
   if (!conversationId) return NextResponse.json([], { status: 200 });
+
+  // Verify conversation ownership
+  const access = await requireConversationAccess(conversationId, session);
+  if (isAuthError(access)) return access;
 
   const db = createServerSupabaseClient();
 
@@ -87,6 +95,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<SuccessResponse | ErrorResponse>> {
+  const session = await requireSession();
+  if (isAuthError(session)) return session;
+
   let body: unknown;
   try {
     body = await request.json();
@@ -101,6 +112,11 @@ export async function POST(
   }
 
   const conversationId = b.conversationId as string;
+
+  // Verify conversation ownership
+  const access = await requireConversationAccess(conversationId, session);
+  if (isAuthError(access)) return access;
+
   const messages = b.messages as ChatMessage[];
   const freshIds = b.freshIds === true;
   const v2ContinuationObjectId = typeof b.v2ContinuationObjectId === "string" ? b.v2ContinuationObjectId : null;

@@ -1,3 +1,4 @@
+import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextRequest, NextResponse } from "next/server";
 import { runV2GraphPlan } from "@/src/lib/intelligence-v2";
 
@@ -11,6 +12,9 @@ export const maxDuration = 120;
  * Persists nothing. Returns complete derivation chain for inspection.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const debugAuthError = await requireDebugAccess();
+  if (debugAuthError) return debugAuthError;
+
   const { searchParams } = new URL(request.url);
   const conversationId = searchParams.get("id");
 

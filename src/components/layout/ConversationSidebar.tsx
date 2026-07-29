@@ -8,6 +8,8 @@ type ConversationSidebarProps = {
   conversations: ConversationListItem[];
   activeConversationId: string | null;
   isCreating: boolean;
+  isOpen: boolean;
+  onClose: () => void;
   onSelect: (id: string) => void;
   onNewChat: () => void;
   onArchive: (id: string) => void;
@@ -22,6 +24,8 @@ export default function ConversationSidebar({
   conversations,
   activeConversationId,
   isCreating,
+  isOpen,
+  onClose,
   onSelect,
   onNewChat,
   onArchive,
@@ -40,6 +44,32 @@ export default function ConversationSidebar({
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   const displayList = showArchived ? archivedConversations : conversations;
+
+  // Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
+  // Prevent background scrolling on mobile when overlay is open
+  useEffect(() => {
+    const isMobile = window.matchMedia("(max-width: 767px)").matches;
+    if (isOpen && isMobile) {
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = ""; };
+    }
+  }, [isOpen]);
+
+  // On mobile, close sidebar after selecting a conversation
+  function handleSelect(id: string) {
+    onSelect(id);
+    const isMobile = window.matchMedia("(max-width: 767px)").matches;
+    if (isMobile) onClose();
+  }
 
   // Close menu on outside click
   useEffect(() => {
@@ -88,7 +118,21 @@ export default function ConversationSidebar({
   }
 
   return (
-    <aside className="fixed left-0 top-0 bottom-0 z-30 flex w-[var(--sidebar-width)] flex-col border-r border-[var(--border)] bg-[var(--sidebar-bg)]">
+    <>
+      {/* Mobile backdrop overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-[2px] md:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`fixed left-0 top-0 bottom-0 z-40 flex w-[var(--sidebar-width)] flex-col border-r border-[var(--border)] bg-[var(--sidebar-bg)] transition-transform duration-200 ease-in-out ${
+          isOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
       {/* Brand */}
       <div className="flex items-center justify-between px-5 py-4">
         <div className="flex items-center gap-2.5">
@@ -192,7 +236,7 @@ export default function ConversationSidebar({
                 /* Normal conversation row */
                 <>
                   <button
-                    onClick={() => onSelect(conv.id)}
+                    onClick={() => handleSelect(conv.id)}
                     className="flex-1 min-w-0 px-3 py-2.5 text-left"
                   >
                     <span
@@ -333,6 +377,7 @@ export default function ConversationSidebar({
         onCancel={() => setDeleteTarget(null)}
       />
     </aside>
+    </>
   );
 }
 

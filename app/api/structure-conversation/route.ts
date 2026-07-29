@@ -10,6 +10,7 @@ import { computeSuggestedEdges } from "@/src/lib/edgeSuggestions";
 import { STRONGLY_RELATED_THRESHOLD } from "@/src/lib/similarityThresholds";
 import { DRAFT_SUPPRESS_THRESHOLD } from "@/src/lib/aiDraftConfig";
 import { parseJsonFromLLM, isTitleSummaryResponse } from "@/src/lib/llmJson";
+import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
 import type { ChatMessage } from "@/src/types/message";
 import type { ContextNode } from "@/src/types/node";
 import type { DbMessage } from "@/src/types/db";
@@ -62,6 +63,9 @@ type MLResponse = {
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<StructureResponse | ErrorResponse>> {
+  const session = await requireSession();
+  if (isAuthError(session)) return session;
+
   let body: unknown;
   try {
     body = await request.json();
@@ -79,6 +83,10 @@ export async function POST(
       { status: 400 },
     );
   }
+
+  // Verify conversation ownership
+  const access = await requireConversationAccess(conversationId, session);
+  if (isAuthError(access)) return access;
 
   // ─── Step 1: Load messages from DB ──────────────────────────────────────
 

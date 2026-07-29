@@ -1,3 +1,4 @@
+import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { runIncrementalV2Update } from "@/src/lib/intelligence-v2/incremental";
@@ -14,6 +15,9 @@ export const maxDuration = 60;
  * Input: { conversationId, newMessageIds, snapshotOverride? }
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const debugAuthError = await requireDebugAccess();
+  if (debugAuthError) return debugAuthError;
+
   const body = await request.json();
   const { conversationId, newMessageIds, snapshotOverride } = body;
 

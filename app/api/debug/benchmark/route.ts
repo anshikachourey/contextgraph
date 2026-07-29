@@ -1,3 +1,4 @@
+import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { evaluateGraphQuality } from "@/src/lib/intelligence/benchmark";
@@ -11,6 +12,9 @@ import type { GraphSnapshot } from "@/src/lib/intelligence/benchmark";
  * segmentation, recall test, and detailed per-node/per-edge breakdowns.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const debugAuthError = await requireDebugAccess();
+  if (debugAuthError) return debugAuthError;
+
   const { searchParams } = new URL(request.url);
   const conversationId = searchParams.get("id");
 

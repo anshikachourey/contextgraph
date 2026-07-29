@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
 
 type SuccessResponse = { ok: true };
 type ErrorResponse = { error: string };
@@ -8,11 +9,14 @@ type ErrorResponse = { error: string };
  * POST /api/messages/edit
  *
  * Updates a message's content by ID.
- * Uses service role — no RLS dependency.
+ * Enforces workspace ownership via the message's conversation.
  */
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<SuccessResponse | ErrorResponse>> {
+  const session = await requireSession();
+  if (isAuthError(session)) return session;
+
   let body: unknown;
   try {
     body = await request.json();
@@ -24,10 +28,32 @@ export async function POST(
   }
 
   const b = body as Record<string, unknown>;
+  const db = createServerSupabaseClient();
+
+  // Look up the message's conversation for access check
+  const messageId = b.messageId as string;
+  if (typeof messageId !== "string") {
+    return NextResponse.json(
+      { error: "Request must include messageId (string)." },
+      { status: 400 },
+    );
+  }
+
+  const { data: msgRow } = await db
+    .from("messages")
+    .select("conversation_id")
+    .eq("id", messageId)
+    .single();
+
+  if (!msgRow) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
+
+  const access = await requireConversationAccess(msgRow.conversation_id, session);
+  if (isAuthError(access)) return access;
 
   // Delete action
   if (typeof b.messageId === "string" && b.action === "delete") {
-    const db = createServerSupabaseClient();
     const { error } = await db.from("messages").delete().eq("id", b.messageId);
     if (error) {
       return NextResponse.json(
@@ -52,8 +78,6 @@ export async function POST(
       { status: 400 },
     );
   }
-
-  const db = createServerSupabaseClient();
 
   const { error } = await db
     .from("messages")

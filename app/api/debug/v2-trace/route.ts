@@ -1,3 +1,4 @@
+import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { buildUtterances } from "@/src/lib/intelligence-v2/utterances";
@@ -18,6 +19,9 @@ export const maxDuration = 300;
  * Full pipeline instrumentation. Exposes every intermediate artifact.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const debugAuthError = await requireDebugAccess();
+  if (debugAuthError) return debugAuthError;
+
   const { searchParams } = new URL(request.url);
   const conversationId = searchParams.get("id");
 
