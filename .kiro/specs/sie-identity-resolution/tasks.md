@@ -525,7 +525,17 @@ The implementation must respect this dependency sequence:
 Task 0 repository audit
   → Task 1 canonical contracts
   → Task 2 database prerequisites
-  → Task 3 identity tables
+  → Task 3 identity tablesAll clean. Here's what was implemented:
+  
+  Each conversation in the sidebar now has a three-dot menu (⋮) that appears on hover and contains:
+  
+  Rename — opens an inline text input right in the sidebar row. Press Enter or blur to save, Escape to cancel. Calls the existing /api/conversations title-update endpoint.
+  
+  Archive / Unarchive — contextual label depending on which tab you're in. Active conversations show "Archive", archived ones show "Unarchive".
+  
+  Delete permanently — separated by a divider and styled in red. Opens the confirmation dialog with a clear warning about what will be deleted (messages, nodes, graph data) and that it's irreversible.
+  
+  The menu closes on outside click, and only one menu can be open at a time.
   → Task 4 reservation + snapshot RPCs
   → Task 5 commit/security/privacy/rollback
   → Task 6 database checkpoint

@@ -82,19 +82,14 @@ export default function NodeWorkspace({
           </button>
 
           {!isOriginCollapsed && (
-            <div className="space-y-2 border-l-2 border-[var(--border)] pl-4 ml-1">
+            <div className="space-y-4 border-l-2 border-[var(--border)] pl-4 ml-1">
               {linkedMessages.map((message) => (
-                <div
+                <ChatMessage
                   key={message.id}
-                  className="rounded-xl bg-[var(--muted)] px-4 py-3"
-                >
-                  <p className="mb-1 text-[11px] font-medium text-[var(--muted-foreground)]">
-                    {message.role === "user" ? "You" : "ContextGraph"}
-                  </p>
-                  <p className="text-[13px] leading-relaxed text-[var(--foreground)]/80 line-clamp-4">
-                    {message.content}
-                  </p>
-                </div>
+                  message={message}
+                  isSelected={false}
+                  isHighlighted={false}
+                />
               ))}
             </div>
           )}

@@ -1,7 +1,23 @@
 "use client";
 
-import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  useNodesState,
+  useEdgesState,
+  BackgroundVariant,
+  Handle,
+  Position,
+  type Node,
+  type Edge,
+  type NodeProps,
+  type NodeChange,
+} from "@xyflow/react";
 import { deriveConceptualMap, SYNTHETIC_ROOT_ID, type ConceptualMap, type MapNode } from "./derive-map";
+import V2GraphCanvas from "../V2GraphCanvas";
+import { normalizeGraph, type DisplayGraph, type DisplayNode } from "@/src/lib/intelligence-v2/normalize-graph";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -51,6 +67,115 @@ const TYPE_ICONS: Record<string, string> = {
   comparison: "⇔", goal: "⊕", project: "▣", noise: "~", root: "◉",
 };
 
+// ─── Layout constants ───────────────────────────────────────────────────────
+
+const CARD_WIDTH = 260;
+const ROOT_WIDTH = 220;
+const ROOT_HEIGHT = 100;
+const H_GAP = 40;
+const V_GAP = 120;
+
+// ─── Custom React Flow node types ───────────────────────────────────────────
+
+type RootNodeData = {
+  title: string;
+  objectCount: number;
+  isSelected: boolean;
+};
+
+type ConceptNodeData = {
+  title: string;
+  description: string;
+  objectType: string;
+  descendantCount: number;
+  isSelected: boolean;
+  isQuieted: boolean;
+};
+
+type OverviewRootNode = Node<RootNodeData, "overviewRoot">;
+type OverviewConceptNode = Node<ConceptNodeData, "overviewConcept">;
+type OverviewFlowNode = OverviewRootNode | OverviewConceptNode;
+
+function OverviewRootNodeCard({ data }: NodeProps<OverviewRootNode>) {
+  return (
+    <>
+      <div
+        className={`flex flex-col items-center gap-1 rounded-2xl border-2 px-8 py-5 transition-all cursor-pointer ${
+          data.isSelected
+            ? "border-indigo-500 bg-indigo-50 shadow-lg shadow-indigo-100"
+            : "border-gray-200 bg-white shadow-sm hover:border-indigo-300 hover:shadow-md"
+        }`}
+      >
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-indigo-600">
+            <circle cx="6" cy="6" r="2" /><circle cx="18" cy="18" r="2" /><circle cx="18" cy="6" r="2" />
+            <path d="M6 8v8M8 6h8M16 18H8" />
+          </svg>
+        </div>
+        <span className="text-[15px] font-semibold text-gray-800">{data.title}</span>
+        <span className="text-[12px] text-gray-500">{data.objectCount} concepts explored</span>
+      </div>
+      <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0 !w-0 !h-0" />
+    </>
+  );
+}
+
+function OverviewConceptNodeCard({ data }: NodeProps<OverviewConceptNode>) {
+  const color = TYPE_COLORS[data.objectType] ?? "#6b7280";
+  const icon = TYPE_ICONS[data.objectType] ?? "•";
+
+  return (
+    <>
+      <Handle type="target" position={Position.Top} className="!bg-transparent !border-0 !w-0 !h-0" />
+      <div
+        className={`group w-64 rounded-xl border transition-all cursor-pointer ${
+          data.isSelected
+            ? "border-indigo-400 bg-indigo-50/50 shadow-md ring-2 ring-indigo-200"
+            : data.isQuieted
+              ? "border-gray-100 bg-gray-50/50 opacity-60"
+              : "border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-gray-300"
+        }`}
+      >
+        {/* Type accent */}
+        <div className="h-1 rounded-t-xl" style={{ backgroundColor: color }} />
+
+        <div className="p-4">
+          <div className="flex items-start gap-2">
+            <span
+              className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white"
+              style={{ backgroundColor: color }}
+            >
+              {icon}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold leading-snug text-gray-800 line-clamp-2">
+                {data.title}
+              </p>
+              <p className="mt-1 text-[11px] text-gray-500 line-clamp-1">
+                {data.description}
+              </p>
+            </div>
+          </div>
+
+          {data.descendantCount > 0 && (
+            <div className="mt-3">
+              <span className="text-[10px] text-gray-400">
+                {data.descendantCount} items
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+      <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0 !w-0 !h-0" />
+    </>
+  );
+}
+
+const overviewNodeTypes = {
+  overviewRoot: OverviewRootNodeCard,
+  overviewConcept: OverviewConceptNodeCard,
+};
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function ConceptualMapView({
@@ -59,9 +184,7 @@ export default function ConceptualMapView({
   onNodeClick,
   onClearSelection,
 }: ConceptualMapViewProps) {
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [breadcrumbs, setBreadcrumbs] = useState<string[]>([]);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [focusedObjectId, setFocusedObjectId] = useState<string | null>(null);
 
   // Derive the conceptual map from snapshot
   const map: ConceptualMap = useMemo(() => {
@@ -72,462 +195,277 @@ export default function ConceptualMapView({
     );
   }, [graphPayload]);
 
-  // Handle node expansion (one level at a time)
-  const handleExpand = useCallback((nodeId: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(nodeId)) {
-        // Collapse: remove this node and all its descendants from expanded
-        next.delete(nodeId);
-        const removeDescendants = (id: string) => {
-          const node = map.nodes.get(id);
-          if (node) {
-            for (const childId of node.childIds) {
-              next.delete(childId);
-              removeDescendants(childId);
-            }
-          }
-        };
-        removeDescendants(nodeId);
-      } else {
-        next.add(nodeId);
-      }
-      return next;
-    });
-  }, [map]);
-
-  // Handle node selection (click)
+  // Handle node selection (click without drag) — drills into the focused V2 graph
   const handleNodeSelect = useCallback((nodeId: string) => {
     if (nodeId === SYNTHETIC_ROOT_ID) {
       onClearSelection();
-      setBreadcrumbs([]);
       return;
     }
-
+    setFocusedObjectId(nodeId);
     onNodeClick(nodeId);
-
-    // Build breadcrumb path
-    const path: string[] = [];
-    let current = nodeId;
-    while (current) {
-      path.unshift(current);
-      const node = map.nodes.get(current);
-      if (!node || !node.parentId || node.parentId === SYNTHETIC_ROOT_ID) break;
-      current = node.parentId;
-    }
-    setBreadcrumbs(path);
-
-    // Auto-expand path to this node
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      for (const id of path) {
-        const node = map.nodes.get(id);
-        if (node && node.childIds.length > 0) {
-          next.add(id);
-        }
-      }
-      return next;
-    });
-  }, [map, onNodeClick, onClearSelection]);
+  }, [onNodeClick, onClearSelection]);
 
   // Reset to overview
   const handleResetOverview = useCallback(() => {
-    setExpandedIds(new Set());
-    setBreadcrumbs([]);
+    setFocusedObjectId(null);
     onClearSelection();
   }, [onClearSelection]);
 
-  // Compute which nodes are currently visible
-  const visibleNodeIds = useMemo(() => {
-    const visible = new Set<string>();
-    visible.add(map.rootId);
+  // ─── Build React Flow nodes for the overview ────────────────────────────
 
-    // Major concepts are always visible
-    for (const id of map.majorConceptIds) {
-      visible.add(id);
+  const overviewFlowNodes = useMemo((): OverviewFlowNode[] => {
+    const flowNodes: OverviewFlowNode[] = [];
+    const conceptCount = map.majorConceptIds.length;
+
+    // Position root node centered above concepts
+    const totalConceptsWidth = conceptCount * CARD_WIDTH + Math.max(0, conceptCount - 1) * H_GAP;
+    const rootX = (totalConceptsWidth - ROOT_WIDTH) / 2;
+
+    const rootNode = map.nodes.get(map.rootId);
+    if (rootNode) {
+      flowNodes.push({
+        id: map.rootId,
+        type: "overviewRoot",
+        position: { x: Math.max(0, rootX), y: 0 },
+        data: {
+          title: rootNode.title,
+          objectCount: graphPayload.objects.length,
+          isSelected: selectedNodeId === map.rootId,
+        },
+      });
     }
 
-    // Children of expanded nodes are visible
-    function revealChildren(parentId: string) {
-      if (!expandedIds.has(parentId)) return;
-      const node = map.nodes.get(parentId);
+    // Position concept cards in a row below the root
+    map.majorConceptIds.forEach((conceptId, idx) => {
+      const node = map.nodes.get(conceptId);
       if (!node) return;
-      for (const childId of node.childIds) {
-        visible.add(childId);
-        revealChildren(childId); // recursively reveal expanded children
+
+      const x = idx * (CARD_WIDTH + H_GAP);
+      const y = ROOT_HEIGHT + V_GAP;
+
+      const isSelected = selectedNodeId === conceptId;
+      const isQuieted = selectedNodeId !== null && selectedNodeId !== conceptId && selectedNodeId !== map.rootId;
+
+      flowNodes.push({
+        id: conceptId,
+        type: "overviewConcept",
+        position: { x, y },
+        data: {
+          title: node.title,
+          description: node.description,
+          objectType: node.objectType,
+          descendantCount: node.descendantCount,
+          isSelected,
+          isQuieted,
+        },
+      });
+    });
+
+    return flowNodes;
+  }, [map, graphPayload.objects.length, selectedNodeId]);
+
+  // Build edges from root to each major concept + semantic edges between visible concepts
+  const overviewFlowEdges = useMemo((): Edge[] => {
+    const flowEdges: Edge[] = [];
+
+    for (const conceptId of map.majorConceptIds) {
+      flowEdges.push({
+        id: `root-${conceptId}`,
+        source: map.rootId,
+        target: conceptId,
+        type: "default",
+        style: { stroke: "#cbd5e1", strokeWidth: 1.5, opacity: 0.6 },
+      });
+    }
+
+    for (const edge of map.semanticEdges) {
+      const sourceVisible = map.majorConceptIds.includes(edge.source) || edge.source === map.rootId;
+      const targetVisible = map.majorConceptIds.includes(edge.target) || edge.target === map.rootId;
+      if (sourceVisible && targetVisible) {
+        flowEdges.push({
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          type: "default",
+          label: edge.type.replace(/_/g, " "),
+          labelStyle: { fontSize: 9, fill: "#94a3b8" },
+          labelBgStyle: { fill: "#f8fafc", stroke: "#e2e8f0", strokeWidth: 0.5 },
+          labelBgPadding: [4, 2] as [number, number],
+          style: { stroke: "#a5b4fc", strokeWidth: 1, strokeDasharray: "4 4", opacity: 0.5 },
+        });
       }
     }
 
-    for (const id of map.majorConceptIds) {
-      revealChildren(id);
+    return flowEdges;
+  }, [map]);
+
+  // React Flow state
+  const [nodes, setNodes, onNodesChange] = useNodesState<OverviewFlowNode>(overviewFlowNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(overviewFlowEdges);
+
+  // Track dragged positions so they persist while overview is open
+  const draggedPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const prevNodeIds = useRef<string>(overviewFlowNodes.map((n) => n.id).sort().join(","));
+
+  // Sync nodes when data changes, preserving user-dragged positions
+  useEffect(() => {
+    const currentIds = overviewFlowNodes.map((n) => n.id).sort().join(",");
+    const structureChanged = currentIds !== prevNodeIds.current;
+    prevNodeIds.current = currentIds;
+
+    if (structureChanged) {
+      draggedPositions.current.clear();
+      setNodes(overviewFlowNodes);
+    } else {
+      setNodes(overviewFlowNodes.map((node) => {
+        const dragged = draggedPositions.current.get(node.id);
+        return dragged ? { ...node, position: dragged } : node;
+      }));
+    }
+  }, [overviewFlowNodes, setNodes]);
+
+  useEffect(() => {
+    setEdges(overviewFlowEdges);
+  }, [overviewFlowEdges, setEdges]);
+
+  // Distinguish drag from click: track whether pointer moved significantly
+  const dragStartPos = useRef<{ id: string; x: number; y: number } | null>(null);
+  const wasDragged = useRef(false);
+
+  const handleNodesChange = useCallback((changes: NodeChange<OverviewFlowNode>[]) => {
+    onNodesChange(changes);
+
+    for (const change of changes) {
+      if (change.type === "position") {
+        if (change.dragging && change.position) {
+          if (!dragStartPos.current || dragStartPos.current.id !== change.id) {
+            dragStartPos.current = { id: change.id, x: change.position.x, y: change.position.y };
+            wasDragged.current = false;
+          } else {
+            const dx = change.position.x - dragStartPos.current.x;
+            const dy = change.position.y - dragStartPos.current.y;
+            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+              wasDragged.current = true;
+            }
+          }
+        }
+        if (!change.dragging && change.position) {
+          draggedPositions.current.set(change.id, change.position);
+        }
+      }
+    }
+  }, [onNodesChange]);
+
+  // Click handler: only drill down if user didn't drag
+  const handleNodeClick = useCallback((_: React.MouseEvent, node: OverviewFlowNode) => {
+    if (wasDragged.current) {
+      wasDragged.current = false;
+      dragStartPos.current = null;
+      return;
+    }
+    dragStartPos.current = null;
+    handleNodeSelect(node.id);
+  }, [handleNodeSelect]);
+
+  // ─── Focused component: filter the real V2 graph to the focused subtree ───
+  const focusedDisplayGraph: DisplayGraph | null = useMemo(() => {
+    if (!focusedObjectId) return null;
+
+    const fullGraph = normalizeGraph(
+      graphPayload.objects as Parameters<typeof normalizeGraph>[0],
+      graphPayload.relationships as Parameters<typeof normalizeGraph>[1],
+    );
+
+    const componentIds = new Set<string>();
+    function collectSubtree(nodeId: string) {
+      componentIds.add(nodeId);
+      const node = fullGraph.nodes.find((n) => n.objectId === nodeId);
+      if (node) {
+        for (const childId of node.childIds) {
+          collectSubtree(childId);
+        }
+      }
+    }
+    collectSubtree(focusedObjectId);
+
+    const focusedNode = fullGraph.nodes.find((n) => n.objectId === focusedObjectId);
+    if (focusedNode?.parentId) {
+      componentIds.add(focusedNode.parentId);
     }
 
-    return visible;
-  }, [map, expandedIds]);
-
-  // Visible semantic edges (both endpoints must be visible)
-  const visibleEdges = useMemo(() => {
-    return map.semanticEdges.filter(
-      (e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target)
+    const filteredNodes: DisplayNode[] = fullGraph.nodes.filter((n) => componentIds.has(n.objectId));
+    const filteredSemanticEdges = fullGraph.semanticEdges.filter(
+      (e) => componentIds.has(e.source) && componentIds.has(e.target),
     );
-  }, [map.semanticEdges, visibleNodeIds]);
+    const filteredStructuralEdges = fullGraph.structuralEdges.filter(
+      (e) => componentIds.has(e.source) && componentIds.has(e.target),
+    );
 
-  // Root node
-  const rootNode = map.nodes.get(map.rootId);
+    return {
+      nodes: filteredNodes,
+      trees: fullGraph.trees.filter((t) => t.nodeIds.some((id) => componentIds.has(id))),
+      semanticEdges: filteredSemanticEdges,
+      structuralEdges: filteredStructuralEdges,
+      diagnostics: { ...fullGraph.diagnostics, totalObjects: filteredNodes.length },
+    };
+  }, [focusedObjectId, graphPayload]);
 
-  return (
-    <div ref={containerRef} className="flex h-full flex-col overflow-hidden bg-gradient-to-br from-slate-50 to-white">
-      {/* Breadcrumb + Reset */}
-      <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2 bg-white/80 backdrop-blur-sm">
-        <button
-          onClick={handleResetOverview}
-          className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          Overview
-        </button>
-        {breadcrumbs.length > 0 && (
-          <div className="flex items-center gap-1 text-[11px] text-gray-400">
-            {breadcrumbs.map((id, idx) => {
-              const node = map.nodes.get(id);
-              if (!node) return null;
-              return (
-                <span key={id} className="flex items-center gap-1">
-                  <span className="text-gray-300">›</span>
-                  <button
-                    onClick={() => handleNodeSelect(id)}
-                    className={`rounded px-1.5 py-0.5 transition hover:bg-gray-100 ${
-                      idx === breadcrumbs.length - 1 ? "font-medium text-gray-700" : "text-gray-500"
-                    }`}
-                  >
-                    {node.title.length > 20 ? node.title.slice(0, 20) + "…" : node.title}
-                  </button>
-                </span>
-              );
-            })}
-          </div>
-        )}
-      </div>
+  const focusedOverlapIds = useMemo(() => new Set<string>(), []);
 
-      {/* Map content */}
-      <div className="flex-1 overflow-auto p-6">
-        {/* Conversation root */}
-        {rootNode && (
-          <div className="mb-8 flex justify-center">
-            <RootCard
-              node={rootNode}
-              isSelected={selectedNodeId === rootNode.objectId}
-              objectCount={graphPayload.objects.length}
-              onClick={() => handleNodeSelect(rootNode.objectId)}
-            />
-          </div>
-        )}
-
-        {/* Major concepts grid */}
-        <div className="flex flex-wrap justify-center gap-4 mb-6">
-          {map.majorConceptIds.map((conceptId) => {
-            const node = map.nodes.get(conceptId);
-            if (!node) return null;
-            const isExpanded = expandedIds.has(conceptId);
-            const isSelected = selectedNodeId === conceptId;
-            const isInSelectedPath = breadcrumbs.includes(conceptId);
-            const isUnrelated = selectedNodeId !== null && !isInSelectedPath && selectedNodeId !== conceptId;
-
-            return (
-              <div key={conceptId} className="flex flex-col items-center">
-                <ConceptCard
-                  node={node}
-                  isExpanded={isExpanded}
-                  isSelected={isSelected}
-                  isQuieted={isUnrelated}
-                  onSelect={() => handleNodeSelect(conceptId)}
-                  onExpand={() => handleExpand(conceptId)}
-                />
-
-                {/* Expanded children (one level) */}
-                {isExpanded && (
-                  <div className="mt-3 ml-4 space-y-2 border-l-2 border-gray-200 pl-4 transition-all">
-                    {node.childIds.map((childId) => {
-                      const child = map.nodes.get(childId);
-                      if (!child) return null;
-                      const childExpanded = expandedIds.has(childId);
-                      const childSelected = selectedNodeId === childId;
-
-                      return (
-                        <div key={childId}>
-                          <ChildCard
-                            node={child}
-                            isExpanded={childExpanded}
-                            isSelected={childSelected}
-                            onSelect={() => handleNodeSelect(childId)}
-                            onExpand={() => handleExpand(childId)}
-                          />
-
-                          {/* Second-level children */}
-                          {childExpanded && child.childIds.length > 0 && (
-                            <div className="mt-2 ml-4 space-y-1.5 border-l border-gray-100 pl-3">
-                              {child.childIds.map((grandchildId) => {
-                                const grandchild = map.nodes.get(grandchildId);
-                                if (!grandchild) return null;
-                                return (
-                                  <LeafCard
-                                    key={grandchildId}
-                                    node={grandchild}
-                                    isSelected={selectedNodeId === grandchildId}
-                                    onSelect={() => handleNodeSelect(grandchildId)}
-                                    onExpand={() => handleExpand(grandchildId)}
-                                  />
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Visible semantic edges (shown as connection indicators) */}
-        {visibleEdges.length > 0 && selectedNodeId && (
-          <div className="mt-4 border-t border-gray-100 pt-3">
-            <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-gray-400">
-              Connections
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {visibleEdges
-                .filter((e) => e.source === selectedNodeId || e.target === selectedNodeId)
-                .slice(0, 8)
-                .map((edge) => {
-                  const otherId = edge.source === selectedNodeId ? edge.target : edge.source;
-                  const otherNode = map.nodes.get(otherId);
-                  if (!otherNode) return null;
-                  return (
-                    <button
-                      key={edge.id}
-                      onClick={() => handleNodeSelect(otherId)}
-                      className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[11px] transition hover:border-indigo-300 hover:shadow-sm"
-                    >
-                      <span className="text-gray-400">{edge.type.replace(/_/g, " ")}</span>
-                      <span className="font-medium text-gray-700 truncate max-w-[120px]">
-                        {otherNode.title}
-                      </span>
-                    </button>
-                  );
-                })}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Card Components ────────────────────────────────────────────────────────
-
-function RootCard({
-  node,
-  isSelected,
-  objectCount,
-  onClick,
-}: {
-  node: MapNode;
-  isSelected: boolean;
-  objectCount: number;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex flex-col items-center gap-1 rounded-2xl border-2 px-8 py-5 transition-all ${
-        isSelected
-          ? "border-indigo-500 bg-indigo-50 shadow-lg shadow-indigo-100"
-          : "border-gray-200 bg-white shadow-sm hover:border-indigo-300 hover:shadow-md"
-      }`}
-    >
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-indigo-600">
-          <circle cx="6" cy="6" r="2" /><circle cx="18" cy="18" r="2" /><circle cx="18" cy="6" r="2" />
-          <path d="M6 8v8M8 6h8M16 18H8" />
-        </svg>
-      </div>
-      <span className="text-[15px] font-semibold text-gray-800">{node.title}</span>
-      <span className="text-[12px] text-gray-500">{objectCount} concepts explored</span>
-    </button>
-  );
-}
-
-function ConceptCard({
-  node,
-  isExpanded,
-  isSelected,
-  isQuieted,
-  onSelect,
-  onExpand,
-}: {
-  node: MapNode;
-  isExpanded: boolean;
-  isSelected: boolean;
-  isQuieted: boolean;
-  onSelect: () => void;
-  onExpand: () => void;
-}) {
-  const color = TYPE_COLORS[node.objectType] ?? "#6b7280";
-  const icon = TYPE_ICONS[node.objectType] ?? "•";
-
-  return (
-    <div
-      className={`group w-64 rounded-xl border transition-all ${
-        isSelected
-          ? "border-indigo-400 bg-indigo-50/50 shadow-md ring-2 ring-indigo-200"
-          : isQuieted
-            ? "border-gray-100 bg-gray-50/50 opacity-60"
-            : "border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-gray-300"
-      }`}
-    >
-      {/* Type accent */}
-      <div className="h-1 rounded-t-xl" style={{ backgroundColor: color }} />
-
-      <div className="p-4">
-        {/* Header */}
-        <button onClick={onSelect} className="w-full text-left">
-          <div className="flex items-start gap-2">
-            <span
-              className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white"
-              style={{ backgroundColor: color }}
-            >
-              {icon}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold leading-snug text-gray-800 line-clamp-2">
-                {node.title}
-              </p>
-              <p className="mt-1 text-[11px] text-gray-500 line-clamp-1">
-                {node.description}
-              </p>
-            </div>
-          </div>
-        </button>
-
-        {/* Footer: expand toggle + count */}
-        {node.childIds.length > 0 && (
-          <div className="mt-3 flex items-center justify-between">
-            <span className="text-[10px] text-gray-400">
-              {node.descendantCount} items
-            </span>
-            <button
-              onClick={(e) => { e.stopPropagation(); onExpand(); }}
-              className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
-            >
-              {isExpanded ? (
-                <>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="18 15 12 9 6 15" /></svg>
-                  Collapse
-                </>
-              ) : (
-                <>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
-                  Expand
-                </>
-              )}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ChildCard({
-  node,
-  isExpanded,
-  isSelected,
-  onSelect,
-  onExpand,
-}: {
-  node: MapNode;
-  isExpanded: boolean;
-  isSelected: boolean;
-  onSelect: () => void;
-  onExpand: () => void;
-}) {
-  const color = TYPE_COLORS[node.objectType] ?? "#6b7280";
-  const icon = TYPE_ICONS[node.objectType] ?? "•";
-
-  return (
-    <div
-      className={`rounded-lg border transition-all ${
-        isSelected
-          ? "border-indigo-300 bg-indigo-50/40 shadow-sm"
-          : "border-gray-150 bg-white hover:border-gray-300 hover:shadow-sm"
-      }`}
-    >
-      <button onClick={onSelect} className="flex w-full items-start gap-2 p-3 text-left">
-        <span
-          className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-[9px] font-bold text-white"
-          style={{ backgroundColor: color }}
-        >
-          {icon}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[12px] font-medium leading-snug text-gray-700 line-clamp-1">
-            {node.title}
-          </p>
-          <p className="mt-0.5 text-[10px] text-gray-400 line-clamp-1">{node.description}</p>
-        </div>
-        {node.childIds.length > 0 && (
+  // ─── Focused view: render the real V2 graph for the selected component ───
+  if (focusedObjectId && focusedDisplayGraph) {
+    return (
+      <div className="flex h-full flex-col overflow-hidden">
+        <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2 bg-white/80 backdrop-blur-sm shrink-0">
           <button
-            onClick={(e) => { e.stopPropagation(); onExpand(); }}
-            className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            onClick={handleResetOverview}
+            className="flex items-center gap-1 rounded-md px-2.5 py-1 text-[12px] font-medium text-gray-600 transition hover:bg-gray-100 hover:text-gray-800"
           >
-            <svg
-              width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-              className={`transition-transform ${isExpanded ? "rotate-180" : ""}`}
-            >
-              <polyline points="6 9 12 15 18 9" />
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
+            Back to overview
           </button>
-        )}
-      </button>
-    </div>
-  );
-}
+          <span className="text-[11px] text-gray-400">
+            {focusedDisplayGraph.diagnostics.totalObjects} nodes in this branch
+          </span>
+        </div>
+        <div className="flex-1">
+          <V2GraphCanvas
+            displayGraph={focusedDisplayGraph}
+            overlapObjectIds={focusedOverlapIds}
+            selectedNodeId={selectedNodeId}
+            edgeMode="structure"
+            onNodeClick={onNodeClick}
+          />
+        </div>
+      </div>
+    );
+  }
 
-function LeafCard({
-  node,
-  isSelected,
-  onSelect,
-  onExpand,
-}: {
-  node: MapNode;
-  isSelected: boolean;
-  onSelect: () => void;
-  onExpand: () => void;
-}) {
-  const color = TYPE_COLORS[node.objectType] ?? "#6b7280";
-
+  // ─── Overview rendered inside React Flow ──────────────────────────────────
   return (
-    <button
-      onClick={onSelect}
-      className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition ${
-        isSelected ? "bg-indigo-50 ring-1 ring-indigo-200" : "hover:bg-gray-50"
-      }`}
-    >
-      <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-      <span className="text-[11px] text-gray-600 truncate flex-1">{node.title}</span>
-      {node.childIds.length > 0 && (
-        <span
-          onClick={(e) => { e.stopPropagation(); onExpand(); }}
-          className="text-[10px] text-gray-400 hover:text-gray-600"
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex-1">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={handleNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeClick={handleNodeClick}
+          nodeTypes={overviewNodeTypes}
+          nodesDraggable
+          fitView
+          fitViewOptions={{ padding: 0.15, maxZoom: 1.2 }}
+          minZoom={0.3}
+          maxZoom={2}
+          proOptions={{ hideAttribution: true }}
+          className="h-full w-full"
         >
-          +{node.childIds.length}
-        </span>
-      )}
-    </button>
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#e5e7eb" />
+          <Controls showInteractive={false} />
+        </ReactFlow>
+      </div>
+    </div>
   );
 }

@@ -1,4 +1,4 @@
-# Design Document: SIE Data Model (Revised)
+# Design Document: SIE Data Model (Final Corrected)
 
 ## Overview
 
@@ -14,11 +14,11 @@ This design defines the foundational data model for the Semantic Intelligence En
 
 ### Execution Boundary
 
-| Responsibility | Runtime | Rationale |
-|----------------|---------|-----------|
-| Retention assessment, proposition extraction, packet formation, cohesion analysis, **identity resolution** | Python ml-service | Python is the authoritative semantic core for all semantic decisions |
-| Graph state retrieval, version/invariant validation, orchestration, atomic commit, snapshot management, UI serving | TypeScript Next.js | Preserves existing `v2_commit_update` RPC pattern and Supabase integration |
-| Storage | Supabase (PostgreSQL + pgvector) | Existing persistence infrastructure |
+| Responsibility                                                                                                     | Runtime                          | Rationale                                                                  |
+| ------------------------------------------------------------------------------------------------------------------ | -------------------------------- | -------------------------------------------------------------------------- |
+| Retention assessment, proposition extraction, packet formation, cohesion analysis, **identity resolution**         | Python ml-service                | Python is the authoritative semantic core for all semantic decisions       |
+| Graph state retrieval, version/invariant validation, orchestration, atomic commit, snapshot management, UI serving | TypeScript Next.js               | Preserves existing `v2_commit_update` RPC pattern and Supabase integration |
+| Storage                                                                                                            | Supabase (PostgreSQL + pgvector) | Existing persistence infrastructure                                        |
 
 **Critical boundary**: Python makes all primary semantic decisions (retention, identity, cohesion, relationships). TypeScript orchestrates calls, retrieves graph state for Python to reason over, validates structural invariants (cycle detection, single-parent), and commits results atomically. TypeScript does NOT make the primary semantic identity decision.
 
@@ -85,48 +85,49 @@ graph TB
 
 ### Relationship to Existing V2 Infrastructure
 
-The existing V2 pipeline remains operational during transition. SIE tables are **auxiliary storage alongside** the existing `v2_graph_snapshots`:
+The transition has an explicit single-authority rule. The legacy V2 semantic pipeline and SIE must never both author semantic identity for the same conversation at the same time.
 
-- `v2_graph_snapshots` continues to store the canonical snapshot consumed by the React Flow UI
-- `v2_update_state` continues to manage cursor/recovery state
-- `v2_commit_update` RPC continues to be the atomic commit mechanism
-- SIE tables store richer semantic detail that the V2 snapshot format cannot express
-- The commit manager writes to BOTH: V2 snapshot (for UI/backward compat) AND SIE tables (for semantic richness)
+* **Shadow phase**: V2 remains authoritative. SIE may analyze the same messages and write isolated evaluation results, but it must not alter the user-visible V2 snapshot, cursor, or production mutation history.
+* **Cutover transaction**: A conversation is assigned an authoritative engine version. The cutover establishes the initial SIE state and records the engine version atomically.
+* **SIE-authoritative phase**: Persistent Concerns and their associations are the authoritative semantic state. `v2_graph_snapshots` becomes a backward-compatible materialized projection consumed by the existing React Flow UI. The legacy Thread → Object identity-formation path no longer writes semantic objects for that conversation.
+* **Rollback**: Rollback changes the authoritative engine version through an explicit migration/restore operation. It must not permit concurrent dual writers.
 
-**Thread → SemanticPacket is NOT a direct replacement.** Threads in V2 serve multiple purposes: subject-coherent grouping, ordering, and provenance tracking for object formation. SemanticPackets serve a different purpose: concern-cohesive processing units for identity resolution. The V2 Thread infrastructure remains for backward compatibility. Packets are a new semantic layer that coexists with threads during transition.
+The following infrastructure remains in use:
+
+* `v2_graph_snapshots` stores the UI-compatible projection, not an independent competing semantic truth after SIE cutover.
+* `v2_update_state` continues to manage cursor and recovery state.
+* An extended `v2_commit_update` RPC remains the single atomic commit boundary.
+* SIE tables store richer authoritative semantic detail that the V2 snapshot format cannot express.
+
+**Thread → SemanticPacket is NOT a direct replacement.** Semantic Packets are concern-cohesive processing units for identity resolution. V2 Threads may remain as derived compatibility/display artifacts for ordering, grouping, and provenance, but after SIE cutover they must not continue independently forming authoritative objects.
 
 **ObjectMaturity is retired.** It measured proposition count (`nascent < 3 < developing < 8 < stable`), which is not semantically meaningful. `semanticVersion` on PersistentConcern tracks commit count against that concern — a different concept entirely. Neither replaces the other.
 
 ## Components and Interfaces
 
-### Idempotent ID Strategy
+### Stable, Idempotent ID Strategy
 
-All entity IDs are **deterministic content-addressed hashes**, not random UUIDs. This ensures:
-- Retry-stability: same input produces same ID
-- Deduplication: identical extractions don't create duplicates
-- Incremental/batch convergence: processing order doesn't affect IDs
+Permanent IDs are opaque, namespaced identifiers resolved once from stable creation keys and then reused. They are **not derived from mutable or model-generated text** such as `canonicalMeaning`, `identitySummary`, titles, summaries, or aliases. Equivalent model runs may phrase those fields differently, and later semantic evolution may legitimately update them.
+
+Idempotency is provided through stable creation keys and an authoritative registry:
+
+* Every processing attempt has a stable `request_id` and `idempotency_key` derived from the conversation, source message sequence range, and pipeline invocation identity.
+* A proposed proposition carries a `proposition_creation_key` derived from immutable source provenance and its stable extraction-unit position within that request, not its canonical wording.
+* A packet carries a `packet_creation_key` derived from the request and its stable partition lineage. Deliberate splits receive stable child partition keys.
+* A new concern proposal carries a `concern_creation_key` derived from the packet and identity-resolution creation event. A namespaced UUIDv5 (or equivalent deterministic opaque-ID function) resolves the permanent `concern_id` from that immutable creation key; the atomic commit records and verifies the mapping. Retries reuse it.
+* Existing concerns are always addressed by their persisted `concern_id`. Changes to identity summaries, titles, state, aliases, parents, or vocabulary never regenerate the ID.
+* Association, membership, split, decision, and audit IDs use the same creation-key registry or a database uniqueness constraint appropriate to the event.
 
 ```python
-# ml-service/app/id_gen.py
-import hashlib
-
-def proposition_id(conversation_id: str, source_message_ids: list[str], canonical_meaning: str) -> str:
-    """Deterministic proposition ID from content + provenance."""
-    content = f"{conversation_id}|{'|'.join(sorted(source_message_ids))}|{canonical_meaning}"
-    return f"prop-{hashlib.sha256(content.encode()).hexdigest()[:16]}"
-
-def packet_id(conversation_id: str, proposition_ids: list[str]) -> str:
-    """Deterministic packet ID from constituent propositions."""
-    content = f"{conversation_id}|{'|'.join(sorted(proposition_ids))}"
-    return f"pkt-{hashlib.sha256(content.encode()).hexdigest()[:16]}"
-
-def concern_id(conversation_id: str, identity_summary: str) -> str:
-    """Deterministic concern ID from identity summary."""
-    content = f"{conversation_id}|{identity_summary}"
-    return f"con-{hashlib.sha256(content.encode()).hexdigest()[:16]}"
+class EntityCreationRef(BaseModel):
+    entity_kind: str
+    creation_key: str       # stable idempotency key; excludes mutable model text
+    entity_id: str          # namespaced opaque ID resolved from creation_key
 ```
 
-When a packet is **deliberately split**, child packets derive their IDs from the new proposition subsets. The parent packet's ID remains stable. When identity resolution **creates a new concern**, the concern ID is derived from the identity summary produced by the Python semantic core.
+The database maintains a unique `(conversation_id, entity_kind, creation_key)` mapping and verifies that a creation key never resolves to a different ID. Replaying the same request returns the existing entity ID and cannot create a duplicate. A materially different extraction produced by a later extraction version is handled as explicit re-extraction/repair, not disguised as the same retry.
+
+Batch and incremental convergence does not require identical internal IDs or packet boundaries. Comparison normalizes implementation-specific IDs and evaluates the approved current-state semantic equivalence contract.
 
 ### Python ml-service Models
 
@@ -214,11 +215,11 @@ class AssociationRole(str, Enum):
 from pydantic import BaseModel, Field
 from typing import Optional
 from .enums import *
-from .id_gen import proposition_id, packet_id
-
-
 class RetentionDecision(BaseModel):
     """Result of retention assessment. All retention roles are preserved downstream."""
+    decision_id: str
+    decision_creation_key: str
+    conversation_id: str
     primary_level: RetentionLevel
     secondary_roles: list[RetentionLevel] = Field(default_factory=list)
     confidence: BehavioralConfidenceBand
@@ -227,12 +228,25 @@ class RetentionDecision(BaseModel):
     speaker_role: str  # "USER" or "ASSISTANT"
     sequence_position: int
     extraction_version: str
+    assessment_version: str
     rationale: Optional[str] = None
 
 
+class SIEMessage(BaseModel):
+    message_id: str
+    conversation_id: str
+    role: str  # USER or ASSISTANT
+    content: str
+    sequence_position: int
+    created_at: str
+    attachment_refs: list[str] = Field(default_factory=list)
+    structured_content: Optional[dict] = None
+
+
 class Proposition(BaseModel):
-    """Smallest semantic unit. ID is deterministic from content + provenance."""
-    proposition_id: str  # computed via id_gen.proposition_id()
+    """Smallest semantic unit. Permanent ID is resolved through the creation-key registry."""
+    proposition_id: str
+    proposition_creation_key: str
     conversation_id: str
     source_message_ids: list[str]
     speaker_role: str
@@ -259,8 +273,9 @@ class ProvisionalConcernBoundary(BaseModel):
 
 
 class SemanticPacket(BaseModel):
-    """Concern-cohesive processing unit. ID is deterministic from propositions."""
-    packet_id: str  # computed via id_gen.packet_id()
+    """Concern-cohesive processing unit with retry-stable creation lineage."""
+    packet_id: str
+    packet_creation_key: str
     conversation_id: str
     source_message_ids: list[str]  # inherited from constituent propositions
     message_seq_range: tuple[int, int]
@@ -283,16 +298,47 @@ class IdentityResolutionResult(BaseModel):
     candidates_considered: list[str] = Field(default_factory=list)
     rationale: str
 
+    # Invariant: exactly one of matched_concern_id or new_concern_proposal may be
+    # present for an affirmative result. Both are absent for unresolved/deferred results.
+
 
 class ConcernProposal(BaseModel):
     """Proposal for a new Persistent Concern from identity resolution."""
-    proposed_concern_id: str  # deterministic from identity_summary
+    concern_creation_key: str
+    proposed_concern_id: str  # opaque ID resolved from concern_creation_key
     identity_summary: str
     display_title: str
     initial_summary: str
     proposed_parent_id: Optional[str] = None
     parent_resolution_state: ParentResolutionState = ParentResolutionState.PARENT_DEFERRED
+
+
+class PersistentConcern(BaseModel):
+    """Durable concern state returned to Python as identity-resolution context."""
+    concern_id: str
+    conversation_id: str
+    identity_summary: str
+    display_title: str
+    current_summary: str
+    status: ConcernStatus
+    created_at: str
+    last_active_at: str
+    canonical_parent_id: Optional[str] = None
+    parent_resolution_state: ParentResolutionState
+    semantic_version: int
+    merged_into_concern_id: Optional[str] = None
+    aliases: list[str] = Field(default_factory=list)  # derived from normalized aliases
+    metadata: dict = Field(default_factory=dict)
 ```
+
+Concern lifecycle semantics:
+
+* `ACTIVE` and `DORMANT` retain the same semantic identity; dormancy never removes a concern from eligible identity retrieval.
+* `RETIRED` means previously concluded or abandoned, not erased. Retired concerns remain historically retrievable. A later packet that genuinely resumes the same independently returnable concern may reactivate the existing ID; a mere historical mention does not reactivate it.
+* `MERGED` concerns retain their source IDs as auditable redirects to `merged_into_concern_id`; the source ID is not recycled.
+* `identity_summary` is an internal identity aid, `display_title` is user-facing metadata, and `current_summary` expresses current state. None independently defines identity.
+* `canonical_parent_id = null` is interpreted through `parent_resolution_state`: `ROOT_CONFIRMED` and `PARENT_DEFERRED` are distinct valid states.
+* Aliases are retrieval evidence rather than identity. Their addition, repair, removal, and privacy deletion are explicit and audited.
 
 ### Normalized Association Models
 
@@ -306,7 +352,8 @@ class PropositionAssociation(BaseModel):
     A proposition may have multiple associations with different roles.
     A proposition MAY be both PRIMARY_OWNER of one concern and
     SUPPORTING_EVIDENCE for another — roles are per-association, not per-proposition."""
-    association_id: str  # deterministic: f"{proposition_id}:{concern_id}:{role}"
+    association_id: str
+    association_creation_key: str  # retry-stable event key resolved through registry
     proposition_id: str
     concern_id: str
     role: AssociationRole
@@ -321,7 +368,8 @@ class PacketMembership(BaseModel):
     """Normalized membership of a proposition in a packet.
     Source provenance is INHERITED from the proposition — packet membership
     never introduces new source provenance."""
-    membership_id: str  # deterministic: f"{packet_id}:{proposition_id}"
+    membership_id: str
+    membership_creation_key: str
     packet_id: str
     proposition_id: str
     ordinal: int  # position within packet
@@ -332,38 +380,27 @@ class PacketSplitRecord(BaseModel):
     """Records a packet split. Child packets inherit source provenance
     from their constituent propositions — no new provenance introduced."""
     split_id: str
+    split_creation_key: str
     original_packet_id: str
     resulting_packet_ids: list[str]
     split_reason: str
     created_at: str
 ```
 
+`PacketSplitRecord` is the API-level split event. Persistence expands its `resulting_packet_ids` into normalized `sie_packet_splits` edge rows sharing one `split_event_id`; each edge receives its own `split_edge_id`.
+
 ### Supporting Evidence Model
 
-The evidence-association model explicitly tracks how propositions support concerns:
+Supporting evidence is a role-constrained `PropositionAssociation`, not a second independently persisted association type. An evidence association uses one of `SUPPORTING_EVIDENCE`, `EMERGENCE_EVIDENCE`, `CONTEXT`, or `CROSS_OBJECT_IMPACT`; it records the source proposition, target concern, provenance, confidence, semantic state, establishing packet, and version in the normalized proposition-association record.
 
-```python
-class EvidenceAssociation(BaseModel):
-    """Explicit evidence association between a source and a target concern.
-    Covers proposition-to-concern evidence relationships with full lifecycle."""
-    association_id: str
-    source_proposition_id: str
-    target_concern_id: str
-    role: AssociationRole  # SUPPORTING_EVIDENCE, EMERGENCE_EVIDENCE, CONTEXT, CROSS_OBJECT_IMPACT
-    provenance: str  # how this evidence link was established
-    confidence: BehavioralConfidenceBand
-    semantic_state: SemanticState = SemanticState.ACTIVE  # can be superseded/invalidated via repair
-    established_at: str
-    established_by_packet_id: Optional[str] = None  # which packet processing created this
-    version: int = 1
-
-    # Audit: version increments on any state change; previous versions queryable via audit_history
-```
+The Python API may expose a typed evidence view for convenience, but it normalizes to exactly one `PropositionAssociation` before persistence. The same semantic link must never be written once as a proposition association and again as a separate evidence record.
 
 Key semantics:
-- A proposition with role=PRIMARY_OWNER for concern A **may also** have role=SUPPORTING_EVIDENCE for concern B. These are different associations — ownership and evidence are NOT required to be disjoint at the proposition level.
-- An association can be reassigned (role changed, concern changed) via semantic repair — the old association is marked INVALIDATED and a new one created, with audit trail.
-- Evidence associations support the same lifecycle as propositions: ACTIVE → SUPERSEDED/INVALIDATED.
+
+* A proposition with role=PRIMARY_OWNER for concern A **may also** have role=SUPPORTING_EVIDENCE for concern B. These are different associations — ownership and evidence are NOT required to be disjoint at the proposition level.
+* An association can be reassigned (role changed, concern changed) via semantic repair — the old association is marked INVALIDATED and a new one created, with audit trail.
+* Evidence associations support the same lifecycle as propositions: ACTIVE → SUPERSEDED/INVALIDATED.
+* Re-establishing a previously invalidated association creates a new association event/creation key rather than colliding with the historical association ID.
 
 ### Cohesion Analysis vs Identity Resolution
 
@@ -392,35 +429,110 @@ async def process_messages(request: ProcessRequest) -> ProcessResult:
     ...
 
 class ProcessRequest(BaseModel):
+    api_contract_version: str
+    pipeline_version: str
+    model_version: str
+    extraction_version: str
+    request_id: str
+    idempotency_key: str
     conversation_id: str
+    base_graph_version: int
+    message_seq_start: int
+    message_seq_end: int
     messages: list[SIEMessage]
     context_window: list[SIEMessage] = Field(default_factory=list)
-    current_graph_state: GraphStateContext  # existing concerns, for identity resolution
+    current_graph_state: "GraphStateContext"  # existing concerns, for identity resolution
 
 class GraphStateContext(BaseModel):
     """Graph state provided by TypeScript for Python to reason over."""
-    concerns: list[ConcernSummary]  # existing concerns with identity summaries
-    recent_propositions: list[PropositionSummary]  # recent context
-    active_associations: list[AssociationSummary]
+    graph_version: int
+    concerns: list["ConcernSummary"]
+    propositions: list["PropositionSummary"]
+    active_associations: list["AssociationSummary"]
+    pending_decisions: list["PendingDecisionSummary"] = Field(default_factory=list)
+
+class ConcernSummary(BaseModel):
+    concern_id: str
+    identity_summary: str
+    display_title: str
+    current_summary: str
+    status: ConcernStatus
+    aliases: list[str] = Field(default_factory=list)
+    canonical_parent_id: Optional[str] = None
+    parent_resolution_state: ParentResolutionState
+    last_active_at: str
+    semantic_version: int
+
+class PropositionSummary(BaseModel):
+    proposition_id: str
+    canonical_meaning: str
+    proposition_type: PropositionType
+    speaker_role: str
+    semantic_state: SemanticState
+    message_seq_range: tuple[int, int]
+
+class AssociationSummary(BaseModel):
+    association_id: str
+    proposition_id: str
+    concern_id: str
+    role: AssociationRole
+    semantic_state: SemanticState
+
+class PendingDecisionSummary(BaseModel):
+    entity_id: str
+    stage: str
+    outcome: PipelineOutcome
+    rationale: Optional[str] = None
+
+class PipelineDiagnostics(BaseModel):
+    stage_versions: dict[str, str]
+    warnings: list[str] = Field(default_factory=list)
+    deferred_entity_ids: list[str] = Field(default_factory=list)
+
+class SemanticDependencyGroupRef(BaseModel):
+    """Transport-level grouping; full mutation semantics are defined by the
+    evolution/integration specification."""
+    group_id: str
+    mutation_refs: list[str]
+    failure_policy: str  # ALL_OR_NONE, INDEPENDENT, or DERIVED
 
 class ProcessResult(BaseModel):
+    api_contract_version: str
+    pipeline_version: str
+    model_version: str
+    extraction_version: str
+    request_id: str
+    idempotency_key: str
+    conversation_id: str
+    base_graph_version: int
+    lowest_seq: int
+    highest_seq: int
     retention_decisions: list[RetentionDecision]
     propositions: list[Proposition]
     packets: list[SemanticPacket]
     packet_memberships: list[PacketMembership]
     splits: list[PacketSplitRecord]
     identity_resolutions: list[IdentityResolutionResult]
+    new_concern_proposals: list[ConcernProposal]
     proposed_associations: list[PropositionAssociation]
-    proposed_evidence: list[EvidenceAssociation]
+    dependency_groups: list[SemanticDependencyGroupRef] = Field(default_factory=list)
     diagnostics: PipelineDiagnostics
 ```
+
+Contract invariants:
+
+* `current_graph_state.graph_version` must equal `base_graph_version`.
+* TypeScript must reject a result whose request, conversation, sequence range, contract version, or base graph version does not match the invocation.
+* A version conflict requires fresh graph retrieval and re-invocation of Python. Stale semantic results are never blindly replayed.
+* OpenAPI generated from these Pydantic models is the source of truth for transport types. TypeScript runtime validators and types are generated from that contract rather than maintained as a second handwritten semantic schema.
 
 ### TypeScript Orchestrator Interfaces
 
 ```typescript
 // src/lib/intelligence-v2/sie/types.ts
 
-/** Enums mirror Python exactly */
+/** Transport types, including ProcessRequest and ProcessResult, are generated
+ * from the versioned Python OpenAPI contract. The enums below are illustrative. */
 export type RetentionLevel =
   | "DISCARD" | "CONTEXT_ONLY" | "SUPPORTING_EVIDENCE"
   | "DURABLE_PROPOSITION" | "EMERGENCE_EVIDENCE" | "INDEPENDENT_CONCERN_CANDIDATE";
@@ -455,6 +567,22 @@ export interface InvariantViolation {
   entityId: string;
   description: string;
 }
+
+export interface CommitResult {
+  success: boolean;
+  committedGraphVersion: number | null;
+  requestId: string;
+  retryRequired: boolean;
+  violations: InvariantViolation[];
+}
+
+export interface SIEGraphState {
+  graphVersion: number;
+  concerns: PersistentConcern[];
+  propositions: Proposition[];
+  associations: PropositionAssociation[];
+  packets: SemanticPacket[];
+}
 ```
 
 ## Data Models
@@ -464,7 +592,39 @@ export interface InvariantViolation {
 Tables are created in dependency order (no forward references):
 
 ```sql
--- 1. Persistent Concerns (no FK dependencies on SIE tables)
+-- 0. Authoritative-engine state and idempotent entity registry
+ALTER TABLE v2_update_state
+    ADD COLUMN IF NOT EXISTS authoritative_engine TEXT NOT NULL DEFAULT 'V2'
+        CHECK (authoritative_engine IN ('V2', 'SIE_SHADOW', 'SIE')),
+    ADD COLUMN IF NOT EXISTS sie_cutover_graph_version INTEGER;
+
+CREATE TABLE sie_entity_registry (
+    conversation_id UUID NOT NULL REFERENCES conversations(id),
+    entity_kind TEXT NOT NULL,
+    creation_key TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    request_id TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (conversation_id, entity_kind, creation_key),
+    UNIQUE(entity_kind, entity_id)
+);
+
+CREATE TABLE sie_commit_requests (
+    conversation_id UUID NOT NULL REFERENCES conversations(id),
+    request_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    payload_fingerprint TEXT NOT NULL,
+    base_graph_version INTEGER NOT NULL,
+    committed_graph_version INTEGER,
+    status TEXT NOT NULL CHECK (status IN ('PENDING', 'COMMITTED', 'REJECTED')),
+    result JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    PRIMARY KEY (conversation_id, idempotency_key),
+    UNIQUE(request_id)
+);
+
+-- 1. Persistent Concerns (no FK dependencies on other SIE entity tables)
 CREATE TABLE sie_persistent_concerns (
     concern_id TEXT PRIMARY KEY,
     conversation_id UUID NOT NULL REFERENCES conversations(id),
@@ -480,7 +640,16 @@ CREATE TABLE sie_persistent_concerns (
         CHECK (parent_resolution_state IN ('ROOT_CONFIRMED', 'PARENT_DEFERRED', 'PARENT_ASSIGNED')),
     metadata JSONB DEFAULT '{}',
     semantic_version INTEGER NOT NULL DEFAULT 1,
-    merged_into_concern_id TEXT REFERENCES sie_persistent_concerns(concern_id)
+    merged_into_concern_id TEXT REFERENCES sie_persistent_concerns(concern_id),
+    CHECK (canonical_parent_id IS NULL OR canonical_parent_id <> concern_id),
+    CHECK (
+        (parent_resolution_state = 'PARENT_ASSIGNED' AND canonical_parent_id IS NOT NULL)
+        OR (parent_resolution_state IN ('ROOT_CONFIRMED', 'PARENT_DEFERRED') AND canonical_parent_id IS NULL)
+    ),
+    CHECK (
+        (status = 'MERGED' AND merged_into_concern_id IS NOT NULL)
+        OR (status <> 'MERGED' AND merged_into_concern_id IS NULL)
+    )
 );
 
 CREATE INDEX idx_concerns_conversation ON sie_persistent_concerns(conversation_id);
@@ -494,12 +663,14 @@ CREATE TABLE sie_concern_aliases (
     alias_text TEXT NOT NULL,
     added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     removed_at TIMESTAMPTZ,  -- NULL = active; set via audited repair/deletion
-    removal_reason TEXT,
-    UNIQUE(concern_id, alias_text) WHERE removed_at IS NULL
+    removal_reason TEXT
 );
 
 CREATE INDEX idx_aliases_concern ON sie_concern_aliases(concern_id) WHERE removed_at IS NULL;
 CREATE INDEX idx_aliases_text ON sie_concern_aliases(alias_text) WHERE removed_at IS NULL;
+CREATE UNIQUE INDEX uq_active_concern_alias
+    ON sie_concern_aliases(concern_id, alias_text)
+    WHERE removed_at IS NULL;
 
 -- 3. Propositions (references concerns via association table, not direct FK)
 CREATE TABLE sie_propositions (
@@ -518,10 +689,20 @@ CREATE TABLE sie_propositions (
     provenance TEXT NOT NULL CHECK (provenance IN ('DIRECT', 'PARAPHRASE', 'INTERPRETATION', 'INFERENCE')),
     semantic_state TEXT NOT NULL DEFAULT 'ACTIVE'
         CHECK (semantic_state IN ('ACTIVE', 'SUPERSEDED', 'RETRACTED', 'INVALIDATED')),
-    retention_levels TEXT[] NOT NULL,  -- ALL applicable levels preserved
+    retention_levels TEXT[] NOT NULL
+        CHECK (
+            cardinality(retention_levels) > 0
+            AND retention_levels <@ ARRAY[
+                'DISCARD', 'CONTEXT_ONLY', 'SUPPORTING_EVIDENCE',
+                'DURABLE_PROPOSITION', 'EMERGENCE_EVIDENCE',
+                'INDEPENDENT_CONCERN_CANDIDATE'
+            ]::TEXT[]
+        ),  -- ALL applicable levels preserved
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     extraction_version TEXT NOT NULL,
-    supersedes_proposition_id TEXT REFERENCES sie_propositions(proposition_id)
+    supersedes_proposition_id TEXT REFERENCES sie_propositions(proposition_id),
+    CHECK (message_seq_start <= message_seq_end),
+    CHECK (cardinality(source_message_ids) > 0)
 );
 
 CREATE INDEX idx_propositions_conversation ON sie_propositions(conversation_id);
@@ -548,6 +729,9 @@ CREATE TABLE sie_proposition_associations (
 CREATE INDEX idx_assoc_proposition ON sie_proposition_associations(proposition_id);
 CREATE INDEX idx_assoc_concern ON sie_proposition_associations(concern_id);
 CREATE INDEX idx_assoc_role ON sie_proposition_associations(role) WHERE semantic_state = 'ACTIVE';
+CREATE UNIQUE INDEX uq_active_primary_owner_per_proposition
+    ON sie_proposition_associations(proposition_id)
+    WHERE role = 'PRIMARY_OWNER' AND semantic_state = 'ACTIVE';
 
 -- 5. Semantic Packets
 CREATE TABLE sie_semantic_packets (
@@ -562,11 +746,18 @@ CREATE TABLE sie_semantic_packets (
     provenance TEXT NOT NULL,
     packet_formation_version TEXT NOT NULL,
     cohesion_status TEXT NOT NULL CHECK (cohesion_status IN ('COHESIVE', 'MIXED', 'UNRESOLVED_COHESION')),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (message_seq_start <= message_seq_end),
+    CHECK (cardinality(source_message_ids) > 0)
 );
 
 CREATE INDEX idx_packets_conversation ON sie_semantic_packets(conversation_id);
 CREATE INDEX idx_packets_cohesion ON sie_semantic_packets(cohesion_status);
+
+ALTER TABLE sie_proposition_associations
+    ADD CONSTRAINT fk_assoc_establishing_packet
+    FOREIGN KEY (established_by_packet_id)
+    REFERENCES sie_semantic_packets(packet_id);
 
 -- 6. Packet Memberships (normalized; replaces proposition_ids array)
 CREATE TABLE sie_packet_memberships (
@@ -575,7 +766,8 @@ CREATE TABLE sie_packet_memberships (
     proposition_id TEXT NOT NULL REFERENCES sie_propositions(proposition_id),
     ordinal INTEGER NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(packet_id, proposition_id)
+    UNIQUE(packet_id, proposition_id),
+    UNIQUE(packet_id, ordinal)
 );
 
 CREATE INDEX idx_membership_packet ON sie_packet_memberships(packet_id);
@@ -583,18 +775,23 @@ CREATE INDEX idx_membership_proposition ON sie_packet_memberships(proposition_id
 
 -- 7. Packet Splits (explicit records; child provenance inherited, not introduced)
 CREATE TABLE sie_packet_splits (
-    split_id TEXT PRIMARY KEY,
+    split_edge_id TEXT PRIMARY KEY,
+    split_event_id TEXT NOT NULL,
     original_packet_id TEXT NOT NULL REFERENCES sie_semantic_packets(packet_id),
     resulting_packet_id TEXT NOT NULL REFERENCES sie_semantic_packets(packet_id),
     split_reason TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(original_packet_id, resulting_packet_id)
 );
 
 CREATE INDEX idx_splits_original ON sie_packet_splits(original_packet_id);
+CREATE INDEX idx_splits_event ON sie_packet_splits(split_event_id);
 
 -- 8. Retention Decisions (audit trail)
 CREATE TABLE sie_retention_decisions (
     id TEXT PRIMARY KEY,
+    creation_key TEXT NOT NULL,
+    request_id TEXT NOT NULL,
     conversation_id UUID NOT NULL REFERENCES conversations(id),
     source_message_ids TEXT[] NOT NULL,
     primary_level TEXT NOT NULL CHECK (primary_level IN (
@@ -609,8 +806,10 @@ CREATE TABLE sie_retention_decisions (
     speaker_role TEXT NOT NULL CHECK (speaker_role IN ('USER', 'ASSISTANT')),
     sequence_position INTEGER NOT NULL,
     extraction_version TEXT NOT NULL,
+    assessment_version TEXT NOT NULL,
     rationale TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(conversation_id, creation_key)
 );
 
 CREATE INDEX idx_retention_conversation ON sie_retention_decisions(conversation_id);
@@ -634,9 +833,9 @@ CREATE INDEX idx_audit_entity ON sie_audit_history(entity_type, entity_id);
 CREATE INDEX idx_audit_conversation ON sie_audit_history(conversation_id);
 ```
 
-### V2 Compatibility Layer
+### V2 Compatibility Layer and Atomic Commit
 
-The SIE commit manager produces BOTH SIE table writes AND a V2-compatible snapshot update in the same transaction:
+The SIE commit manager produces both authoritative SIE table writes and a V2-compatible snapshot update through **one database RPC and one PostgreSQL transaction**. A client-side call performed immediately before or after the RPC is not part of that transaction and is not permitted for authoritative commit data.
 
 ```typescript
 // src/lib/intelligence-v2/sie/commit-manager.ts (conceptual)
@@ -644,47 +843,69 @@ The SIE commit manager produces BOTH SIE table writes AND a V2-compatible snapsh
 async function commitSIEResult(
   conversationId: string,
   processResult: ProcessResult,
+  currentSIEState: SIEGraphState,
   currentVersion: number
 ): Promise<CommitResult> {
-  // 1. Write to SIE tables (propositions, associations, packets, etc.)
-  // 2. Project SIE state → V2 snapshot format for backward compat:
+  // Build one validated commit bundle. No database mutation occurs yet.
+  // The bundle contains SIE entity/association mutations, audit records,
+  // idempotency creation keys, cursor movement, and the V2 projection.
+  // Project authoritative SIE state → V2 snapshot format:
   //    - PersistentConcern → ConversationalObject (with objectType derived from propositions)
   //    - PropositionAssociation(PRIMARY_OWNER) → object.propositionIds
   //    - SemanticPacket (informational, threads remain separate)
   //    - Hierarchy (canonical_parent_id → child_of relationships)
-  // 3. Call v2_commit_update RPC with both the V2 snapshot AND SIE mutations
-
-  const v2Projection = projectToV2Snapshot(processResult);
+  const commitBundle = buildSIECommitBundle(processResult, currentSIEState, currentVersion);
+  const v2Projection = projectToV2Snapshot(commitBundle.resultingSIEState);
   
-  const { error } = await db.rpc("v2_commit_update", {
+  // This extended RPC performs, in one PostgreSQL transaction:
+  // 1. lock/check authoritative engine, graph version, cursor and idempotency key;
+  // 2. verify/reuse creation-key-to-ID mappings through sie_entity_registry;
+  // 3. apply all SIE entity, association, split and audit mutations;
+  // 4. write the V2 projection and mutation log;
+  // 5. advance graph version and message cursor exactly once.
+  const { data, error } = await db.rpc("v2_commit_update", {
     p_conversation_id: conversationId,
     p_new_snapshot: v2Projection,
     p_from_version: currentVersion,
     p_to_version: currentVersion + 1,
-    p_mutations: formatMutationsForV2(processResult),
-    p_last_processed_seq: processResult.highestSeq,
-    p_message_seq_from: processResult.lowestSeq,
-    p_message_seq_to: processResult.highestSeq,
+    p_mutations: formatMutationsForV2(commitBundle),
+    p_sie_commit_bundle: commitBundle,
+    p_request_id: processResult.request_id,
+    p_idempotency_key: processResult.idempotency_key,
+    p_required_engine: "SIE",
+    p_last_processed_seq: processResult.highest_seq,
+    p_message_seq_from: processResult.lowest_seq,
+    p_message_seq_to: processResult.highest_seq,
   });
-  
-  // SIE-specific writes happen in same transaction or immediately after
-  await writeSIETables(processResult);
-  
-  return { success: !error, version: currentVersion + 1 };
+
+  if (error) return classifyCommitFailure(error, processResult.request_id);
+  return {
+    success: true,
+    committedGraphVersion: data.graph_version,
+    requestId: processResult.request_id,
+    retryRequired: false,
+    violations: [],
+  };
 }
 ```
 
+The RPC must be idempotent. Repeating an already committed `idempotency_key` returns the recorded commit result without duplicating entities, associations, audit events, snapshots, or cursor advancement. A graph-version conflict aborts the entire transaction and requires TypeScript to reload state and re-invoke Python.
+
+An idempotency key is bound to a canonical request/bundle fingerprint. Reusing the same key with a materially different payload is an error and must not return the earlier success or commit the new payload.
+
+Structural validation applies to the complete semantic dependency group. TypeScript may reject a structurally invalid group, but it must not drop one mutation and commit the remaining mutations when their meaning depends on one another. Rejected groups return violations to Python for semantic correction or re-analysis.
+
 ### V2 Type Migration (Corrected)
 
-| V2 Type | SIE Equivalent | Relationship | Notes |
-|---------|---------------|--------------|-------|
-| `Utterance` | (unchanged) | Kept as-is | Immutable ground truth |
-| `Proposition` | `SIEProposition` | Extended | Adds retention_levels (array), richer provenance. V2 Proposition persists for backward compat. |
-| `Thread` | Coexists with `SemanticPacket` | NOT a replacement | Threads serve ordering/subject-grouping for V2 object formation. Packets serve concern-cohesive identity resolution. Both exist during transition. |
-| `ConversationalObject` | `PersistentConcern` | Semantic evolution | Objects are projection targets. Concerns are the authoritative semantic identity. |
-| `ObjectType` | Derived from proposition types | Retired as primary model | Concern identity is not typed by category. V2 snapshot projection derives objectType from constituent proposition types for UI compat. |
-| `ObjectMaturity` | Retired | NOT mapped to semanticVersion | Maturity was proposition-count-based (meaningless). semanticVersion is commit-count. These are unrelated concepts. |
-| `Relationship` | Persists unchanged | Kept | Relationship infrastructure remains authoritative for graph edges. |
+| V2 Type                | SIE Equivalent                        | Relationship                  | Notes                                                                                                                                                                                           |
+| ---------------------- | ------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Utterance`            | (unchanged)                           | Kept as-is                    | Immutable ground truth                                                                                                                                                                          |
+| `Proposition`          | `SIEProposition`                      | Extended                      | Adds retention_levels (array), richer provenance. V2 Proposition persists for backward compat.                                                                                                  |
+| `Thread`               | Coexists with `SemanticPacket`        | NOT a replacement             | During shadow mode, legacy behavior remains isolated. After SIE cutover, Threads may remain as derived compatibility/display structures but no longer independently form authoritative objects. |
+| `ConversationalObject` | `PersistentConcern`                   | Semantic evolution            | Objects are projection targets. Concerns are the authoritative semantic identity.                                                                                                               |
+| `ObjectType`           | Derived from proposition types        | Retired as primary model      | Concern identity is not typed by category. V2 snapshot projection derives objectType from constituent proposition types for UI compat.                                                          |
+| `ObjectMaturity`       | Retired                               | NOT mapped to semanticVersion | Maturity was proposition-count-based (meaningless). semanticVersion is commit-count. These are unrelated concepts.                                                                              |
+| `Relationship`         | Persists during data-model transition | Compatibility projection      | Existing relationship infrastructure remains available until the relationship subsystem receives its own SIE cutover; it must not become a second source of concern identity.                   |
 
 ### Extraction Validation
 
@@ -726,9 +947,9 @@ Instead, validation checks:
 
 **Validates: Requirements 1.11, 2.10, 5.5**
 
-### Property 5: Entity IDs are deterministic and retry-stable
+### Property 5: Entity creation is idempotent and permanent IDs are semantically stable
 
-*For any* entity creation with the same input (same conversation_id, same source content, same canonical meaning), the generated ID SHALL be identical across retries, restarts, and processing modes. Specifically: `proposition_id(conv, msgs, meaning)` is a pure function.
+*For any* repeated entity-creation request with the same `(conversation_id, entity_kind, creation_key)`, the registry SHALL return the same permanent entity ID and SHALL NOT create a duplicate. Mutable model output such as canonical meaning, identity summary, title, summary, alias, or parent SHALL NOT participate in permanent-ID derivation. Once committed, an entity ID remains stable through semantic evolution and repair unless an explicit merge redirect retires that identity.
 
 **Validates: Requirements 2.1, 3.11, 5.6**
 
@@ -772,6 +993,8 @@ Instead, validation checks:
 
 *For any* concern with status=DORMANT, it SHALL remain retrievable by identity resolution queries and eligible for reactivation. Temporal distance alone SHALL NOT exclude it.
 
+Retired concerns SHALL remain historically retrievable. When new material resumes the same concern identity rather than merely referring to its history, the system MAY reactivate the existing concern ID through an audited lifecycle transition instead of creating a duplicate.
+
 **Validates: Requirements 4.4**
 
 ### Property 13: Unresolved states are first-class valid
@@ -804,49 +1027,61 @@ Instead, validation checks:
 
 **Validates: V2 compatibility requirement**
 
+### Property 18: SIE state, V2 projection, audit history, version, and cursor commit atomically
+
+*For any* authoritative SIE commit, all SIE mutations, entity-registry mappings, association changes, audit records, V2 snapshot projection, mutation-log entries, graph-version increment, and cursor advancement SHALL become visible together or none SHALL become visible. Replaying a committed idempotency key SHALL return the original result without additional writes.
+
+**Validates: Atomic commit and idempotency requirements**
+
+### Property 19: Exactly one semantic identity authority exists per conversation
+
+*For any* conversation and graph version, `authoritative_engine` SHALL select exactly one production semantic writer. Shadow SIE output SHALL NOT alter production state, and after SIE cutover the legacy Thread → Object path SHALL NOT independently author semantic objects.
+
+**Validates: V2-to-SIE transition requirement**
+
 ## Error Handling
 
 ### Retention Assessment Errors
 
-| Error Condition | Handling Strategy |
-|----------------|------------------|
-| LLM fails to return valid retention level | Set outcome to REQUIRES_VALIDATION; do not discard |
-| Empty message content | Classify as DISCARD with HIGH confidence |
-| Timeout on model call | Return DEFER outcome; re-queue for later processing |
-| Invalid speaker role | Reject with validation error before processing |
+| Error Condition                           | Handling Strategy                                                                                                                |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| LLM fails to return valid retention level | Set outcome to REQUIRES_VALIDATION; do not discard                                                                               |
+| Empty text content                        | Inspect attachments and structured content first; classify as DISCARD only when the complete message carries no semantic content |
+| Timeout on model call                     | Return DEFER outcome; re-queue for later processing                                                                              |
+| Invalid speaker role                      | Reject with validation error before processing                                                                                   |
 
 ### Proposition Extraction Errors
 
-| Error Condition | Handling Strategy |
-|----------------|------------------|
-| Deterministic ID collision (different content, same hash) | Append disambiguation suffix; log for investigation |
-| Extraction produces zero propositions from retained material | Log diagnostic; allow empty extraction (material may be context-only) |
-| Provenance references non-existent message IDs | Reject proposition; log for investigation |
-| Extracted meaning cannot be grounded in source messages | Set outcome to REQUIRES_VALIDATION; do NOT apply arbitrary similarity threshold |
+| Error Condition                                              | Handling Strategy                                                                         |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Creation key already mapped                                  | Reuse the recorded permanent entity ID and prior commit result; do not create a duplicate |
+| Extraction produces zero propositions from retained material | Log diagnostic; allow empty extraction (material may be context-only)                     |
+| Provenance references non-existent message IDs               | Reject proposition; log for investigation                                                 |
+| Extracted meaning cannot be grounded in source messages      | Set outcome to REQUIRES_VALIDATION; do NOT apply arbitrary similarity threshold           |
 
 ### Packet Formation Errors
 
-| Error Condition | Handling Strategy |
-|----------------|------------------|
-| Cohesion assessment fails (model error) | Set cohesionStatus to UNRESOLVED_COHESION; do NOT auto-split |
-| Split would produce child with zero propositions | Reject split; re-attempt with different boundary |
-| Packet references non-existent proposition IDs | Validate all IDs exist before forming packet |
+| Error Condition                                  | Handling Strategy                                            |
+| ------------------------------------------------ | ------------------------------------------------------------ |
+| Cohesion assessment fails (model error)          | Set cohesionStatus to UNRESOLVED_COHESION; do NOT auto-split |
+| Split would produce child with zero propositions | Reject split; re-attempt with different boundary             |
+| Packet references non-existent proposition IDs   | Validate all IDs exist before forming packet                 |
 
 ### Identity Resolution Errors (Python)
 
-| Error Condition | Handling Strategy |
-|----------------|------------------|
-| Multiple equal-confidence matches | Return RETRIEVAL_INCONCLUSIVE with candidates list |
-| Graph state context missing or stale | Return DEFER; TypeScript retries with fresh state |
-| Model timeout during resolution | Return UNRESOLVED; persist packet in pending state |
+| Error Condition                      | Handling Strategy                                  |
+| ------------------------------------ | -------------------------------------------------- |
+| Multiple equal-confidence matches    | Return RETRIEVAL_INCONCLUSIVE with candidates list |
+| Graph state context missing or stale | Return DEFER; TypeScript retries with fresh state  |
+| Model timeout during resolution      | Return UNRESOLVED; persist packet in pending state |
 
 ### Commit Errors (TypeScript)
 
-| Error Condition | Handling Strategy |
-|----------------|------------------|
-| Version conflict (concurrent update) | Reject commit; reload state and re-invoke Python |
-| Invariant violation (cycle, multi-parent) | Reject specific mutation; return violation details to Python for correction |
-| Supabase transaction failure | Retry with exponential backoff; no partial commits visible |
+| Error Condition                                               | Handling Strategy                                                                                               |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Version conflict (concurrent update)                          | Reject commit; reload state and re-invoke Python                                                                |
+| Invariant violation (cycle, multi-parent, dangling reference) | Reject the affected semantic dependency group; return violation details to Python for correction or re-analysis |
+| Supabase transaction failure                                  | Retry with exponential backoff; no partial commits visible                                                      |
 
 ### Cross-Cutting Error Principles
 
@@ -861,22 +1096,24 @@ Instead, validation checks:
 
 **Python**: Hypothesis framework. **TypeScript**: fast-check.
 
-| Property | Layer | Key Generators |
-|----------|-------|----------------|
-| 1 (retention roles preserved) | Python | Random messages → verify retention_levels array roundtrip |
-| 5 (deterministic IDs) | Python | Same input twice → identical IDs |
-| 6 (provenance immutability) | Both | Entity + random operation sequence → provenance unchanged |
-| 7 (multi-role associations) | Python + DB | Proposition with multiple associations → all valid |
-| 9 (split provenance) | Python | Random splits → no new source_message_ids introduced |
-| 15 (convergence) | Integration | Same messages batch vs incremental → equivalent active state |
-| 17 (V2 compat) | TypeScript | SIE result → V2 projection → valid V2GraphPlan shape |
+| Property                       | Layer          | Key Generators                                                                                     |
+| ------------------------------ | -------------- | -------------------------------------------------------------------------------------------------- |
+| 1 (retention roles preserved)  | Python         | Random messages → verify retention_levels array roundtrip                                          |
+| 5 (idempotent entity creation) | Python + DB    | Same creation key twice → one persisted entity and the same permanent ID                           |
+| 6 (provenance immutability)    | Both           | Entity + random operation sequence → provenance unchanged                                          |
+| 7 (multi-role associations)    | Python + DB    | Proposition with multiple associations → all valid                                                 |
+| 9 (split provenance)           | Python         | Random splits → no new source_message_ids introduced                                               |
+| 15 (convergence)               | Integration    | Same messages batch vs incremental → equivalent active state                                       |
+| 17 (V2 compat)                 | TypeScript     | SIE result → V2 projection → valid V2GraphPlan shape                                               |
+| 18 (atomic commit)             | DB integration | Inject failure at each RPC phase → either every SIE/V2/version/cursor write is visible or none are |
+| 19 (single authority)          | Integration    | Shadow and cutover states → exactly one production semantic writer                                 |
 
 ### Integration Tests
 
-| Scenario | Validates |
-|----------|----------|
-| Full pipeline: message → Python processing → TS commit → V2 snapshot | End-to-end data flow |
-| Retry after failure produces same entity IDs | Idempotent ID strategy |
-| Concurrent updates with version conflict → retry succeeds | Optimistic locking |
-| V2 snapshot readable by existing React Flow UI query | Backward compatibility |
-| SIE commit alongside existing v2_commit_update RPC | Coexistence with V2 infrastructure |
+| Scenario                                                             | Validates                          |
+| -------------------------------------------------------------------- | ---------------------------------- |
+| Full pipeline: message → Python processing → TS commit → V2 snapshot | End-to-end data flow               |
+| Retry after failure reuses creation-key registry mappings            | Idempotent entity creation         |
+| Concurrent updates with version conflict → retry succeeds            | Optimistic locking                 |
+| V2 snapshot readable by existing React Flow UI query                 | Backward compatibility             |
+| SIE commit alongside existing v2_commit_update RPC                   | Coexistence with V2 infrastructure |

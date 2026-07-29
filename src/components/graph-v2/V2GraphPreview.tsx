@@ -103,6 +103,10 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
   const [panelWidth, setPanelWidth] = useState(320);
   const [isDragging, setIsDragging] = useState(false);
   const [viewMode, setViewMode] = useState<"conceptual" | "network">("conceptual");
+  /** Retains the last successful graphPayload so the graph stays visible during regeneration */
+  const [lastSuccessfulPayload, setLastSuccessfulPayload] = useState<SnapshotPayload | null>(null);
+  /** Error from a regeneration attempt (shown as non-blocking indicator when stale graph is displayed) */
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen || !conversationId) return;
@@ -111,10 +115,17 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
 
   async function loadSnapshot() {
     setLoading(true);
+    setUpdateError(null);
     try {
       const res = await fetch(`/api/v2/graph-snapshot?conversationId=${conversationId}`);
       const data = await res.json();
       setSnapshot(data);
+
+      // Capture successful payload
+      if (data.graphPayload) {
+        setLastSuccessfulPayload(data.graphPayload);
+        setUpdateError(null);
+      }
 
       // If the server reports active generation, start polling
       if ((data.status === "generating" || data.snapshotStatus === "generating_initial") && !data.graphPayload) {
@@ -129,6 +140,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
 
   async function generateSnapshot() {
     setGenerating(true);
+    setUpdateError(null);
     try {
       const res = await fetch("/api/v2/graph-snapshot", {
         method: "POST",
@@ -138,16 +150,31 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
       const data = await res.json();
 
       if (res.status === 202 || res.ok) {
-        // Generation registered/in-progress — start polling
-        setSnapshot({ status: "generating", ...data });
+        // Generation registered — do NOT replace snapshot.graphPayload
+        // Keep the existing payload visible (stale-while-refresh)
+        setSnapshot((prev) => ({
+          ...prev,
+          status: "generating",
+          generationAttemptId: data.generationAttemptId,
+          generationStartedAt: data.generationStartedAt,
+        } as SnapshotResponse));
         pollUntilReady();
       } else {
-        // POST returned an error — display it immediately
-        setSnapshot({ status: "failed", errorMessage: data.error ?? `Request failed (${res.status})` });
+        // POST returned an error
+        if (lastSuccessfulPayload) {
+          // Stale graph exists — show non-blocking error
+          setUpdateError(data.error ?? `Request failed (${res.status})`);
+        } else {
+          setSnapshot({ status: "failed", errorMessage: data.error ?? `Request failed (${res.status})` });
+        }
         setGenerating(false);
       }
     } catch {
-      setSnapshot({ status: "failed", errorMessage: "Network error — could not reach the server." });
+      if (lastSuccessfulPayload) {
+        setUpdateError("Network error — could not reach the server.");
+      } else {
+        setSnapshot({ status: "failed", errorMessage: "Network error — could not reach the server." });
+      }
       setGenerating(false);
     }
   }
@@ -161,39 +188,56 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
       try {
         const res = await fetch(`/api/v2/graph-snapshot?conversationId=${conversationId}`);
         const data = await res.json();
-        setSnapshot(data);
 
         if (data.status === "ready" || data.snapshotStatus === "ready") {
+          setSnapshot(data);
+          if (data.graphPayload) {
+            setLastSuccessfulPayload(data.graphPayload);
+            setUpdateError(null);
+          }
           setGenerating(false);
           return;
         }
         if (data.status === "failed" || data.snapshotStatus === "failed") {
+          // If we have a stale graph, show it with a non-blocking error
+          if (lastSuccessfulPayload) {
+            setUpdateError(data.errorMessage ?? "Update failed");
+            setSnapshot((prev) => ({ ...prev, status: "failed" } as SnapshotResponse));
+          } else {
+            setSnapshot(data);
+          }
           setGenerating(false);
           return;
         }
-        // Still generating — continue polling
+        // Still generating — update metadata but don't clear graphPayload
+        if (!lastSuccessfulPayload) {
+          setSnapshot(data);
+        }
       } catch {
         // Network blip — continue polling
       }
     }
 
-    // Exhausted polls — leave in current state, stop generating flag
+    // Exhausted polls
     setGenerating(false);
   }
 
   // Normalize the raw graph into display structure
+  // Prefer lastSuccessfulPayload for stale-while-refresh
+  const effectivePayload = snapshot?.graphPayload ?? lastSuccessfulPayload;
+
   const displayGraph: DisplayGraph | null = useMemo(() => {
-    if (!snapshot?.graphPayload) return null;
-    const gp = snapshot.graphPayload;
+    if (!effectivePayload) return null;
+    const gp = effectivePayload;
     return normalizeGraph(
       gp.objects as Parameters<typeof normalizeGraph>[0],
       gp.relationships as Parameters<typeof normalizeGraph>[1],
     );
-  }, [snapshot?.graphPayload]);
+  }, [effectivePayload]);
 
   const overlapObjectIds = useMemo(() => {
-    if (!snapshot?.graphPayload) return new Set<string>();
-    const objects = snapshot.graphPayload.objects;
+    if (!effectivePayload) return new Set<string>();
+    const objects = effectivePayload.objects;
     const overlaps = new Set<string>();
     for (let i = 0; i < objects.length; i++) {
       const propsI = new Set(objects[i].propositionIds);
@@ -207,7 +251,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
       }
     }
     return overlaps;
-  }, [snapshot?.graphPayload]);
+  }, [effectivePayload]);
 
   const handleNodeClick = useCallback((objectId: string) => {
     setSelectedNodeId((prev) => (prev === objectId ? null : objectId));
@@ -222,7 +266,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
 
   if (!isOpen) return null;
 
-  const gp = snapshot?.graphPayload;
+  const gp = effectivePayload;
   const selectedObject = gp?.objects.find((o) => o.objectId === selectedNodeId) ?? null;
   const selectedHierarchy = displayGraph?.nodes.find((n) => n.objectId === selectedNodeId) ?? null;
 
@@ -309,7 +353,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
             </div>
           )}
 
-          {!loading && (snapshot?.snapshotStatus === "generating_initial" || snapshot?.status === "generating") && !snapshot?.graphPayload && (
+          {!loading && (snapshot?.snapshotStatus === "generating_initial" || snapshot?.status === "generating") && !effectivePayload && (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-purple-300 border-t-purple-600" />
               <p className="text-sm text-gray-600">Generating V2 graph…</p>
@@ -329,7 +373,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
             </div>
           )}
 
-          {!loading && (snapshot?.snapshotStatus === "failed" || snapshot?.status === "failed") && !snapshot?.graphPayload && (
+          {!loading && (snapshot?.snapshotStatus === "failed" || snapshot?.status === "failed") && !effectivePayload && (
             <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
               <div className="text-3xl opacity-40">⚠️</div>
               <p className="text-sm text-red-600 max-w-sm">{snapshot.errorMessage ?? "Generation failed"}</p>
@@ -339,7 +383,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
             </div>
           )}
 
-          {!loading && (snapshot?.status === "ready" || snapshot?.snapshotStatus === "ready") && gp && (
+          {!loading && gp && (
             <div className="relative h-full">
               {viewMode === "conceptual" ? (
                 <ConceptualMapView
@@ -357,15 +401,35 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
                   onNodeClick={handleNodeClick}
                 />
               ) : null}
+
+              {/* Non-blocking "Updating graph" indicator (stale-while-refresh) */}
+              {generating && (
+                <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-lg bg-white/90 border border-purple-200 px-3 py-1.5 shadow-sm z-10">
+                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-purple-300 border-t-purple-600" />
+                  <span className="text-xs text-gray-600">Updating graph…</span>
+                  {snapshot?.generationStartedAt && (
+                    <span className="text-[10px] text-gray-400">{formatElapsed(snapshot.generationStartedAt as string)}</span>
+                  )}
+                </div>
+              )}
+
+              {/* Non-blocking update error with retry */}
+              {!generating && updateError && (
+                <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-1.5 shadow-sm z-10">
+                  <span className="text-xs text-red-600 max-w-[200px] truncate">{updateError}</span>
+                  <button onClick={generateSnapshot} className="text-xs text-red-500 underline whitespace-nowrap">Retry</button>
+                </div>
+              )}
+
               {/* Incremental update indicator */}
-              {(snapshot?.updateStatus === "queued" || snapshot?.updateStatus === "updating") && (
-                <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-lg bg-white/90 border border-gray-200 px-3 py-1.5 shadow-sm">
+              {!generating && !updateError && (snapshot?.updateStatus === "queued" || snapshot?.updateStatus === "updating") && (
+                <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-lg bg-white/90 border border-gray-200 px-3 py-1.5 shadow-sm z-10">
                   <div className="h-3 w-3 animate-spin rounded-full border-2 border-purple-300 border-t-purple-600" />
                   <span className="text-xs text-gray-600">Updating graph…</span>
                 </div>
               )}
-              {snapshot?.updateStatus === "failed" && (
-                <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-1.5">
+              {!generating && !updateError && snapshot?.updateStatus === "failed" && (
+                <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-1.5 z-10">
                   <span className="text-xs text-red-600">Update failed</span>
                   <button onClick={loadSnapshot} className="text-xs text-red-500 underline">Retry</button>
                 </div>
