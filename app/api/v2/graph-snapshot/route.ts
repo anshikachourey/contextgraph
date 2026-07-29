@@ -37,15 +37,42 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  if (!data) {
-    return NextResponse.json({ status: "none", snapshotStatus: "none", updateStatus: "idle", conversationId });
-  }
+  const [{ data: updateState }, { data: latestMessage }] =
+    await Promise.all([
+      db
+        .from("v2_update_state")
+        .select(
+          "update_status, update_version, last_update_error, update_failed_at, last_processed_message_seq"
+        )
+        .eq("conversation_id", conversationId)
+        .maybeSingle(),
 
-  const { data: updateState } = await db
-    .from("v2_update_state")
-    .select("update_status, update_version, last_update_error, update_failed_at")
-    .eq("conversation_id", conversationId)
-    .single();
+      db
+        .from("messages")
+        .select("message_seq")
+        .eq("conversation_id", conversationId)
+        .order("message_seq", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+  const lastProcessedMessageSeq =
+    (updateState?.last_processed_message_seq as number) ?? 0;
+
+  const latestMessageSeq =
+    (latestMessage?.message_seq as number) ?? 0;
+
+  if (!data) {
+    return NextResponse.json({
+      status: "none",
+      snapshotStatus: "none",
+      updateStatus: "idle",
+      conversationId,
+      lastProcessedMessageSeq,
+      latestMessageSeq,
+      isStale: latestMessageSeq > lastProcessedMessageSeq,
+    });
+  }
 
   // Extract attempt metadata from diagnostics
   const diag = (data.diagnostics ?? {}) as Record<string, unknown>;
@@ -67,6 +94,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     lastUpdateError: updateState?.last_update_error ?? null,
     updateFailedAt: updateState?.update_failed_at ?? null,
     updateVersion: updateState?.update_version ?? 0,
+    lastProcessedMessageSeq,
+    latestMessageSeq,
+    isStale: latestMessageSeq > lastProcessedMessageSeq,
     generatedAt: data.generated_at,
     updatedAt: data.updated_at,
     // Attempt/lease fields for frontend state management

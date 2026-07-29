@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import V2GraphCanvas, { type EdgeMode } from "./V2GraphCanvas";
 import V2NodePanel from "./V2NodePanel";
 import ConceptualMapView from "./conceptual-map/ConceptualMapView";
@@ -82,6 +82,9 @@ type SnapshotResponse = {
   generationAttemptId?: string;
   generationStartedAt?: string | null;
   loadedFromSnapshot?: boolean;
+  lastProcessedMessageSeq?: number;
+  latestMessageSeq?: number;
+  isStale?: boolean;
 };
 
 /** Format elapsed time since a given ISO timestamp */
@@ -107,10 +110,20 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
   const [lastSuccessfulPayload, setLastSuccessfulPayload] = useState<SnapshotPayload | null>(null);
   /** Error from a regeneration attempt (shown as non-blocking indicator when stale graph is displayed) */
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const lastSuccessfulPayloadRef = useRef<SnapshotPayload | null>(null);
+  const handledOpenRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!isOpen || !conversationId) return;
-    loadSnapshot();
+    if (!isOpen || !conversationId) {
+      handledOpenRef.current = null;
+      return;
+    }
+
+    // Prevent duplicate refresh requests from rerenders or React Strict Mode.
+    if (handledOpenRef.current === conversationId) return;
+    handledOpenRef.current = conversationId;
+
+    void loadSnapshot();
   }, [isOpen, conversationId]);
 
   async function loadSnapshot() {
@@ -121,16 +134,36 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
       const data = await res.json();
       setSnapshot(data);
 
-      // Capture successful payload
+      // Capture the last successful payload before checking freshness.
       if (data.graphPayload) {
+        lastSuccessfulPayloadRef.current = data.graphPayload;
         setLastSuccessfulPayload(data.graphPayload);
         setUpdateError(null);
       }
 
-      // If the server reports active generation, start polling
-      if ((data.status === "generating" || data.snapshotStatus === "generating_initial") && !data.graphPayload) {
+      const activeGeneration =
+        data.status === "generating" ||
+        data.snapshotStatus === "generating_initial" ||
+        data.updateStatus === "queued" ||
+        data.updateStatus === "updating";
+
+      if (activeGeneration) {
         setGenerating(true);
-        pollUntilReady();
+        void pollUntilReady();
+      } else {
+        const latestMessageSeq = data.latestMessageSeq ?? 0;
+        const lastProcessedMessageSeq =
+          data.lastProcessedMessageSeq ?? 0;
+
+        const needsRefresh =
+          data.status === "none" ||
+          latestMessageSeq > lastProcessedMessageSeq;
+
+        if (needsRefresh) {
+          await generateSnapshot();
+        } else {
+          setGenerating(false);
+        }
       }
     } catch {
       setSnapshot({ status: "none" });
@@ -161,7 +194,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
         pollUntilReady();
       } else {
         // POST returned an error
-        if (lastSuccessfulPayload) {
+        if (lastSuccessfulPayloadRef.current) {
           // Stale graph exists — show non-blocking error
           setUpdateError(data.error ?? `Request failed (${res.status})`);
         } else {
@@ -170,7 +203,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
         setGenerating(false);
       }
     } catch {
-      if (lastSuccessfulPayload) {
+      if (lastSuccessfulPayloadRef.current) {
         setUpdateError("Network error — could not reach the server.");
       } else {
         setSnapshot({ status: "failed", errorMessage: "Network error — could not reach the server." });
@@ -192,6 +225,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
         if (data.status === "ready" || data.snapshotStatus === "ready") {
           setSnapshot(data);
           if (data.graphPayload) {
+            lastSuccessfulPayloadRef.current = data.graphPayload;
             setLastSuccessfulPayload(data.graphPayload);
             setUpdateError(null);
           }
@@ -200,7 +234,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
         }
         if (data.status === "failed" || data.snapshotStatus === "failed") {
           // If we have a stale graph, show it with a non-blocking error
-          if (lastSuccessfulPayload) {
+          if (lastSuccessfulPayloadRef.current) {
             setUpdateError(data.errorMessage ?? "Update failed");
             setSnapshot((prev) => ({ ...prev, status: "failed" } as SnapshotResponse));
           } else {
@@ -210,7 +244,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
           return;
         }
         // Still generating — update metadata but don't clear graphPayload
-        if (!lastSuccessfulPayload) {
+        if (!lastSuccessfulPayloadRef.current) {
           setSnapshot(data);
         }
       } catch {
