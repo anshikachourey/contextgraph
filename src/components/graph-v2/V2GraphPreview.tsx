@@ -118,6 +118,9 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
   const handledOpenRef = useRef<string | null>(null);
   const [panelRefreshKey, setPanelRefreshKey] = useState(0);
 
+  // ─── Saved node positions (for position persistence) ────────────────────
+  const [savedPositions, setSavedPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
+
   // ─── Manual editing state ───────────────────────────────────────────────
   const [showAddNodeModal, setShowAddNodeModal] = useState(false);
   const [showAddEdgeModal, setShowAddEdgeModal] = useState(false);
@@ -357,7 +360,24 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
     setPanelRefreshKey((k) => k + 1);
 
     void loadSnapshot();
+    void loadSavedPositions();
   }, [isOpen, conversationId]);
+
+  async function loadSavedPositions() {
+    try {
+      const res = await fetch(`/api/conversation-node-positions?conversationId=${conversationId}`);
+      if (res.ok) {
+        const data: Array<{ node_id: string; position_x: number; position_y: number }> = await res.json();
+        const posMap = new Map<string, { x: number; y: number }>();
+        for (const item of data) {
+          posMap.set(item.node_id, { x: item.position_x, y: item.position_y });
+        }
+        setSavedPositions(posMap);
+      }
+    } catch {
+      // Non-critical — auto-layout will be used
+    }
+  }
 
   async function loadSnapshot() {
     setLoading(true);
@@ -759,6 +779,8 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
                   onConnect={(conn) => { if (conn.source && conn.target) handleDragConnect({ source: conn.source, target: conn.target }); }}
                   onSelectionChange={handleSelectionChange}
                   panOnDrag={!lassoActive}
+                  conversationId={conversationId}
+                  savedPositions={savedPositions}
                 />
               )}
 
