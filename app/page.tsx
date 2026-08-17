@@ -933,6 +933,8 @@ export default function Home() {
     setV2WorkspaceNode(null);
     setV2WorkspaceLinkedMessages([]);
     setV2Continuation(null);
+    // Reopen Knowledge Map so the node panel refreshes with new messages
+    setIsV2PreviewOpen(true);
   }
 
   function handleNodeClick(nodeId: string) {
@@ -1032,6 +1034,11 @@ export default function Home() {
           onExitWorkspace={handleExitBranch}
           onSendMessage={handleSendMessage}
           onEditMessage={handleEditMessage}
+          onCreateNodeFromMessages={(node, linkedMessages) => {
+            // Node is persisted to V2 Knowledge Map via /api/v2/manual-node.
+            // Open the Knowledge Map which will show the newly added node.
+            setIsV2PreviewOpen(true);
+          }}
         />
       </div>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import type { ConversationListItem } from "@/src/lib/db/conversations";
 import ConfirmDialog from "@/src/components/ui/ConfirmDialog";
 
@@ -352,7 +353,23 @@ export default function ConversationSidebar({
       </div>
 
       {/* Footer */}
-      <div className="border-t border-[var(--border)] px-3 py-3">
+      <div className="border-t border-[var(--border)] px-3 py-3 space-y-1">
+        <Link
+          href="/graph-dashboard"
+          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="5" cy="6" r="2" />
+            <circle cx="12" cy="18" r="2" />
+            <circle cx="19" cy="6" r="2" />
+            <circle cx="19" cy="14" r="2" />
+            <path d="M5 8v6a2 2 0 002 2h3" />
+            <path d="M19 8v4" />
+            <path d="M14 18h3a2 2 0 002-2" />
+            <path d="M7 6h10" />
+          </svg>
+          Graph Dashboard
+        </Link>
         <button
           onClick={onOpenSettings}
           className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"

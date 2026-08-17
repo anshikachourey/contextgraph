@@ -19,6 +19,7 @@ type ChatPanelProps = {
   // Actions
   onSendMessage: (content: string, attachments?: import("@/src/types/message").AttachmentMeta[]) => void;
   onEditMessage?: (messageId: string, newContent: string) => void;
+  onCreateNodeFromMessages?: (node: ContextNode, linkedMessages: ChatMessageType[]) => void;
 };
 
 /** Format a date into a readable separator label */
@@ -51,11 +52,76 @@ export default function ChatPanel({
   onExitWorkspace,
   onSendMessage,
   onEditMessage,
+  onCreateNodeFromMessages,
 }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isNearBottom, setIsNearBottom] = useState(true);
+
+  // ─── Message selection state ────────────────────────────────────────────
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
+  const [showCreateNodeModal, setShowCreateNodeModal] = useState(false);
+  const [nodeTitle, setNodeTitle] = useState("");
+  const [nodeDescription, setNodeDescription] = useState("");
+  const [isCreatingNode, setIsCreatingNode] = useState(false);
+
+  const toggleMessageSelection = useCallback((id: string) => {
+    setSelectedMessageIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const exitSelectMode = useCallback(() => {
+    setIsSelectMode(false);
+    setSelectedMessageIds(new Set());
+  }, []);
+
+  const handleCreateNodeConfirm = useCallback(async () => {
+    if (!nodeTitle.trim() || selectedMessageIds.size === 0) return;
+
+    const selectedMessages = messages.filter((m) => selectedMessageIds.has(m.id));
+    const node: ContextNode = {
+      id: crypto.randomUUID(),
+      title: nodeTitle.trim(),
+      summary: nodeDescription.trim(),
+      messageIds: selectedMessages.map((m) => m.id),
+    };
+
+    setIsCreatingNode(true);
+
+    try {
+      // Persist to the V2 Knowledge Map via the manual-node endpoint
+      if (conversationId) {
+        const res = await fetch("/api/v2/manual-node", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId,
+            title: node.title,
+            description: node.summary,
+            messageIds: node.messageIds,
+          }),
+        });
+        if (!res.ok) {
+          console.error("[ChatPanel] Failed to persist manual node:", await res.text());
+        }
+      }
+
+      // Notify parent to open the Knowledge Map
+      onCreateNodeFromMessages?.(node, selectedMessages);
+    } finally {
+      setIsCreatingNode(false);
+      setShowCreateNodeModal(false);
+      setNodeTitle("");
+      setNodeDescription("");
+      exitSelectMode();
+    }
+  }, [nodeTitle, nodeDescription, selectedMessageIds, messages, conversationId, onCreateNodeFromMessages, exitSelectMode]);
 
   // Auto-scroll to bottom on new messages (if user is near bottom)
   useEffect(() => {
@@ -157,6 +223,23 @@ export default function ChatPanel({
   // Normal conversation view
   return (
     <section className="relative flex h-screen flex-col pt-[calc(var(--header-height)+0.5rem)]">
+      {/* Select mode toggle */}
+      {!isSelectMode && messages.length > 0 && (
+        <div className="absolute top-[calc(var(--header-height)+0.75rem)] right-6 z-10">
+          <button
+            onClick={() => setIsSelectMode(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] shadow-sm transition-all hover:border-[var(--muted-foreground)]/30 hover:text-[var(--foreground)] hover:shadow-md"
+            title="Select messages to create a node"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 11 12 14 22 4" />
+              <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+            </svg>
+            Select
+          </button>
+        </div>
+      )}
+
       {/* Message list — scrollable, full width so scrollbar sits at screen edge */}
       <div
         ref={scrollContainerRef}
@@ -177,6 +260,8 @@ export default function ChatPanel({
             message.createdAt &&
             (idx === 0 || isDifferentDay(prevMessage?.createdAt, message.createdAt));
 
+          const isMessageSelected = selectedMessageIds.has(message.id);
+
           return (
             <div key={message.id}>
               {showDateSeparator && message.createdAt && (
@@ -186,15 +271,37 @@ export default function ChatPanel({
                   </div>
                 </div>
               )}
-              <div className="py-2">
-                <ChatMessage
-                  key={message.id}
-                  message={message}
-                  isSelected={false}
-                  isHighlighted={highlightedMessageIds.includes(message.id)}
-                  onEdit={onEditMessage}
-                  isLatestUserMessage={isLatestUser}
-                />
+              <div className={`py-2 flex items-start gap-2 ${isSelectMode ? "cursor-pointer" : ""}`}
+                onClick={isSelectMode ? () => toggleMessageSelection(message.id) : undefined}
+              >
+                {/* Selection checkbox */}
+                {isSelectMode && (
+                  <div className="flex-shrink-0 pt-3">
+                    <div className={`flex h-5 w-5 items-center justify-center rounded-md border-2 transition-all ${
+                      isMessageSelected
+                        ? "border-[var(--accent)] bg-[var(--accent)]"
+                        : "border-[var(--border)] bg-[var(--surface)]"
+                    }`}>
+                      {isMessageSelected && (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div className={`flex-1 min-w-0 rounded-xl transition-all ${
+                  isSelectMode && isMessageSelected ? "ring-2 ring-[var(--accent)]/30 bg-[var(--accent-light)]/30" : ""
+                }`}>
+                  <ChatMessage
+                    key={message.id}
+                    message={message}
+                    isSelected={isMessageSelected}
+                    isHighlighted={highlightedMessageIds.includes(message.id)}
+                    onEdit={isSelectMode ? undefined : onEditMessage}
+                    isLatestUserMessage={isLatestUser}
+                  />
+                </div>
               </div>
             </div>
           );
@@ -229,6 +336,38 @@ export default function ChatPanel({
         </div>
       </div>
 
+      {/* ─── Floating selection action bar ─────────────────────────────────── */}
+      {isSelectMode && (
+        <div className="absolute bottom-28 left-1/2 z-20 -translate-x-1/2">
+          <div className="flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 shadow-xl">
+            <span className="text-[13px] font-medium text-[var(--foreground)]">
+              {selectedMessageIds.size} selected
+            </span>
+            <div className="h-4 w-px bg-[var(--border)]" />
+            <button
+              onClick={() => {
+                if (selectedMessageIds.size > 0) {
+                  setShowCreateNodeModal(true);
+                }
+              }}
+              disabled={selectedMessageIds.size === 0}
+              className="flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Create Node
+            </button>
+            <button
+              onClick={exitSelectMode}
+              className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Scroll to bottom FAB */}
       {showScrollButton && (
         <button
@@ -252,6 +391,95 @@ export default function ChatPanel({
           />
         </div>
       </div>
+
+      {/* ─── Create Node confirmation modal ────────────────────────────────── */}
+      {showCreateNodeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+            onClick={() => setShowCreateNodeModal(false)}
+          />
+          <div className="relative z-10 w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl">
+            <h2 className="text-[16px] font-semibold text-[var(--foreground)]">
+              Create Node from Messages
+            </h2>
+            <p className="mt-1 text-[13px] text-[var(--muted-foreground)]">
+              {selectedMessageIds.size} message{selectedMessageIds.size > 1 ? "s" : ""} selected. This will create a manual node linked to the selected messages.
+            </p>
+
+            {/* Preview of selected messages */}
+            <div className="mt-3 max-h-32 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--muted)] p-3 space-y-1.5">
+              {messages
+                .filter((m) => selectedMessageIds.has(m.id))
+                .map((m) => (
+                  <div key={m.id} className="flex items-start gap-2 text-[12px]">
+                    <span className={`shrink-0 rounded px-1.5 py-0.5 font-medium ${
+                      m.role === "user"
+                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                        : "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
+                    }`}>
+                      {m.role === "user" ? "You" : "AI"}
+                    </span>
+                    <span className="text-[var(--muted-foreground)] line-clamp-2">
+                      {m.content.slice(0, 120)}{m.content.length > 120 ? "…" : ""}
+                    </span>
+                  </div>
+                ))}
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-[12px] font-medium text-[var(--foreground)]">
+                  Node Title <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={nodeTitle}
+                  onChange={(e) => setNodeTitle(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleCreateNodeConfirm()}
+                  placeholder="e.g. Project Requirements Discussion"
+                  autoFocus
+                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+                />
+              </div>
+              <div>
+                <label className="text-[12px] font-medium text-[var(--foreground)]">
+                  Summary
+                </label>
+                <textarea
+                  value={nodeDescription}
+                  onChange={(e) => setNodeDescription(e.target.value)}
+                  placeholder="Optional summary of what these messages cover..."
+                  rows={2}
+                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-lg bg-[var(--accent-light)] px-3 py-2">
+              <p className="text-[11px] text-[var(--accent)]">
+                <span className="font-medium">Provenance:</span> USER_CREATED — This node will be marked as manually created and will not be treated as SIE-generated semantic truth.
+              </p>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setShowCreateNodeModal(false)}
+                className="rounded-lg px-4 py-2 text-[13px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateNodeConfirm}
+                disabled={!nodeTitle.trim() || isCreatingNode}
+                className="rounded-lg bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isCreatingNode ? "Creating…" : "Create Node"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

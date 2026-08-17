@@ -23,8 +23,10 @@ export async function persistNode(
   const db = createServerSupabaseClient();
 
   // Step 1: Generate evidence summary from linked messages (soft-fail)
+  // Skip for very short content where AI can't produce a meaningful summary.
   let evidenceSummary: string | null = null;
-  if (linkedMessages.length > 0) {
+  const totalContent = linkedMessages.reduce((acc, m) => acc + m.content.length, 0);
+  if (linkedMessages.length > 0 && totalContent > 20) {
     try {
       evidenceSummary = await generateEvidenceSummary(linkedMessages);
     } catch (err) {
