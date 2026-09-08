@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { AppShell } from "@astryxdesign/core/AppShell";
 import Header from "@/src/components/layout/Header";
 import ConversationSidebar from "@/src/components/layout/ConversationSidebar";
 import ChatPanel from "@/src/components/chat/ChatPanel";
@@ -69,12 +70,24 @@ export default function Home() {
   // ─── Settings modal state ─────────────────────────────────────────────────
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  // ─── Embedded mode ──────────────────────────────────────────────────────
+  // When rendered inside the Graph Dashboard chat overlay (iframe with ?embed=1),
+  // hide the app header and conversation sidebar so only the chat shows.
+  const [isEmbedded, setIsEmbedded] = useState(false);
+
   // ─── Sidebar state ────────────────────────────────────────────────────────
   // Desktop: starts open. Mobile: starts closed.
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   // Set initial sidebar state based on screen width (client-only)
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const embedded = params.get("embed") === "1";
+    setIsEmbedded(embedded);
+    if (embedded) {
+      setIsSidebarOpen(false);
+      return;
+    }
     const isMobile = window.matchMedia("(max-width: 767px)").matches;
     if (isMobile) setIsSidebarOpen(false);
   }, []);
@@ -235,9 +248,11 @@ export default function Home() {
         const sessionData = await sessionRes.json();
         setWorkspace(sessionData.workspace);
 
-        // Check URL for a specific conversation to open (used by branch-in-new-tab)
+        // Check URL for a specific conversation to open.
+        // `conversationId` is used by branch-in-new-tab; `id` is used by the
+        // Graph Dashboard chat overlay (?id=<id>&embed=1). Honor either.
         const urlParams = new URLSearchParams(window.location.search);
-        const urlConvId = urlParams.get("conversationId");
+        const urlConvId = urlParams.get("conversationId") ?? urlParams.get("id");
         const shouldContinue = urlParams.get("continue") === "true";
 
         // Fetch conversation list
@@ -1002,28 +1017,63 @@ export default function Home() {
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
+  // ─── Shell slots ─────────────────────────────────────────────────────────
+  // Astryx AppShell owns the persistent frame. Nav slots are omitted in
+  // embedded mode so shell chrome is hidden, matching existing behavior.
+  //
+  // The Knowledge Graph (V2 preview) opens as a full-screen working mode. Hide
+  // the chat TopNav and SideNav while it is open so the chat-sidebar headings
+  // (ContextGraph / New conversation / Active-Archived) don't sit over the
+  // graph's own left toolbar (e.g. "Lasso"). Presentation only — the graph and
+  // sidebar state/behavior are unchanged and restore when the graph closes.
+  const isGraphFullscreen = isV2PreviewOpen;
+  const topNav = isEmbedded || isGraphFullscreen ? undefined : (
+    <Header
+      onShowGraph={() => setIsGraphOpen(true)}
+      onShowV2Preview={() => setIsV2PreviewOpen(true)}
+      workspace={workspace}
+      onLogout={handleLogout}
+      sidebarOpen={isSidebarOpen}
+      onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+    />
+  );
+
+  // AppShell owns the rail's layout region and content offset. On desktop the
+  // rail is shown/hidden via the existing isSidebarOpen state (single source of
+  // offset — no manual content padding). Hidden entirely in embedded mode.
+  // Below AppShell's mobile breakpoint the rail moves into AppShell's own
+  // accessible drawer.
+  const showSideNav = !isEmbedded && !isGraphFullscreen && isSidebarOpen;
+  const sideNav = isEmbedded || isGraphFullscreen ? undefined : (
+    <ConversationSidebar
+      conversations={conversations}
+      archivedConversations={archivedConversations}
+      activeConversationId={conversationId}
+      isCreating={isCreatingConversation}
+      isOpen={isSidebarOpen}
+      onClose={() => setIsSidebarOpen(false)}
+      onSelect={handleSelectConversation}
+      onNewChat={handleNewChat}
+      onArchive={handleArchive}
+      onRestore={handleRestore}
+      onDelete={handleDelete}
+      onRename={handleRename}
+      onOpenSettings={() => setIsSettingsOpen(true)}
+    />
+  );
+
   return (
-    <main className="relative min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <Header onShowGraph={() => setIsGraphOpen(true)} onShowV2Preview={() => setIsV2PreviewOpen(true)} workspace={workspace} onLogout={handleLogout} sidebarOpen={isSidebarOpen} onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)} />
-
-      <ConversationSidebar
-        conversations={conversations}
-        archivedConversations={archivedConversations}
-        activeConversationId={conversationId}
-        isCreating={isCreatingConversation}
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-        onSelect={handleSelectConversation}
-        onNewChat={handleNewChat}
-        onArchive={handleArchive}
-        onRestore={handleRestore}
-        onDelete={handleDelete}
-        onRename={handleRename}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-      />
-
-      {/* Main content — offset for sidebar */}
-      <div className={`transition-[padding-left] duration-200 ease-in-out ${isSidebarOpen ? "pl-[var(--sidebar-width)]" : "pl-0"}`}>
+    <AppShell
+      height="fill"
+      contentPadding={0}
+      topNav={topNav}
+      // Gated by the existing isSidebarOpen state so the desktop toggle
+      // hides/shows the rail. AppShell owns width, offset, and (below its
+      // breakpoint) the accessible mobile drawer.
+      sideNav={showSideNav ? sideNav : undefined}
+    >
+      {/* Main content — AppShell owns the sidebar offset, so no manual padding. */}
+      <div>
         <ChatPanel
           messages={displayMessages}
           highlightedMessageIds={highlightedMessageIds}
@@ -1137,6 +1187,6 @@ export default function Home() {
         onDeleteAllData={handleDeleteAllData}
       />
 
-    </main>
+    </AppShell>
   );
 }

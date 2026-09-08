@@ -3,6 +3,12 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Button } from "@astryxdesign/core/Button";
+import { Badge } from "@astryxdesign/core/Badge";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { Banner } from "@astryxdesign/core/Banner";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { TextArea } from "@astryxdesign/core/TextArea";
 import {
   ReactFlow,
   Controls,
@@ -500,34 +506,51 @@ export default function LegacyGraphDashboard() {
             </div>
             <h1 className="text-[15px] font-semibold text-[var(--foreground)]">Graph Dashboard</h1>
           </div>
-          <span className="rounded bg-[var(--accent-light)] px-2 py-0.5 text-[11px] font-medium text-[var(--accent)] uppercase tracking-wide">Manual</span>
+          <Badge variant="neutral" label="Manual" />
         </div>
 
         <div className="flex items-center gap-2">
-          <button onClick={() => setPanOnDrag((p) => !p)} className={`focus-ring flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors ${!panOnDrag ? "border-[var(--accent)] bg-[var(--accent-light)] text-[var(--accent)]" : "border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`} title={panOnDrag ? "Lasso select" : "Pan mode"}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3h4v4H3zM17 3h4v4h-4zM3 17h4v4H3zM17 17h4v4h-4z" /><path d="M7 5h10M7 19h10M5 7v10M19 7v10" /></svg>
-            {panOnDrag ? "Lasso" : "Lasso ✓"}
-          </button>
-          <button onClick={() => setShowNodeModal(true)} className="focus-ring flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)]">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
-            Add Node
-          </button>
+          <Button
+            variant={!panOnDrag ? "primary" : "secondary"}
+            size="sm"
+            label={panOnDrag ? "Lasso" : "Lasso ✓"}
+            tooltip={panOnDrag ? "Lasso select" : "Pan mode"}
+            onClick={() => setPanOnDrag((p) => !p)}
+            icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3h4v4H3zM17 3h4v4h-4zM3 17h4v4H3zM17 17h4v4h-4z" /><path d="M7 5h10M7 19h10M5 7v10M19 7v10" /></svg>}
+          />
+          <Button
+            variant="primary"
+            size="sm"
+            label="Add Node"
+            onClick={() => setShowNodeModal(true)}
+            icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>}
+          />
           {(selectedFlowNodes.length > 0 || selectedNodeId) && (
             <>
-              <button onClick={handleCopy} className="focus-ring flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[13px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
-                {copiedMessage ? "Copied!" : `Copy${selectedFlowNodes.length > 1 ? ` (${selectedFlowNodes.length})` : ""}`}
-              </button>
-              <button onClick={() => setShowDeleteConfirm(true)} className="focus-ring flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-[13px] font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-900/30 dark:hover:bg-red-950/20">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                Delete{selectedFlowNodes.length > 1 ? ` (${selectedFlowNodes.length})` : ""}
-              </button>
+              <Button
+                variant="secondary"
+                size="sm"
+                label={copiedMessage ? "Copied!" : `Copy${selectedFlowNodes.length > 1 ? ` (${selectedFlowNodes.length})` : ""}`}
+                onClick={handleCopy}
+                icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>}
+              />
+              <Button
+                variant="destructive"
+                size="sm"
+                label={`Delete${selectedFlowNodes.length > 1 ? ` (${selectedFlowNodes.length})` : ""}`}
+                onClick={() => setShowDeleteConfirm(true)}
+                icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>}
+              />
             </>
           )}
-          <button onClick={handlePaste} className="focus-ring flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[13px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]" title="Paste">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" ry="1" /></svg>
-            Paste
-          </button>
+          <Button
+            variant="secondary"
+            size="sm"
+            label="Paste"
+            tooltip="Paste"
+            onClick={handlePaste}
+            icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2" /><rect x="8" y="2" width="8" height="4" rx="1" ry="1" /></svg>}
+          />
           <div className="text-[12px] text-[var(--muted-foreground)]">{persistedNodes.length} nodes · {persistedEdges.length} edges</div>
         </div>
       </header>
@@ -564,26 +587,23 @@ export default function LegacyGraphDashboard() {
 
             {loadError && (
               <Panel position="top-center">
-                <div className="mt-32 flex flex-col items-center gap-3 text-center">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                <div className="mt-32 w-[320px] max-w-[90vw] space-y-3">
+                  <Banner status="error" collapsible={false} title="Failed to load graph" description={loadError} />
+                  <div className="flex justify-center">
+                    <Button variant="secondary" label="Retry" onClick={() => window.location.reload()} />
                   </div>
-                  <p className="text-[14px] font-medium text-red-600">Failed to load graph</p>
-                  <p className="text-[13px] text-[var(--muted-foreground)]">{loadError}</p>
-                  <button onClick={() => window.location.reload()} className="focus-ring mt-2 rounded-lg border border-[var(--border)] px-4 py-2 text-[13px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]">Retry</button>
                 </div>
               </Panel>
             )}
 
             {!loadError && persistedNodes.length === 0 && (
               <Panel position="top-center">
-                <div className="mt-32 flex flex-col items-center gap-3 text-center">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--muted)]">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="5" cy="6" r="2" /><circle cx="12" cy="18" r="2" /><circle cx="19" cy="6" r="2" /><path d="M5 8v6a2 2 0 002 2h3M19 8v4M14 18h3a2 2 0 002-2M7 6h10" /></svg>
-                  </div>
-                  <p className="text-[14px] font-medium text-[var(--foreground)]">No nodes yet</p>
-                  <p className="mt-1 text-[13px] text-[var(--muted-foreground)]">Click &quot;Add Node&quot; to create your first node, or drag between nodes to create edges.</p>
-                  <button onClick={() => setShowNodeModal(true)} className="focus-ring mt-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)]">Create your first node</button>
+                <div className="mt-32">
+                  <EmptyState
+                    title="No nodes yet"
+                    description={'Click "Add Node" to create your first node, or drag between nodes to create edges.'}
+                    actions={<Button variant="primary" label="Create your first node" onClick={() => setShowNodeModal(true)} />}
+                  />
                 </div>
               </Panel>
             )}
@@ -678,18 +698,12 @@ export default function LegacyGraphDashboard() {
           <div className="relative z-10 w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl">
             <h2 className="text-[16px] font-semibold text-[var(--foreground)]">Add Node</h2>
             <div className="mt-4 space-y-3">
-              <div>
-                <label className="text-[12px] font-medium text-[var(--foreground)]">Title <span className="text-red-500">*</span></label>
-                <input type="text" value={newNodeTitle} onChange={(e) => setNewNodeTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddNode()} placeholder="e.g. Project Architecture" autoFocus className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20" />
-              </div>
-              <div>
-                <label className="text-[12px] font-medium text-[var(--foreground)]">Description</label>
-                <textarea value={newNodeDescription} onChange={(e) => setNewNodeDescription(e.target.value)} placeholder="Optional description..." rows={3} className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 resize-none" />
-              </div>
+              <TextInput label="Title" isRequired value={newNodeTitle} onChange={setNewNodeTitle} onEnter={handleAddNode} placeholder="e.g. Project Architecture" hasAutoFocus width="100%" />
+              <TextArea label="Description" isOptional value={newNodeDescription} onChange={setNewNodeDescription} placeholder="Optional description..." rows={3} />
             </div>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setShowNodeModal(false)} className="rounded-lg px-4 py-2 text-[13px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]">Cancel</button>
-              <button onClick={handleAddNode} disabled={!newNodeTitle.trim()} className="rounded-lg bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed">Add Node</button>
+              <Button variant="ghost" label="Cancel" onClick={() => setShowNodeModal(false)} />
+              <Button variant="primary" label="Add Node" isDisabled={!newNodeTitle.trim()} onClick={handleAddNode} />
             </div>
           </div>
         </div>
@@ -707,12 +721,11 @@ export default function LegacyGraphDashboard() {
               <span className="font-medium text-[var(--foreground)]">{persistedNodes.find((n) => n.id === pendingConnection.target)?.data.title}</span>
             </p>
             <div className="mt-4">
-              <label className="text-[12px] font-medium text-[var(--foreground)]">Relationship Label</label>
-              <input type="text" value={newEdgeLabel} onChange={(e) => setNewEdgeLabel(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddEdge()} placeholder="e.g. depends on, contains, related to..." autoFocus className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20" />
+              <TextInput label="Relationship Label" value={newEdgeLabel} onChange={setNewEdgeLabel} onEnter={handleAddEdge} placeholder="e.g. depends on, contains, related to..." hasAutoFocus width="100%" />
             </div>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => { setShowEdgeModal(false); setPendingConnection(null); }} className="rounded-lg px-4 py-2 text-[13px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]">Cancel</button>
-              <button onClick={handleAddEdge} className="rounded-lg bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)]">Create Edge</button>
+              <Button variant="ghost" label="Cancel" onClick={() => { setShowEdgeModal(false); setPendingConnection(null); }} />
+              <Button variant="primary" label="Create Edge" onClick={handleAddEdge} />
             </div>
           </div>
         </div>
@@ -725,18 +738,12 @@ export default function LegacyGraphDashboard() {
           <div className="relative z-10 w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl">
             <h2 className="text-[16px] font-semibold text-[var(--foreground)]">Edit Node</h2>
             <div className="mt-4 space-y-3">
-              <div>
-                <label className="text-[12px] font-medium text-[var(--foreground)]">Title <span className="text-red-500">*</span></label>
-                <input type="text" value={editNodeTitle} onChange={(e) => setEditNodeTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleEditNodeSave()} autoFocus className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20" />
-              </div>
-              <div>
-                <label className="text-[12px] font-medium text-[var(--foreground)]">Description</label>
-                <textarea value={editNodeDescription} onChange={(e) => setEditNodeDescription(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 resize-none" />
-              </div>
+              <TextInput label="Title" isRequired value={editNodeTitle} onChange={setEditNodeTitle} onEnter={handleEditNodeSave} hasAutoFocus width="100%" />
+              <TextArea label="Description" isOptional value={editNodeDescription} onChange={setEditNodeDescription} rows={3} />
             </div>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setShowEditNodeModal(false)} className="rounded-lg px-4 py-2 text-[13px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]">Cancel</button>
-              <button onClick={handleEditNodeSave} disabled={!editNodeTitle.trim()} className="rounded-lg bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed">Save</button>
+              <Button variant="ghost" label="Cancel" onClick={() => setShowEditNodeModal(false)} />
+              <Button variant="primary" label="Save" isDisabled={!editNodeTitle.trim()} onClick={handleEditNodeSave} />
             </div>
           </div>
         </div>
@@ -749,12 +756,11 @@ export default function LegacyGraphDashboard() {
           <div className="relative z-10 w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl">
             <h2 className="text-[16px] font-semibold text-[var(--foreground)]">Edit Edge</h2>
             <div className="mt-4">
-              <label className="text-[12px] font-medium text-[var(--foreground)]">Relationship Label</label>
-              <input type="text" value={editEdgeLabel} onChange={(e) => setEditEdgeLabel(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleEditEdgeSave()} autoFocus className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20" placeholder="e.g. depends on, contains, related to..." />
+              <TextInput label="Relationship Label" value={editEdgeLabel} onChange={setEditEdgeLabel} onEnter={handleEditEdgeSave} placeholder="e.g. depends on, contains, related to..." hasAutoFocus width="100%" />
             </div>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setShowEditEdgeModal(false)} className="rounded-lg px-4 py-2 text-[13px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]">Cancel</button>
-              <button onClick={handleEditEdgeSave} className="rounded-lg bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)]">Save</button>
+              <Button variant="ghost" label="Cancel" onClick={() => setShowEditEdgeModal(false)} />
+              <Button variant="primary" label="Save" onClick={handleEditEdgeSave} />
             </div>
           </div>
         </div>
@@ -768,8 +774,8 @@ export default function LegacyGraphDashboard() {
             <h2 className="text-[16px] font-semibold text-[var(--foreground)]">Delete edge?</h2>
             <p className="mt-2 text-[13px] text-[var(--muted-foreground)]">This edge will be permanently removed.</p>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setShowDeleteEdgeConfirm(false)} className="rounded-lg px-4 py-2 text-[13px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]">Cancel</button>
-              <button onClick={() => { handleDeleteEdge(); setShowDeleteEdgeConfirm(false); }} className="rounded-lg bg-red-600 px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-red-700">Delete</button>
+              <Button variant="ghost" label="Cancel" onClick={() => setShowDeleteEdgeConfirm(false)} />
+              <Button variant="destructive" label="Delete" onClick={() => { handleDeleteEdge(); setShowDeleteEdgeConfirm(false); }} />
             </div>
           </div>
         </div>
@@ -785,8 +791,8 @@ export default function LegacyGraphDashboard() {
               {selectedFlowNodes.length > 0 ? selectedFlowNodes.length : 1} node{(selectedFlowNodes.length > 1) ? "s" : ""} and all connected edges will be permanently deleted.
             </p>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setShowDeleteConfirm(false)} className="rounded-lg px-4 py-2 text-[13px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]">Cancel</button>
-              <button onClick={handleDeleteSelected} className="rounded-lg bg-red-600 px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-red-700">Delete</button>
+              <Button variant="ghost" label="Cancel" onClick={() => setShowDeleteConfirm(false)} />
+              <Button variant="destructive" label="Delete" onClick={handleDeleteSelected} />
             </div>
           </div>
         </div>

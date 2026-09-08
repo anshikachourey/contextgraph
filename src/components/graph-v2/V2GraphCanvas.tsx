@@ -183,7 +183,7 @@ export default function V2GraphCanvas({
       proOptions={{ hideAttribution: true }}
       className="h-full w-full"
     >
-      <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#e5e7eb" />
+      <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
       <Controls showInteractive={false} />
     </ReactFlow>
   );

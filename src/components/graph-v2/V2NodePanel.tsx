@@ -186,15 +186,15 @@ export default function V2NodePanel({
   return (
     <div className="flex h-full flex-col">
       {/* ─── Permanent header: type + title + close ──────────────────────── */}
-      <div className="shrink-0 border-b border-gray-100 px-4 pt-4 pb-0">
+      <div className="shrink-0 border-b border-[var(--border-subtle)] px-4 pt-4 pb-0">
         <div className="flex items-start justify-between mb-2">
           <div>
-            <span className="inline-block rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600 capitalize">
+            <span className="inline-block rounded bg-[var(--muted)] px-2 py-0.5 text-xs text-[var(--muted-foreground)] capitalize">
               {object.objectType.replace(/_/g, " ")}
             </span>
             <h3 className="mt-1.5 text-[15px] font-semibold leading-snug">{object.title}</h3>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg leading-none ml-2">×</button>
+          <button onClick={onClose} className="text-[var(--muted-foreground)] hover:text-[var(--muted-foreground)] text-lg leading-none ml-2">×</button>
         </div>
 
         {/* ─── Tabs ────────────────────────────────────────────────────── */}
@@ -204,7 +204,7 @@ export default function V2NodePanel({
             className={`px-3 py-2 text-xs font-medium border-b-2 transition ${
               activeTab === "overview"
                 ? "border-purple-600 text-purple-700"
-                : "border-transparent text-gray-500 hover:text-gray-700"
+                : "border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
             }`}
           >
             Overview
@@ -215,7 +215,7 @@ export default function V2NodePanel({
               className={`px-3 py-2 text-xs font-medium border-b-2 transition ${
                 activeTab === "conversation"
                   ? "border-purple-600 text-purple-700"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
+                  : "border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
               }`}
             >
               Conversation
@@ -231,17 +231,17 @@ export default function V2NodePanel({
         {activeTab === "overview" && (
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {/* Description */}
-            <p className="text-sm text-gray-600 leading-relaxed">{object.description}</p>
+            <p className="text-sm text-[var(--muted-foreground)] leading-relaxed">{object.description}</p>
 
             {/* Relationships */}
             {(parent || children.length > 0 || semanticRels.length > 0) && (
               <div className="space-y-3">
                 {parent && (
                   <div>
-                    <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1">Part of</p>
+                    <p className="text-[10px] font-medium text-[var(--muted-foreground)] uppercase tracking-wider mb-1">Part of</p>
                     <button
                       onClick={() => onSelectNode?.(parent.objectId)}
-                      className="w-full text-left rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-700 hover:bg-gray-100 transition"
+                      className="w-full text-left rounded-lg bg-[var(--surface-raised)] px-3 py-2 text-xs text-[var(--foreground)] hover:bg-[var(--muted)] transition"
                     >
                       <span className="font-medium">{parent.title}</span>
                     </button>
@@ -250,12 +250,12 @@ export default function V2NodePanel({
 
                 {children.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1">Subtopics</p>
+                    <p className="text-[10px] font-medium text-[var(--muted-foreground)] uppercase tracking-wider mb-1">Subtopics</p>
                     {children.map((c) => (
                       <button
                         key={c.objectId}
                         onClick={() => onSelectNode?.(c.objectId)}
-                        className="w-full text-left rounded-lg bg-gray-50 px-3 py-1.5 mb-1 text-xs text-gray-700 hover:bg-gray-100 transition"
+                        className="w-full text-left rounded-lg bg-[var(--surface-raised)] px-3 py-1.5 mb-1 text-xs text-[var(--foreground)] hover:bg-[var(--muted)] transition"
                       >
                         {c.title}
                       </button>
@@ -265,7 +265,7 @@ export default function V2NodePanel({
 
                 {semanticRels.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1">Related ideas</p>
+                    <p className="text-[10px] font-medium text-[var(--muted-foreground)] uppercase tracking-wider mb-1">Related ideas</p>
                     <div className="space-y-1">
                       {visibleRels.map((r) => {
                         const isSource = r.sourceObjectId === object.objectId;
@@ -273,17 +273,17 @@ export default function V2NodePanel({
                         const otherObj = allObjects.find((o) => o.objectId === otherId);
                         if (!otherObj) return null;
                         return (
-                          <div key={r.relationshipId} className="rounded-lg bg-gray-50 px-3 py-2">
+                          <div key={r.relationshipId} className="rounded-lg bg-[var(--surface-raised)] px-3 py-2">
                             <button onClick={() => onSelectNode?.(otherId)} className="w-full text-left text-xs">
-                              <span className="text-gray-500">{friendlyLabel(r.type, isSource)}</span>
-                              <span className="ml-1 font-medium text-gray-700">{otherObj.title}</span>
+                              <span className="text-[var(--muted-foreground)]">{friendlyLabel(r.type, isSource)}</span>
+                              <span className="ml-1 font-medium text-[var(--foreground)]">{otherObj.title}</span>
                             </button>
                             {expandedExplanation === r.relationshipId ? (
-                              <p className="mt-1 text-[11px] text-gray-400 italic">{r.explanation}</p>
+                              <p className="mt-1 text-[11px] text-[var(--muted-foreground)] italic">{r.explanation}</p>
                             ) : (
                               <button
                                 onClick={() => setExpandedExplanation(expandedExplanation === r.relationshipId ? null : r.relationshipId)}
-                                className="mt-0.5 text-[10px] text-gray-400 hover:text-gray-600"
+                                className="mt-0.5 text-[10px] text-[var(--muted-foreground)] hover:text-[var(--muted-foreground)]"
                               >
                                 Why connected?
                               </button>
@@ -305,8 +305,8 @@ export default function V2NodePanel({
             {/* Provenance */}
             {object.provenanceSummary && (
               <div>
-                <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1">Provenance</p>
-                <p className="text-xs text-gray-600">{object.provenanceSummary}</p>
+                <p className="text-[10px] font-medium text-[var(--muted-foreground)] uppercase tracking-wider mb-1">Provenance</p>
+                <p className="text-xs text-[var(--muted-foreground)]">{object.provenanceSummary}</p>
               </div>
             )}
 
@@ -325,7 +325,7 @@ export default function V2NodePanel({
             <div className="shrink-0 flex items-center justify-end px-4 pt-2 pb-1">
               <button
                 onClick={() => { const next = !conversationExpanded; setConversationExpanded(next); onExpandChange?.(next); }}
-                className="text-gray-400 hover:text-gray-600 p-0.5 rounded flex items-center gap-1 text-[10px]"
+                className="text-[var(--muted-foreground)] hover:text-[var(--muted-foreground)] p-0.5 rounded flex items-center gap-1 text-[10px]"
                 title={conversationExpanded ? "Collapse panel" : "Expand panel"}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -342,10 +342,10 @@ export default function V2NodePanel({
             {/* Messages — fills remaining space */}
             <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-2">
               {loadingMessages && (
-                <p className="text-xs text-gray-400 py-4">Loading messages…</p>
+                <p className="text-xs text-[var(--muted-foreground)] py-4">Loading messages…</p>
               )}
               {!loadingMessages && messages.length === 0 && (
-                <p className="text-xs text-gray-400 italic py-4">Source messages not available.</p>
+                <p className="text-xs text-[var(--muted-foreground)] italic py-4">Source messages not available.</p>
               )}
               {!loadingMessages && messages.length > 0 && (
                 <div className="space-y-2">
@@ -357,15 +357,15 @@ export default function V2NodePanel({
                       <div key={msg.id}>
                         {showSeparator && (
                           <div className="flex items-center gap-2 py-1">
-                            <div className="flex-1 h-px bg-gray-200" />
-                            <span className="text-[9px] text-gray-400">Later in conversation</span>
-                            <div className="flex-1 h-px bg-gray-200" />
+                            <div className="flex-1 h-px bg-[var(--border)]" />
+                            <span className="text-[9px] text-[var(--muted-foreground)]">Later in conversation</span>
+                            <div className="flex-1 h-px bg-[var(--border)]" />
                           </div>
                         )}
                         <div className={`rounded-lg px-3 py-2 text-xs ${
-                          msg.role === "user" ? "bg-blue-50 text-gray-800" : "bg-gray-50 text-gray-700"
+                          msg.role === "user" ? "bg-blue-50 text-[var(--foreground)]" : "bg-[var(--surface-raised)] text-[var(--foreground)]"
                         }`}>
-                          <span className="text-[10px] font-medium text-gray-400">
+                          <span className="text-[10px] font-medium text-[var(--muted-foreground)]">
                             {msg.role === "user" ? "You" : "Assistant"}
                           </span>
                           <p className="mt-0.5 whitespace-pre-wrap leading-relaxed">{msg.content}</p>
@@ -382,7 +382,7 @@ export default function V2NodePanel({
 
       {/* ─── Sticky footer: Continue / Start conversation ─────────────────── */}
       {onContinue && hasConversationSource && (
-        <div className="shrink-0 border-t border-gray-100 p-3">
+        <div className="shrink-0 border-t border-[var(--border-subtle)] p-3">
           <button
             onClick={() => onContinue(object.objectId)}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-purple-700"
@@ -395,7 +395,7 @@ export default function V2NodePanel({
         </div>
       )}
       {onStartConversation && !hasConversationSource && !loadingMessages && (
-        <div className="shrink-0 border-t border-gray-100 p-3">
+        <div className="shrink-0 border-t border-[var(--border-subtle)] p-3">
           <button
             onClick={() => onStartConversation(object.objectId)}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-purple-700"

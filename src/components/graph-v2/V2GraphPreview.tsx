@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Button } from "@astryxdesign/core/Button";
+import { Badge } from "@astryxdesign/core/Badge";
 import V2GraphCanvas, { type EdgeMode } from "./V2GraphCanvas";
 import V2NodePanel from "./V2NodePanel";
 import { normalizeGraph, type DisplayGraph } from "@/src/lib/intelligence-v2/normalize-graph";
@@ -567,13 +569,13 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
   const semanticEdgeCount = displayGraph?.semanticEdges.length ?? 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white">
+    <div className="fixed inset-0 z-50 flex flex-col bg-[var(--surface)]">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2">
+      <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-2">
         <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-gray-800">Knowledge Map</h2>
+          <h2 className="text-[14px] font-semibold text-[var(--foreground)]">Knowledge Map</h2>
           {displayGraph && (
-            <span className="text-xs text-gray-400">
+            <span className="text-[12px] text-[var(--muted-foreground)]">
               {displayGraph.diagnostics.totalObjects} nodes · {displayGraph.diagnostics.roots} roots · depth {displayGraph.diagnostics.maxDepth}
             </span>
           )}
@@ -581,58 +583,57 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
         <div className="flex items-center gap-2">
           {/* Edge mode controls */}
           {displayGraph && (
-            <div className="flex items-center rounded border border-gray-200 text-[11px]">
+            <div className="flex items-center overflow-hidden rounded-md border border-[var(--border)] text-[11px]">
               <button
                 onClick={() => { setEdgeMode("structure"); setSelectedNodeId(null); }}
-                className={`px-2.5 py-1 ${edgeMode === "structure" ? "bg-gray-100 font-medium text-gray-800" : "text-gray-500 hover:bg-gray-50"}`}
+                className={`px-2.5 py-1 ${edgeMode === "structure" ? "bg-[var(--muted)] font-medium text-[var(--foreground)]" : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60"}`}
               >
                 Structure
               </button>
               <button
                 onClick={() => setEdgeMode("local")}
-                className={`px-2.5 py-1 border-l border-gray-200 ${edgeMode === "local" ? "bg-gray-100 font-medium text-gray-800" : "text-gray-500 hover:bg-gray-50"}`}
+                className={`border-l border-[var(--border)] px-2.5 py-1 ${edgeMode === "local" ? "bg-[var(--muted)] font-medium text-[var(--foreground)]" : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60"}`}
               >
                 Local
               </button>
               <button
                 onClick={() => setEdgeMode("all")}
-                className={`px-2.5 py-1 border-l border-gray-200 ${edgeMode === "all" ? "bg-yellow-50 font-medium text-yellow-700" : "text-gray-500 hover:bg-gray-50"}`}
+                className={`border-l border-[var(--border)] px-2.5 py-1 ${edgeMode === "all" ? "bg-[var(--accent-light)] font-medium text-[var(--accent)]" : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60"}`}
               >
                 All edges
               </button>
             </div>
           )}
-          <span className="text-[10px] text-gray-400">
+          <span className="text-[10px] text-[var(--muted-foreground)]">
             {structuralEdgeCount} structural · {semanticEdgeCount} semantic
           </span>
           {/* Updates available indicator */}
           {snapshot && !generating && (snapshot.isStale || (snapshot.latestMessageSeq ?? 0) > (snapshot.lastProcessedMessageSeq ?? 0)) && effectivePayload && (
-            <span className="text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-0.5">Updates available</span>
+            <Badge variant="warning" label="Updates available" />
           )}
           {/* Build / Rebuild button */}
-          <button
+          <Button
+            variant="primary"
+            size="sm"
+            label={generating ? "Building…" : (effectivePayload ? "Rebuild Graph" : "Build Graph")}
+            isLoading={generating}
+            isDisabled={generating}
             onClick={generateSnapshot}
-            disabled={generating}
-            className="rounded-lg bg-purple-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {generating ? "Building…" : (effectivePayload ? "Rebuild Graph" : "Build Graph")}
-          </button>
-          <button onClick={onClose} className="rounded px-3 py-1 text-sm text-gray-600 hover:bg-gray-100">
-            Close
-          </button>
+          />
+          <Button variant="ghost" size="sm" label="Close" onClick={onClose} />
         </div>
       </div>
 
       {/* Manual editing toolbar — only shown when graph exists */}
       {effectivePayload && (
-        <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-1.5 bg-gray-50/50">
-          <span className="text-[11px] text-gray-400 mr-1">Manual:</span>
+        <div className="flex items-center gap-2 border-b border-[var(--border)] px-4 py-1.5 bg-[var(--surface-raised)]">
+          <span className="text-[11px] text-[var(--muted-foreground)] mr-1">Manual:</span>
           <button
             onClick={() => setLassoActive((prev) => !prev)}
             className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
               lassoActive
                 ? "bg-indigo-100 text-indigo-700 border border-indigo-300"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                : "bg-[var(--muted)] text-[var(--foreground)] hover:bg-[var(--border)]"
             }`}
             title={lassoActive ? "Switch to pan mode" : "Switch to lasso select mode"}
           >
@@ -659,7 +660,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
                     setShowEditNodeModal(true);
                   }
                 }}
-                className="flex items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-200 transition-colors"
+                className="flex items-center gap-1 rounded-md bg-[var(--muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--foreground)] hover:bg-[var(--border)] transition-colors"
               >
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 Edit
@@ -674,7 +675,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
               </button>
               <button
                 onClick={() => { setConnectingFromNodeId(selectedNodeId); }}
-                className="flex items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-200 transition-colors"
+                className="flex items-center gap-1 rounded-md bg-[var(--muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--foreground)] hover:bg-[var(--border)] transition-colors"
               >
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                 Connect
@@ -688,7 +689,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
             <>
               <button
                 onClick={handleCopySelectedNodes}
-                className="flex items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-200 transition-colors"
+                className="flex items-center gap-1 rounded-md bg-[var(--muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--foreground)] hover:bg-[var(--border)] transition-colors"
               >
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
@@ -707,7 +708,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
           )}
           <button
             onClick={handlePasteNodes}
-            className="flex items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-200 transition-colors"
+            className="flex items-center gap-1 rounded-md bg-[var(--muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--foreground)] hover:bg-[var(--border)] transition-colors"
             title="Paste copied nodes into this graph"
           >
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -722,24 +723,24 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
       {/* Content */}
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1">
-          {loading && <div className="flex h-full items-center justify-center text-gray-400">Loading snapshot…</div>}
+          {loading && <div className="flex h-full items-center justify-center text-[var(--muted-foreground)]">Loading snapshot…</div>}
 
           {!loading && (snapshot?.snapshotStatus === "none" || snapshot?.status === "none") && (
             <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
               <div className="text-4xl opacity-30">🧪</div>
-              <p className="text-sm text-gray-600">No graph has been built yet.</p>
+              <p className="text-sm text-[var(--muted-foreground)]">No graph has been built yet.</p>
               <button onClick={generateSnapshot} disabled={generating} className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50">
                 {generating ? "Building…" : "Build Graph"}
               </button>
-              <p className="max-w-xs text-xs text-gray-400">Analyzes your conversation and constructs a knowledge graph. This may take a few minutes.</p>
+              <p className="max-w-xs text-xs text-[var(--muted-foreground)]">Analyzes your conversation and constructs a knowledge graph. This may take a few minutes.</p>
             </div>
           )}
 
           {!loading && (snapshot?.snapshotStatus === "generating_initial" || snapshot?.status === "generating") && !effectivePayload && (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-purple-300 border-t-purple-600" />
-              <p className="text-sm text-gray-600">Generating V2 graph…</p>
-              <p className="text-xs text-gray-400 max-w-xs">
+              <p className="text-sm text-[var(--muted-foreground)]">Generating V2 graph…</p>
+              <p className="text-xs text-[var(--muted-foreground)] max-w-xs">
                 {snapshot?.generationStartedAt
                   ? `Started ${formatElapsed(snapshot.generationStartedAt as string)}. Large conversations may take several minutes.`
                   : "This may take a few minutes for large conversations."}
@@ -747,7 +748,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
               {!generating && (
                 <button
                   onClick={generateSnapshot}
-                  className="mt-2 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                  className="mt-2 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] hover:bg-[var(--surface-raised)]"
                 >
                   Start fresh attempt
                 </button>
@@ -805,9 +806,9 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
               {generating && (
                 <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-lg bg-white/90 border border-purple-200 px-3 py-1.5 shadow-sm z-10">
                   <div className="h-3 w-3 animate-spin rounded-full border-2 border-purple-300 border-t-purple-600" />
-                  <span className="text-xs text-gray-600">Updating graph…</span>
+                  <span className="text-xs text-[var(--muted-foreground)]">Updating graph…</span>
                   {snapshot?.generationStartedAt && (
-                    <span className="text-[10px] text-gray-400">{formatElapsed(snapshot.generationStartedAt as string)}</span>
+                    <span className="text-[10px] text-[var(--muted-foreground)]">{formatElapsed(snapshot.generationStartedAt as string)}</span>
                   )}
                 </div>
               )}
@@ -822,9 +823,9 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
 
               {/* Incremental update indicator */}
               {!generating && !updateError && (snapshot?.updateStatus === "queued" || snapshot?.updateStatus === "updating") && (
-                <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-lg bg-white/90 border border-gray-200 px-3 py-1.5 shadow-sm z-10">
+                <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-lg bg-white/90 border border-[var(--border)] px-3 py-1.5 shadow-sm z-10">
                   <div className="h-3 w-3 animate-spin rounded-full border-2 border-purple-300 border-t-purple-600" />
-                  <span className="text-xs text-gray-600">Updating graph…</span>
+                  <span className="text-xs text-[var(--muted-foreground)]">Updating graph…</span>
                 </div>
               )}
               {!generating && !updateError && snapshot?.updateStatus === "failed" && (
@@ -842,7 +843,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
           <>
             {/* Resize handle */}
             <div
-              className="w-1 shrink-0 cursor-col-resize bg-gray-200 hover:bg-purple-300 active:bg-purple-400 transition-colors"
+              className="w-1 shrink-0 cursor-col-resize bg-[var(--border)] hover:bg-purple-300 active:bg-purple-400 transition-colors"
               onMouseDown={(e) => {
                 e.preventDefault();
                 setIsDragging(true);
@@ -862,7 +863,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
                 window.addEventListener("mouseup", onUp);
               }}
             />
-            <div className="shrink-0 border-l border-gray-200 overflow-hidden" style={{ width: panelWidth }}>
+            <div className="shrink-0 border-l border-[var(--border)] overflow-hidden" style={{ width: panelWidth }}>
               {/* Node details */}
               {selectedObject && !selectedEdgeId && (
                 <V2NodePanel
@@ -939,9 +940,9 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
                             <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
                           </svg>
                         </div>
-                        <h3 className="text-sm font-semibold text-gray-800">Edge</h3>
+                        <h3 className="text-sm font-semibold text-[var(--foreground)]">Edge</h3>
                       </div>
-                      <button onClick={handleClearSelection} className="rounded p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100">
+                      <button onClick={handleClearSelection} className="rounded p-1 text-[var(--muted-foreground)] hover:text-[var(--muted-foreground)] hover:bg-[var(--muted)]">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
                       </button>
                     </div>
@@ -954,7 +955,7 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
                           setEditEdgeExplanation(rel.explanation);
                           setShowEditEdgeModal(true);
                         }}
-                        className="flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 transition-colors"
+                        className="flex items-center gap-2 rounded-lg bg-[var(--muted)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--border)] transition-colors"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         Edit
@@ -980,24 +981,24 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
       {showAddNodeModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowAddNodeModal(false)} />
-          <div className="relative z-10 w-full max-w-sm rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
-            <h3 className="text-sm font-semibold text-gray-800">Add Node</h3>
-            <p className="mt-1 text-xs text-gray-500">Create a manual node in your Knowledge Map.</p>
+          <div className="relative z-10 w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl">
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">Add Node</h3>
+            <p className="mt-1 text-xs text-[var(--muted-foreground)]">Create a manual node in your Knowledge Map.</p>
             <div className="mt-3 space-y-2">
               <input
                 type="text" value={newNodeTitle} onChange={(e) => setNewNodeTitle(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAddNode()}
                 placeholder="Node title" autoFocus
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
               />
               <textarea
                 value={newNodeDescription} onChange={(e) => setNewNodeDescription(e.target.value)}
                 placeholder="Description (optional)" rows={2}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm resize-none focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm resize-none focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
               />
             </div>
             <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setShowAddNodeModal(false)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100">Cancel</button>
+              <button onClick={() => setShowAddNodeModal(false)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] hover:bg-[var(--muted)]">Cancel</button>
               <button onClick={handleAddNode} disabled={!newNodeTitle.trim() || isMutating}
                 className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
                 {isMutating ? "Creating…" : "Add Node"}
@@ -1011,25 +1012,25 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
       {showEditNodeModal && editingNode && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowEditNodeModal(false)} />
-          <div className="relative z-10 w-full max-w-sm rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
-            <h3 className="text-sm font-semibold text-gray-800">Edit Node</h3>
+          <div className="relative z-10 w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl">
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">Edit Node</h3>
             <div className="mt-3 space-y-2">
               <input
                 type="text" value={editingNode.title}
                 onChange={(e) => setEditingNode({ ...editingNode, title: e.target.value })}
                 onKeyDown={(e) => e.key === "Enter" && handleEditNodeSave()}
                 placeholder="Node title" autoFocus
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
               />
               <textarea
                 value={editingNode.description}
                 onChange={(e) => setEditingNode({ ...editingNode, description: e.target.value })}
                 placeholder="Description" rows={3}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm resize-none focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm resize-none focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
               />
             </div>
             <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setShowEditNodeModal(false)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100">Cancel</button>
+              <button onClick={() => setShowEditNodeModal(false)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] hover:bg-[var(--muted)]">Cancel</button>
               <button onClick={handleEditNodeSave} disabled={!editingNode.title.trim() || isMutating}
                 className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
                 {isMutating ? "Saving…" : "Save"}
@@ -1043,41 +1044,41 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
       {showAddEdgeModal && selectedNodeId && newEdgeTarget && effectivePayload && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowAddEdgeModal(false)} />
-          <div className="relative z-10 w-full max-w-sm rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
-            <h3 className="text-sm font-semibold text-gray-800">Create Edge?</h3>
-            <div className="mt-3 flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2.5">
-              <span className="text-xs font-medium text-gray-800 truncate max-w-[140px]">
+          <div className="relative z-10 w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl">
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">Create Edge?</h3>
+            <div className="mt-3 flex items-center gap-2 rounded-lg bg-[var(--surface-raised)] px-3 py-2.5">
+              <span className="text-xs font-medium text-[var(--foreground)] truncate max-w-[140px]">
                 {effectivePayload.objects.find((o) => o.objectId === selectedNodeId)?.title}
               </span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-indigo-500 shrink-0">
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
-              <span className="text-xs font-medium text-gray-800 truncate max-w-[140px]">
+              <span className="text-xs font-medium text-[var(--foreground)] truncate max-w-[140px]">
                 {effectivePayload.objects.find((o) => o.objectId === newEdgeTarget)?.title}
               </span>
             </div>
             <div className="mt-3 space-y-2">
               <div>
-                <label className="text-[11px] font-medium text-gray-600">Relationship type</label>
+                <label className="text-[11px] font-medium text-[var(--muted-foreground)]">Relationship type</label>
                 <input
                   type="text" value={newEdgeType} onChange={(e) => setNewEdgeType(e.target.value)}
                   placeholder="e.g. depends_on, related_to, contains"
                   autoFocus
-                  className="mt-0.5 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                  className="mt-0.5 w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                 />
               </div>
               <div>
-                <label className="text-[11px] font-medium text-gray-600">Explanation (optional)</label>
+                <label className="text-[11px] font-medium text-[var(--muted-foreground)]">Explanation (optional)</label>
                 <input
                   type="text" value={newEdgeExplanation} onChange={(e) => setNewEdgeExplanation(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleAddEdge()}
                   placeholder="Why are these connected?"
-                  className="mt-0.5 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                  className="mt-0.5 w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                 />
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setShowAddEdgeModal(false)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100">Cancel</button>
+              <button onClick={() => setShowAddEdgeModal(false)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] hover:bg-[var(--muted)]">Cancel</button>
               <button onClick={handleAddEdge} disabled={isMutating}
                 className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
                 {isMutating ? "Connecting…" : "Create Edge"}
@@ -1091,31 +1092,31 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
       {showEditEdgeModal && selectedEdgeId && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowEditEdgeModal(false)} />
-          <div className="relative z-10 w-full max-w-sm rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
-            <h3 className="text-sm font-semibold text-gray-800">Edit Edge</h3>
+          <div className="relative z-10 w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl">
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">Edit Edge</h3>
             <div className="mt-3 space-y-2">
               <div>
-                <label className="text-[11px] font-medium text-gray-600">Relationship type</label>
+                <label className="text-[11px] font-medium text-[var(--muted-foreground)]">Relationship type</label>
                 <input
                   type="text" value={editEdgeType} onChange={(e) => setEditEdgeType(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleEditEdgeSave()}
                   placeholder="e.g. depends_on, related_to, contains"
                   autoFocus
-                  className="mt-0.5 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                  className="mt-0.5 w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                 />
               </div>
               <div>
-                <label className="text-[11px] font-medium text-gray-600">Explanation</label>
+                <label className="text-[11px] font-medium text-[var(--muted-foreground)]">Explanation</label>
                 <input
                   type="text" value={editEdgeExplanation} onChange={(e) => setEditEdgeExplanation(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleEditEdgeSave()}
                   placeholder="Why are these connected?"
-                  className="mt-0.5 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                  className="mt-0.5 w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                 />
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setShowEditEdgeModal(false)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100">Cancel</button>
+              <button onClick={() => setShowEditEdgeModal(false)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] hover:bg-[var(--muted)]">Cancel</button>
               <button onClick={handleEditEdgeSave} disabled={isMutating}
                 className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
                 {isMutating ? "Saving…" : "Save"}
@@ -1129,13 +1130,13 @@ export default function V2GraphPreview({ conversationId, isOpen, onClose, onCont
       {showMultiDeleteConfirm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowMultiDeleteConfirm(false)} />
-          <div className="relative z-10 w-full max-w-sm rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
-            <h3 className="text-sm font-semibold text-gray-800">Delete selected nodes?</h3>
-            <p className="mt-2 text-xs text-gray-500">
+          <div className="relative z-10 w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl">
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">Delete selected nodes?</h3>
+            <p className="mt-2 text-xs text-[var(--muted-foreground)]">
               {multiSelectedNodeIds.length > 0 ? multiSelectedNodeIds.length : 1} node{(multiSelectedNodeIds.length > 1) ? "s" : ""} and all connected edges will be permanently deleted.
             </p>
             <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setShowMultiDeleteConfirm(false)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100">Cancel</button>
+              <button onClick={() => setShowMultiDeleteConfirm(false)} className="rounded-lg px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] hover:bg-[var(--muted)]">Cancel</button>
               <button onClick={handleDeleteSelectedNodes} disabled={isMutating}
                 className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50">
                 {isMutating ? "Deleting…" : "Delete"}

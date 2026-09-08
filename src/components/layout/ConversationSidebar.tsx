@@ -1,7 +1,12 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import Link from "next/link";
+import { useState, useEffect } from "react";
+import { SideNav, SideNavHeading, SideNavItem, SideNavSection } from "@astryxdesign/core/SideNav";
+import { TabList, Tab } from "@astryxdesign/core/TabList";
+import { Button } from "@astryxdesign/core/Button";
+import { MoreMenu } from "@astryxdesign/core/MoreMenu";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { Icon } from "@astryxdesign/core/Icon";
 import type { ConversationListItem } from "@/src/lib/db/conversations";
 import ConfirmDialog from "@/src/components/ui/ConfirmDialog";
 
@@ -21,6 +26,41 @@ type ConversationSidebarProps = {
   archivedConversations: ConversationListItem[];
 };
 
+/** Brand mark glyph (matches the app's graph identity). */
+function BrandGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="6" cy="6" r="2" />
+      <circle cx="18" cy="18" r="2" />
+      <circle cx="18" cy="6" r="2" />
+      <path d="M6 8v8M8 6h8M16 18H8" />
+    </svg>
+  );
+}
+
+function PlusGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function GraphDashboardGlyph() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="5" cy="6" r="2" />
+      <circle cx="12" cy="18" r="2" />
+      <circle cx="19" cy="6" r="2" />
+      <circle cx="19" cy="14" r="2" />
+      <path d="M5 8v6a2 2 0 002 2h3" />
+      <path d="M19 8v4" />
+      <path d="M14 18h3a2 2 0 002-2" />
+      <path d="M7 6h10" />
+    </svg>
+  );
+}
+
 export default function ConversationSidebar({
   conversations,
   activeConversationId,
@@ -38,11 +78,8 @@ export default function ConversationSidebar({
 }: ConversationSidebarProps) {
   const [showArchived, setShowArchived] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ConversationListItem | null>(null);
-  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const menuRef = useRef<HTMLDivElement>(null);
-  const renameInputRef = useRef<HTMLInputElement>(null);
 
   const displayList = showArchived ? archivedConversations : conversations;
 
@@ -56,14 +93,8 @@ export default function ConversationSidebar({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Prevent background scrolling on mobile when overlay is open
-  useEffect(() => {
-    const isMobile = window.matchMedia("(max-width: 767px)").matches;
-    if (isOpen && isMobile) {
-      document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = ""; };
-    }
-  }, [isOpen]);
+  // (Body-scroll locking on mobile is now handled by AppShell's modal drawer,
+  // which hosts this rail below its breakpoint.)
 
   // On mobile, close sidebar after selecting a conversation
   function handleSelect(id: string) {
@@ -72,35 +103,7 @@ export default function ConversationSidebar({
     if (isMobile) onClose();
   }
 
-  // Close menu on outside click
-  useEffect(() => {
-    if (!menuOpenId) return;
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpenId(null);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [menuOpenId]);
-
-  // Focus rename input when it appears
-  useEffect(() => {
-    if (renamingId && renameInputRef.current) {
-      renameInputRef.current.focus();
-      renameInputRef.current.select();
-    }
-  }, [renamingId]);
-
-  function handleDeleteConfirm() {
-    if (deleteTarget) {
-      onDelete(deleteTarget.id);
-      setDeleteTarget(null);
-    }
-  }
-
   function handleRenameStart(conv: ConversationListItem) {
-    setMenuOpenId(null);
     setRenamingId(conv.id);
     setRenameValue(conv.title);
   }
@@ -120,266 +123,115 @@ export default function ConversationSidebar({
 
   return (
     <>
-      {/* Mobile backdrop overlay */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-[2px] md:hidden"
-          onClick={onClose}
-          aria-hidden="true"
-        />
-      )}
-
-      <aside
-        className={`fixed left-0 top-0 bottom-0 z-40 flex w-[var(--sidebar-width)] flex-col border-r border-[var(--border)] bg-[var(--sidebar-bg)] transition-transform duration-200 ease-in-out ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-      {/* Brand */}
-      <div className="flex items-center justify-between px-5 py-4">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--accent)] text-white">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="6" cy="6" r="2" />
-              <circle cx="18" cy="18" r="2" />
-              <circle cx="18" cy="6" r="2" />
-              <path d="M6 8v8M8 6h8M16 18H8" />
-            </svg>
-          </div>
-          <span className="text-[15px] font-semibold tracking-tight">ContextGraph</span>
-        </div>
-      </div>
-
-      {/* New chat button */}
-      <div className="px-3 pb-3">
-        <button
-          onClick={onNewChat}
-          disabled={isCreating}
-          className="focus-ring flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px] font-medium text-[var(--foreground)] shadow-sm transition-all hover:border-[var(--muted-foreground)]/30 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          {isCreating ? "Creating…" : "New conversation"}
-        </button>
-      </div>
-
-      {/* Active / Archived toggle */}
-      <div className="mx-3 mb-2 flex rounded-lg bg-[var(--muted)] p-0.5">
-        <button
-          onClick={() => setShowArchived(false)}
-          className={`flex-1 rounded-md px-3 py-1.5 text-[12px] font-medium transition-all ${
-            !showArchived
-              ? "bg-[var(--surface)] text-[var(--foreground)] shadow-sm"
-              : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-          }`}
-        >
-          Active
-          <span className="ml-1 text-[11px] opacity-60">{conversations.length}</span>
-        </button>
-        <button
-          onClick={() => setShowArchived(true)}
-          className={`flex-1 rounded-md px-3 py-1.5 text-[12px] font-medium transition-all ${
-            showArchived
-              ? "bg-[var(--surface)] text-[var(--foreground)] shadow-sm"
-              : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-          }`}
-        >
-          Archived
-          <span className="ml-1 text-[11px] opacity-60">{archivedConversations.length}</span>
-        </button>
-      </div>
-
-      {/* Conversation list */}
-      <div className="flex-1 overflow-y-auto px-2 py-1">
-        {displayList.length === 0 && (
-          <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
-            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--muted)]">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--muted-foreground)]">
-                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-              </svg>
+      {/* Rail is placed in AppShell's sideNav slot, so it flows in the shell's
+          own layout region (no fixed positioning or manual offset). AppShell
+          owns width and content offset. */}
+      <div className="flex h-full w-[var(--sidebar-width)] flex-col">
+        <SideNav
+          header={<SideNavHeading heading="ContextGraph" icon={<BrandGlyph />} />}
+          topContent={
+            <div className="px-2 pb-1">
+              <Button
+                variant="secondary"
+                label={isCreating ? "Creating…" : "New conversation"}
+                icon={<PlusGlyph />}
+                width="100%"
+                isDisabled={isCreating}
+                onClick={onNewChat}
+              />
+              <div className="mt-2">
+                <TabList
+                  value={showArchived ? "archived" : "active"}
+                  onChange={(v) => setShowArchived(v === "archived")}
+                  layout="fill"
+                  size="sm"
+                >
+                  <Tab value="active" label={`Active (${conversations.length})`} />
+                  <Tab value="archived" label={`Archived (${archivedConversations.length})`} />
+                </TabList>
+              </div>
             </div>
-            <p className="text-[12px] text-[var(--muted-foreground)]">
-              {showArchived ? "No archived conversations" : "Start a new conversation"}
-            </p>
-          </div>
-        )}
+          }
+          footer={
+            <div className="flex flex-col gap-0.5">
+              <SideNavItem
+                as="a"
+                href="/graph-dashboard"
+                label="Graph Dashboard"
+                icon={<GraphDashboardGlyph />}
+                size="sm"
+              />
+              <SideNavItem
+                label="Settings"
+                icon={<Icon icon="wrench" />}
+                size="sm"
+                onClick={onOpenSettings}
+              />
+            </div>
+          }
+        >
+          <SideNavSection title={showArchived ? "Archived" : "Conversations"} isHeaderHidden>
+            {displayList.length === 0 ? (
+              <p className="px-3 py-6 text-center text-[12px] text-[var(--muted-foreground)]">
+                {showArchived ? "No archived conversations" : "Start a new conversation"}
+              </p>
+            ) : (
+              displayList.map((conv) => {
+                if (renamingId === conv.id) {
+                  return (
+                    <div key={conv.id} className="px-2 py-1">
+                      <TextInput
+                        label="Rename conversation"
+                        isLabelHidden
+                        value={renameValue}
+                        onChange={setRenameValue}
+                        onEnter={handleRenameSubmit}
+                        onKeyDown={(e) => { if (e.key === "Escape") handleRenameCancel(); }}
+                        hasAutoFocus
+                        size="sm"
+                      />
+                    </div>
+                  );
+                }
 
-        {displayList.map((conv) => {
-          const isActive = conv.id === activeConversationId;
-          const isRenaming = renamingId === conv.id;
+                const menuItems = [
+                  { label: "Rename", onClick: () => handleRenameStart(conv) },
+                  showArchived
+                    ? { label: "Unarchive", onClick: () => onRestore(conv.id) }
+                    : { label: "Archive", onClick: () => onArchive(conv.id) },
+                  { type: "divider" as const },
+                  {
+                    label: "Delete permanently",
+                    variant: "destructive" as const,
+                    onClick: () => setDeleteTarget(conv),
+                  },
+                ];
 
-          return (
-            <div
-              key={conv.id}
-              className={`group relative mb-0.5 flex items-center rounded-lg transition-all ${
-                isActive
-                  ? "bg-[var(--accent-light)] border border-[var(--accent)]/10"
-                  : "hover:bg-[var(--muted)] border border-transparent"
-              }`}
-            >
-              {isRenaming ? (
-                /* Inline rename input */
-                <div className="flex-1 px-2 py-1.5">
-                  <input
-                    ref={renameInputRef}
-                    type="text"
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleRenameSubmit();
-                      if (e.key === "Escape") handleRenameCancel();
-                    }}
-                    onBlur={handleRenameSubmit}
-                    className="w-full rounded-md border border-[var(--accent)]/30 bg-[var(--surface)] px-2.5 py-1.5 text-[13px] outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
-                  />
-                </div>
-              ) : (
-                /* Normal conversation row */
-                <>
-                  <button
+                return (
+                  <SideNavItem
+                    key={conv.id}
+                    label={conv.title}
+                    isSelected={conv.id === activeConversationId}
                     onClick={() => handleSelect(conv.id)}
-                    className="flex-1 min-w-0 px-3 py-2.5 text-left"
-                  >
-                    <span
-                      className={`block truncate text-[13px] leading-snug ${
-                        isActive
-                          ? "font-medium text-[var(--foreground)]"
-                          : "text-[var(--foreground)]/80"
-                      }`}
-                    >
-                      {conv.title}
-                    </span>
-                    <span className="mt-0.5 block truncate text-[11px] text-[var(--muted-foreground)]">
-                      {formatRelativeTime(conv.updatedAt || conv.createdAt)}
-                    </span>
-                  </button>
-
-                  {/* Three-dot menu trigger */}
-                  <div className="relative mr-1.5">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMenuOpenId(menuOpenId === conv.id ? null : conv.id);
-                      }}
-                      className={`rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--surface)] hover:text-[var(--foreground)] ${
-                        menuOpenId === conv.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                      }`}
-                      title="More options"
-                      aria-label="Conversation options"
-                    >
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                        <circle cx="12" cy="6" r="1.5" />
-                        <circle cx="12" cy="12" r="1.5" />
-                        <circle cx="12" cy="18" r="1.5" />
-                      </svg>
-                    </button>
-
-                    {/* Dropdown menu */}
-                    {menuOpenId === conv.id && (
-                      <div
-                        ref={menuRef}
-                        className="absolute right-0 top-8 z-50 w-44 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] py-1 shadow-xl shadow-black/10"
-                      >
-                        {/* Rename */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRenameStart(conv);
-                          }}
-                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
-                        >
-                          <svg className="w-4 h-4 text-[var(--muted-foreground)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          Rename
-                        </button>
-
-                        {/* Archive / Unarchive */}
-                        {showArchived ? (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMenuOpenId(null);
-                              onRestore(conv.id);
-                            }}
-                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
-                          >
-                            <svg className="w-4 h-4 text-[var(--muted-foreground)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                            </svg>
-                            Unarchive
-                          </button>
-                        ) : (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMenuOpenId(null);
-                              onArchive(conv.id);
-                            }}
-                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
-                          >
-                            <svg className="w-4 h-4 text-[var(--muted-foreground)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                            </svg>
-                            Archive
-                          </button>
-                        )}
-
-                        {/* Divider */}
-                        <div className="my-1 border-t border-[var(--border)]" />
-
-                        {/* Delete permanently */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMenuOpenId(null);
-                            setDeleteTarget(conv);
-                          }}
-                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-red-600 transition-colors hover:bg-red-50"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                          Delete permanently
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Footer */}
-      <div className="border-t border-[var(--border)] px-3 py-3 space-y-1">
-        <Link
-          href="/graph-dashboard"
-          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="5" cy="6" r="2" />
-            <circle cx="12" cy="18" r="2" />
-            <circle cx="19" cy="6" r="2" />
-            <circle cx="19" cy="14" r="2" />
-            <path d="M5 8v6a2 2 0 002 2h3" />
-            <path d="M19 8v4" />
-            <path d="M14 18h3a2 2 0 002-2" />
-            <path d="M7 6h10" />
-          </svg>
-          Graph Dashboard
-        </Link>
-        <button
-          onClick={onOpenSettings}
-          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
-          </svg>
-          Settings
-        </button>
+                    endContent={
+                      <span className="text-[11px] text-[var(--muted-foreground)]">
+                        {formatRelativeTime(conv.updatedAt || conv.createdAt)}
+                      </span>
+                    }
+                    actions={
+                      <MoreMenu
+                        label="Conversation options"
+                        size="sm"
+                        alignment="end"
+                        items={menuItems}
+                      />
+                    }
+                  />
+                );
+              })
+            )}
+          </SideNavSection>
+        </SideNav>
       </div>
 
       {/* Delete Confirmation Dialog */}
@@ -390,10 +242,14 @@ export default function ConversationSidebar({
         confirmLabel="Delete permanently"
         cancelLabel="Keep it"
         variant="danger"
-        onConfirm={handleDeleteConfirm}
+        onConfirm={() => {
+          if (deleteTarget) {
+            onDelete(deleteTarget.id);
+            setDeleteTarget(null);
+          }
+        }}
         onCancel={() => setDeleteTarget(null)}
       />
-    </aside>
     </>
   );
 }

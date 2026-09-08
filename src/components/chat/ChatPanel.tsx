@@ -3,6 +3,12 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import type { ChatMessage as ChatMessageType } from "@/src/types/message";
 import type { ContextNode } from "@/src/types/node";
+import { Button } from "@astryxdesign/core/Button";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { Skeleton } from "@astryxdesign/core/Skeleton";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { TextArea } from "@astryxdesign/core/TextArea";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
 import NodeWorkspace from "./NodeWorkspace";
@@ -175,35 +181,25 @@ export default function ChatPanel({
     return (
       <section className="mx-auto flex h-screen max-w-3xl flex-col px-6 pt-[calc(var(--header-height)+2rem)]">
         <div className="flex flex-1 flex-col items-center justify-center pb-32">
-          <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-hover)] text-white shadow-lg shadow-[var(--accent)]/20">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="6" cy="6" r="2" />
-              <circle cx="18" cy="18" r="2" />
-              <circle cx="18" cy="6" r="2" />
-              <path d="M6 8v8M8 6h8M16 18H8" />
-            </svg>
-          </div>
-          <h2 className="mb-2 text-xl font-semibold tracking-tight text-[var(--foreground)]">
-            Start a conversation
-          </h2>
-          <p className="mb-8 max-w-sm text-center text-[14px] leading-relaxed text-[var(--muted-foreground)]">
-            ContextGraph builds a knowledge graph from your conversations, giving AI persistent memory across sessions.
-          </p>
-          <div className="grid w-full max-w-md grid-cols-2 gap-2">
+          <EmptyState
+            title="Start a conversation"
+            description="ContextGraph builds a knowledge graph from your conversations, giving AI persistent memory across sessions."
+            headingLevel={2}
+          />
+          <div className="mt-6 grid w-full max-w-md grid-cols-2 gap-2">
             {[
               { icon: "💡", label: "Explore an idea", prompt: "I want to explore an idea — " },
               { icon: "📝", label: "Plan a project", prompt: "Help me plan a project for " },
               { icon: "🔬", label: "Deep-dive a topic", prompt: "I want to deep-dive into " },
               { icon: "🧩", label: "Solve a problem", prompt: "I need help solving " },
             ].map((item) => (
-              <button
+              <Button
                 key={item.label}
+                variant="secondary"
+                width="100%"
+                label={`${item.icon}  ${item.label}`}
                 onClick={() => onSendMessage(item.prompt)}
-                className="flex items-center gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-left text-[13px] text-[var(--foreground)] transition-all hover:border-[var(--muted-foreground)]/30 hover:shadow-sm active:scale-[0.98]"
-              >
-                <span className="text-base">{item.icon}</span>
-                <span>{item.label}</span>
-              </button>
+              />
             ))}
           </div>
         </div>
@@ -226,17 +222,19 @@ export default function ChatPanel({
       {/* Select mode toggle */}
       {!isSelectMode && messages.length > 0 && (
         <div className="absolute top-[calc(var(--header-height)+0.75rem)] right-6 z-10">
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
+            label="Select"
+            tooltip="Select messages to create a node"
+            icon={
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 11 12 14 22 4" />
+                <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+              </svg>
+            }
             onClick={() => setIsSelectMode(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] shadow-sm transition-all hover:border-[var(--muted-foreground)]/30 hover:text-[var(--foreground)] hover:shadow-md"
-            title="Select messages to create a node"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="9 11 12 14 22 4" />
-              <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
-            </svg>
-            Select
-          </button>
+          />
         </div>
       )}
 
@@ -344,41 +342,42 @@ export default function ChatPanel({
               {selectedMessageIds.size} selected
             </span>
             <div className="h-4 w-px bg-[var(--border)]" />
-            <button
+            <Button
+              variant="primary"
+              size="sm"
+              label="Create Node"
+              icon={
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              }
+              isDisabled={selectedMessageIds.size === 0}
               onClick={() => {
                 if (selectedMessageIds.size > 0) {
                   setShowCreateNodeModal(true);
                 }
               }}
-              disabled={selectedMessageIds.size === 0}
-              className="flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              Create Node
-            </button>
-            <button
-              onClick={exitSelectMode}
-              className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            >
-              Cancel
-            </button>
+            />
+            <Button variant="ghost" size="sm" label="Cancel" onClick={exitSelectMode} />
           </div>
         </div>
       )}
 
       {/* Scroll to bottom FAB */}
       {showScrollButton && (
-        <button
-          onClick={scrollToBottom}
-          className="absolute bottom-24 right-8 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] shadow-lg transition-all hover:shadow-xl hover:scale-105 active:scale-95"
-          aria-label="Scroll to bottom"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--foreground)]">
-            <path d="M12 5v14M19 12l-7 7-7-7" />
-          </svg>
-        </button>
+        <div className="absolute bottom-24 right-8">
+          <IconButton
+            variant="secondary"
+            elevation="med"
+            label="Scroll to bottom"
+            icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M19 12l-7 7-7-7" />
+              </svg>
+            }
+            onClick={scrollToBottom}
+          />
+        </div>
       )}
 
       {/* Input — sticky at the bottom */}
@@ -428,32 +427,23 @@ export default function ChatPanel({
             </div>
 
             <div className="mt-4 space-y-3">
-              <div>
-                <label className="text-[12px] font-medium text-[var(--foreground)]">
-                  Node Title <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={nodeTitle}
-                  onChange={(e) => setNodeTitle(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleCreateNodeConfirm()}
-                  placeholder="e.g. Project Requirements Discussion"
-                  autoFocus
-                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
-                />
-              </div>
-              <div>
-                <label className="text-[12px] font-medium text-[var(--foreground)]">
-                  Summary
-                </label>
-                <textarea
-                  value={nodeDescription}
-                  onChange={(e) => setNodeDescription(e.target.value)}
-                  placeholder="Optional summary of what these messages cover..."
-                  rows={2}
-                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 resize-none"
-                />
-              </div>
+              <TextInput
+                label="Node Title"
+                isRequired
+                value={nodeTitle}
+                onChange={setNodeTitle}
+                onEnter={handleCreateNodeConfirm}
+                placeholder="e.g. Project Requirements Discussion"
+                hasAutoFocus
+              />
+              <TextArea
+                label="Summary"
+                isOptional
+                value={nodeDescription}
+                onChange={setNodeDescription}
+                placeholder="Optional summary of what these messages cover..."
+                rows={2}
+              />
             </div>
 
             <div className="mt-3 rounded-lg bg-[var(--accent-light)] px-3 py-2">
@@ -463,19 +453,18 @@ export default function ChatPanel({
             </div>
 
             <div className="mt-5 flex justify-end gap-2">
-              <button
+              <Button
+                variant="ghost"
+                label="Cancel"
                 onClick={() => setShowCreateNodeModal(false)}
-                className="rounded-lg px-4 py-2 text-[13px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]"
-              >
-                Cancel
-              </button>
-              <button
+              />
+              <Button
+                variant="primary"
+                label={isCreatingNode ? "Creating…" : "Create Node"}
+                isDisabled={!nodeTitle.trim() || isCreatingNode}
+                isLoading={isCreatingNode}
                 onClick={handleCreateNodeConfirm}
-                disabled={!nodeTitle.trim() || isCreatingNode}
-                className="rounded-lg bg-[var(--accent)] px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isCreatingNode ? "Creating…" : "Create Node"}
-              </button>
+              />
             </div>
           </div>
         </div>
@@ -510,16 +499,14 @@ function StreamingIndicator() {
 /** Loading skeleton for initial conversation load */
 function LoadingSkeleton() {
   return (
-    <div className="w-full max-w-2xl space-y-6 animate-pulse">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className={`flex ${i % 2 === 0 ? "justify-start" : "justify-start"}`}>
-          <div className="w-full space-y-2 rounded-2xl bg-[var(--muted)] p-5">
-            <div className="h-3 w-16 rounded bg-[var(--border)]" />
-            <div className="space-y-1.5">
-              <div className="h-3 w-full rounded bg-[var(--border)]" />
-              <div className="h-3 w-4/5 rounded bg-[var(--border)]" />
-              {i === 2 && <div className="h-3 w-3/5 rounded bg-[var(--border)]" />}
-            </div>
+    <div className="w-full max-w-2xl space-y-6">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="w-full space-y-2 rounded-2xl bg-[var(--muted)] p-5">
+          <Skeleton width={64} height={12} index={i} />
+          <div className="space-y-1.5">
+            <Skeleton width="100%" height={12} index={i} />
+            <Skeleton width="80%" height={12} index={i} />
+            {i === 1 && <Skeleton width="60%" height={12} index={i} />}
           </div>
         </div>
       ))}

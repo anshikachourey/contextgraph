@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@astryxdesign/core/Button";
+import { Badge } from "@astryxdesign/core/Badge";
 import { useDevMode } from "@/src/hooks/useDevMode";
 
 type GraphToolbarProps = {
@@ -32,68 +34,52 @@ export default function GraphToolbar({
   const devMode = useDevMode();
 
   return (
-    <div className="flex h-16 items-center justify-between border-b border-gray-200 px-5">
+    <div className="flex h-16 items-center justify-between border-b border-[var(--border)] px-5">
       <div className="flex items-center gap-2">
-        <h2 className="font-semibold">Context Graph</h2>
-        {devMode && (
-          <span className="rounded-full bg-yellow-100 px-1.5 py-0.5 text-[10px] font-medium text-yellow-700">
-            DEV
-          </span>
-        )}
+        <h2 className="text-[15px] font-semibold text-[var(--foreground)]">Context Graph</h2>
+        {devMode && <Badge variant="warning" label="DEV" />}
       </div>
 
       <div className="flex items-center gap-2">
         {/* Dev-only debug tools */}
         {devMode && hasNodes && onStructure && (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
+            label={isStructuring ? "Structuring…" : "⚙ Structure"}
+            isDisabled={isStructuring || isEvolving || isSummarizing}
             onClick={onStructure}
-            disabled={isStructuring || isEvolving || isSummarizing}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1 text-sm text-gray-500 hover:bg-gray-100 disabled:opacity-40"
-          >
-            {isStructuring ? "Structuring…" : "⚙ Structure"}
-          </button>
+          />
         )}
         {devMode && hasNodes && onEvolve && (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
+            label={isEvolving ? "Evolving…" : "⚡ Evolve"}
+            isDisabled={isStructuring || isEvolving || isSummarizing}
             onClick={onEvolve}
-            disabled={isStructuring || isEvolving || isSummarizing}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1 text-sm text-gray-500 hover:bg-gray-100 disabled:opacity-40"
-          >
-            {isEvolving ? "Evolving…" : "⚡ Evolve"}
-          </button>
+          />
         )}
 
         {/* Always visible */}
         {hasNodes && (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
+            label={isSummarizing ? "Summarizing…" : "✦ Summarize"}
+            isLoading={isSummarizing}
+            isDisabled={isSummarizing}
             onClick={onSummarize}
-            disabled={isSummarizing}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1 text-sm hover:bg-gray-100 disabled:opacity-40"
-          >
-            {isSummarizing ? (
-              <>
-                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
-                Summarizing…
-              </>
-            ) : (
-              <>✦ Summarize</>
-            )}
-          </button>
+          />
         )}
 
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
+          label={isMaximized ? "Exit full screen" : "Maximize"}
           onClick={onToggleMaximize}
-          className="rounded-md px-3 py-1 text-sm hover:bg-gray-100"
-        >
-          {isMaximized ? "Exit full screen" : "Maximize"}
-        </button>
-
-        <button
-          onClick={onClose}
-          className="rounded-md px-3 py-1 text-sm hover:bg-gray-100"
-        >
-          Close
-        </button>
+        />
+        <Button variant="ghost" size="sm" label="Close" onClick={onClose} />
       </div>
     </div>
   );

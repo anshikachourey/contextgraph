@@ -20,15 +20,23 @@ export type ConversationListItem = {
 };
 
 // List all active (non-archived) conversations for a workspace, most recent first.
-export async function listConversations(workspaceId: string): Promise<ConversationListItem[]> {
+// By default only returns 'main' scope conversations (for the application sidebar).
+export async function listConversations(workspaceId: string, options?: { scope?: "main" | "graph_workspace" | "all" }): Promise<ConversationListItem[]> {
   const db = createServerSupabaseClient();
 
-  const { data, error } = await db
+  let query = db
     .from("conversations")
     .select("*")
     .eq("workspace_id", workspaceId)
     .is("archived_at", null)
     .order("created_at", { ascending: false });
+
+  const scope = options?.scope ?? "main";
+  if (scope !== "all") {
+    query = query.eq("conversation_scope", scope);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw new Error(`Failed to list conversations: ${error.message}`);
 
@@ -314,12 +322,16 @@ export async function createConversation(
   title: string,
   seedMessages: ChatMessage[] = [],
   workspaceId?: string,
+  options?: { scope?: "main" | "graph_workspace" },
 ): Promise<ConversationData> {
   const db = createServerSupabaseClient();
 
   const insertData: Record<string, unknown> = { title };
   if (workspaceId) {
     insertData.workspace_id = workspaceId;
+  }
+  if (options?.scope) {
+    insertData.conversation_scope = options.scope;
   }
 
   const { data: convData, error: convError } = await db

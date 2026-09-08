@@ -2,6 +2,9 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { Button } from "@astryxdesign/core/Button";
+import { Banner } from "@astryxdesign/core/Banner";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -116,91 +119,50 @@ export default function LoginPage() {
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Username */}
-          <div>
-            <label
-              htmlFor="username"
-              className="mb-1.5 block text-[13px] font-medium text-[var(--muted-foreground)]"
-            >
-              Username
-            </label>
-            <input
-              id="username"
-              type="text"
-              autoComplete="username"
-              required
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3.5 py-2.5 text-[14px] text-[var(--foreground)] outline-none transition-all duration-200 placeholder:text-[var(--muted-foreground)]/50 hover:border-[var(--muted-foreground)]/30 focus:border-[var(--accent)]/50 focus:ring-2 focus:ring-[var(--accent)]/15"
-              placeholder="Enter username"
-            />
-          </div>
+          <TextInput
+            label="Username"
+            value={username}
+            onChange={setUsername}
+            placeholder="Enter username"
+            htmlName="username"
+            width="100%"
+          />
 
           {/* Password */}
           <div>
-            <label
-              htmlFor="password"
-              className="mb-1.5 block text-[13px] font-medium text-[var(--muted-foreground)]"
+            <TextInput
+              label="Password"
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={setPassword}
+              placeholder="Enter password"
+              htmlName="password"
+              width="100%"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              className="mt-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+              tabIndex={-1}
             >
-              Password
-            </label>
-            <div className="relative">
-              <input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3.5 py-2.5 pr-10 text-[14px] text-[var(--foreground)] outline-none transition-all duration-200 placeholder:text-[var(--muted-foreground)]/50 hover:border-[var(--muted-foreground)]/30 focus:border-[var(--accent)]/50 focus:ring-2 focus:ring-[var(--accent)]/15"
-                placeholder="Enter password"
-              />
-              {/* Password visibility toggle */}
-              <button
-                type="button"
-                onClick={() => setShowPassword((prev) => !prev)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                tabIndex={-1}
-              >
-                {showPassword ? (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" />
-                    <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" />
-                    <path d="M14.12 14.12a3 3 0 11-4.24-4.24" />
-                    <line x1="1" y1="1" x2="23" y2="23" />
-                  </svg>
-                ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                    <circle cx="12" cy="12" r="3" />
-                  </svg>
-                )}
-              </button>
-            </div>
+              {showPassword ? "Hide password" : "Show password"}
+            </button>
           </div>
 
           {/* Error */}
           {error && (
-            <div
-              className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-[13px] text-red-600 dark:bg-red-950/30 dark:text-red-400"
-              role="alert"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 8v4M12 16h.01" />
-              </svg>
-              {error}
-            </div>
+            <Banner status="error" collapsible={false} title={error} />
           )}
 
           {/* Submit */}
-          <button
+          <Button
             type="submit"
-            disabled={isLoading}
-            className="mt-2 w-full rounded-xl bg-[var(--accent)] px-4 py-2.5 text-[14px] font-medium text-white shadow-sm transition-all duration-200 hover:bg-[var(--accent-hover)] hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-sm"
-          >
-            {isLoading ? "Signing in…" : "Sign in"}
-          </button>
+            variant="primary"
+            label={isLoading ? "Signing in…" : "Sign in"}
+            isLoading={isLoading}
+            isDisabled={isLoading}
+            width="100%"
+          />
         </form>
       </div>
     </div>

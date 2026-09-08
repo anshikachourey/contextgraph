@@ -1,3 +1,6 @@
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Badge } from "@astryxdesign/core/Badge";
+import { Icon } from "@astryxdesign/core/Icon";
 import type { SemanticEdge } from "@/src/types/edge";
 import {
   STRONGLY_RELATED_THRESHOLD,
@@ -18,9 +21,9 @@ function scoreLabel(score: number): string {
 }
 
 function scoreColor(score: number): string {
-  if (score >= STRONGLY_RELATED_THRESHOLD) return "text-green-700";
-  if (score >= POSSIBLY_RELATED_THRESHOLD) return "text-amber-700";
-  return "text-gray-500";
+  if (score >= STRONGLY_RELATED_THRESHOLD) return "text-green-600 dark:text-green-400";
+  if (score >= POSSIBLY_RELATED_THRESHOLD) return "text-amber-600 dark:text-amber-400";
+  return "text-[var(--muted-foreground)]";
 }
 
 export default function EdgeDetailPanel({
@@ -30,56 +33,54 @@ export default function EdgeDetailPanel({
   onClose,
 }: EdgeDetailPanelProps) {
   return (
-    <div className="flex h-full flex-col border-t border-gray-200 bg-white">
+    <div className="flex h-full flex-col border-t border-[var(--border)] bg-[var(--surface)]">
       {/* Panel header */}
       <div className="flex items-start justify-between px-5 pt-4 pb-3">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
             Relationship
           </p>
-          <h3 className="mt-0.5 text-base font-semibold leading-snug">
+          <h3 className="mt-0.5 text-[16px] font-semibold leading-snug text-[var(--foreground)]">
             {sourceTitle}{" "}
-            <span className="font-normal text-gray-400">↔</span>{" "}
+            <span className="font-normal text-[var(--muted-foreground)]">↔</span>{" "}
             {targetTitle}
           </h3>
         </div>
-        <button
+        <IconButton
+          variant="ghost"
+          size="sm"
+          label="Close edge detail"
+          icon={<Icon icon="close" />}
           onClick={onClose}
-          className="ml-4 mt-0.5 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
-          aria-label="Close edge detail"
-        >
-          ✕
-        </button>
+        />
       </div>
 
       {/* Explanation */}
       <div className="px-5">
-        <p className="text-sm leading-relaxed text-gray-700">
+        <p className="text-[14px] leading-relaxed text-[var(--foreground)]">
           {edge.explanation || "No explanation available."}
         </p>
       </div>
 
       {/* Metadata */}
       <div className="mt-4 px-5 pb-5">
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+        <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
           Details
         </p>
-        <div className="space-y-2 text-sm">
+        <div className="space-y-2 text-[14px]">
           <div className="flex justify-between">
-            <span className="text-gray-500">Similarity</span>
-            <span className={`font-mono text-xs ${scoreColor(edge.similarityScore)}`}>
+            <span className="text-[var(--muted-foreground)]">Similarity</span>
+            <span className={`font-mono text-[12px] ${scoreColor(edge.similarityScore)}`}>
               {edge.similarityScore.toFixed(4)} — {scoreLabel(edge.similarityScore)}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">Type</span>
-            <span className="text-gray-900">{edge.relationshipType}</span>
+            <span className="text-[var(--muted-foreground)]">Type</span>
+            <span className="text-[var(--foreground)]">{edge.relationshipType}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Status</span>
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
-              {edge.status}
-            </span>
+          <div className="flex items-center justify-between">
+            <span className="text-[var(--muted-foreground)]">Status</span>
+            <Badge variant="neutral" label={edge.status} />
           </div>
         </div>
       </div>

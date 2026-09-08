@@ -1,3 +1,6 @@
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Button } from "@astryxdesign/core/Button";
+import { Icon } from "@astryxdesign/core/Icon";
 import type { ContextNode } from "@/src/types/node";
 import type { ChatMessage } from "@/src/types/message";
 
@@ -15,42 +18,42 @@ export default function NodeDetailPanel({
   onBranch,
 }: NodeDetailPanelProps) {
   return (
-    <div className="flex h-full flex-col border-t border-gray-200 bg-white">
+    <div className="flex h-full flex-col border-t border-[var(--border)] bg-[var(--surface)]">
       {/* Panel header */}
       <div className="flex items-start justify-between px-5 pt-4 pb-3">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
             Node
           </p>
-          <h3 className="mt-0.5 text-base font-semibold leading-snug">
+          <h3 className="mt-0.5 text-[16px] font-semibold leading-snug text-[var(--foreground)]">
             {node.title}
           </h3>
         </div>
-        <button
+        <IconButton
+          variant="ghost"
+          size="sm"
+          label="Close node detail"
+          icon={<Icon icon="close" />}
           onClick={onClose}
-          className="ml-4 mt-0.5 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
-          aria-label="Close node detail"
-        >
-          ✕
-        </button>
+        />
       </div>
 
       {/* Summary */}
-      <p className="px-5 text-sm text-gray-600">{node.summary}</p>
+      <p className="px-5 text-[14px] text-[var(--muted-foreground)]">{node.summary}</p>
 
       {/* Branch action */}
       <div className="px-5 pt-3">
-        <button
+        <Button
+          variant="secondary"
+          size="sm"
+          label="↳ Continue from this node"
           onClick={() => onBranch(node.id)}
-          className="flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 text-xs font-medium text-purple-700 transition hover:bg-purple-100"
-        >
-          ↳ Continue from this node
-        </button>
+        />
       </div>
 
       {/* Linked messages */}
       <div className="mt-4 flex-1 overflow-y-auto px-5 pb-5">
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+        <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
           {linkedMessages.length} linked message
           {linkedMessages.length === 1 ? "" : "s"}
         </p>
@@ -59,12 +62,12 @@ export default function NodeDetailPanel({
           {linkedMessages.map((message) => (
             <div
               key={message.id}
-              className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2"
+              className="rounded-xl border border-[var(--border)] bg-[var(--muted)] px-3 py-2"
             >
-              <p className="mb-1 text-xs font-semibold text-gray-400">
+              <p className="mb-1 text-[11px] font-semibold text-[var(--muted-foreground)]">
                 {message.role === "user" ? "You" : "Assistant"}
               </p>
-              <p className="line-clamp-3 text-sm text-gray-700">
+              <p className="line-clamp-3 text-[14px] text-[var(--foreground)]">
                 {message.content}
               </p>
             </div>

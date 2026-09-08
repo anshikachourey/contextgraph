@@ -1,3 +1,8 @@
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Button } from "@astryxdesign/core/Button";
+import { Badge } from "@astryxdesign/core/Badge";
+import { Spinner } from "@astryxdesign/core/Spinner";
+import { Icon } from "@astryxdesign/core/Icon";
 import type { EvolutionSuggestion } from "@/src/types/evolution";
 
 type EvolutionPanelProps = {
@@ -19,14 +24,16 @@ function actionLabel(action: EvolutionSuggestion["action"]): string {
   }
 }
 
-function actionColor(action: EvolutionSuggestion["action"]): string {
+function actionBadgeVariant(
+  action: EvolutionSuggestion["action"],
+): "blue" | "orange" | "purple" {
   switch (action) {
     case "extend_node":
-      return "bg-blue-100 text-blue-700";
+      return "blue";
     case "suggest_merge":
-      return "bg-amber-100 text-amber-700";
+      return "orange";
     case "suggest_parent":
-      return "bg-purple-100 text-purple-700";
+      return "purple";
   }
 }
 
@@ -38,39 +45,38 @@ export default function EvolutionPanel({
   onClose,
 }: EvolutionPanelProps) {
   return (
-    <div className="flex h-full flex-col border-t border-gray-200 bg-white">
+    <div className="flex h-full flex-col border-t border-[var(--border)] bg-[var(--surface)]">
       {/* Header */}
       <div className="flex items-start justify-between px-5 pt-4 pb-3">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
             Evolution
           </p>
-          <h3 className="mt-0.5 text-base font-semibold leading-snug">
+          <h3 className="mt-0.5 text-[16px] font-semibold leading-snug text-[var(--foreground)]">
             Graph Suggestions
           </h3>
         </div>
-        <button
+        <IconButton
+          variant="ghost"
+          size="sm"
+          label="Close evolution panel"
+          icon={<Icon icon="close" />}
           onClick={onClose}
-          className="ml-4 mt-0.5 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
-          aria-label="Close evolution panel"
-        >
-          ✕
-        </button>
+        />
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-5 pb-5">
         {/* Loading */}
         {isLoading && (
-          <div className="flex items-center gap-2 py-8 text-sm text-gray-500">
-            <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
-            Analyzing graph evolution…
+          <div className="py-8">
+            <Spinner size="sm" label="Analyzing graph evolution…" />
           </div>
         )}
 
         {/* Empty */}
         {!isLoading && suggestions.length === 0 && (
-          <div className="py-8 text-center text-sm text-gray-400">
+          <div className="py-8 text-center text-[14px] text-[var(--muted-foreground)]">
             No evolution suggestions. The graph looks up to date.
           </div>
         )}
@@ -81,41 +87,27 @@ export default function EvolutionPanel({
             {suggestions.map((s) => (
               <div
                 key={s.id}
-                className="rounded-xl border border-gray-200 bg-white p-3"
+                className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3"
               >
                 {/* Type badge + confidence */}
                 <div className="flex items-center justify-between">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${actionColor(s.action)}`}
-                  >
-                    {actionLabel(s.action)}
-                  </span>
-                  <span className="text-xs text-gray-400">
+                  <Badge variant={actionBadgeVariant(s.action)} label={actionLabel(s.action)} />
+                  <span className="text-[11px] text-[var(--muted-foreground)]">
                     {(s.confidence * 100).toFixed(0)}% confidence
                   </span>
                 </div>
 
                 {/* Reason */}
-                <p className="mt-2 text-sm leading-relaxed text-gray-700">
+                <p className="mt-2 text-[14px] leading-relaxed text-[var(--foreground)]">
                   {s.reason}
                 </p>
 
                 {/* Actions */}
                 <div className="mt-3 flex gap-2">
                   {s.action === "extend_node" && (
-                    <button
-                      onClick={() => onApply(s)}
-                      className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
-                    >
-                      Apply
-                    </button>
+                    <Button variant="primary" size="sm" label="Apply" onClick={() => onApply(s)} />
                   )}
-                  <button
-                    onClick={() => onDismiss(s)}
-                    className="rounded-lg px-3 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100"
-                  >
-                    Dismiss
-                  </button>
+                  <Button variant="ghost" size="sm" label="Dismiss" onClick={() => onDismiss(s)} />
                 </div>
               </div>
             ))}
