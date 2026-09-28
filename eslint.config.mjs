@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Third-party / generated code that should never be linted:
+    "node_modules/**",
+    "ml-service/**", // Python service + bundled venv JS (e.g. torch model_dump)
   ]),
 ]);
 
