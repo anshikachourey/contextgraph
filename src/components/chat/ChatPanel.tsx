@@ -3,6 +3,12 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import type { ChatMessage as ChatMessageType } from "@/src/types/message";
 import type { ContextNode } from "@/src/types/node";
+import { Button } from "@astryxdesign/core/Button";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { Skeleton } from "@astryxdesign/core/Skeleton";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { TextArea } from "@astryxdesign/core/TextArea";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
 import NodeWorkspace from "./NodeWorkspace";
@@ -19,6 +25,7 @@ type ChatPanelProps = {
   // Actions
   onSendMessage: (content: string, attachments?: import("@/src/types/message").AttachmentMeta[]) => void;
   onEditMessage?: (messageId: string, newContent: string) => void;
+  onCreateNodeFromMessages?: (node: ContextNode, linkedMessages: ChatMessageType[]) => void;
 };
 
 /** Format a date into a readable separator label */
@@ -51,11 +58,76 @@ export default function ChatPanel({
   onExitWorkspace,
   onSendMessage,
   onEditMessage,
+  onCreateNodeFromMessages,
 }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isNearBottom, setIsNearBottom] = useState(true);
+
+  // ─── Message selection state ────────────────────────────────────────────
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
+  const [showCreateNodeModal, setShowCreateNodeModal] = useState(false);
+  const [nodeTitle, setNodeTitle] = useState("");
+  const [nodeDescription, setNodeDescription] = useState("");
+  const [isCreatingNode, setIsCreatingNode] = useState(false);
+
+  const toggleMessageSelection = useCallback((id: string) => {
+    setSelectedMessageIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const exitSelectMode = useCallback(() => {
+    setIsSelectMode(false);
+    setSelectedMessageIds(new Set());
+  }, []);
+
+  const handleCreateNodeConfirm = useCallback(async () => {
+    if (!nodeTitle.trim() || selectedMessageIds.size === 0) return;
+
+    const selectedMessages = messages.filter((m) => selectedMessageIds.has(m.id));
+    const node: ContextNode = {
+      id: crypto.randomUUID(),
+      title: nodeTitle.trim(),
+      summary: nodeDescription.trim(),
+      messageIds: selectedMessages.map((m) => m.id),
+    };
+
+    setIsCreatingNode(true);
+
+    try {
+      // Persist to the V2 Knowledge Map via the manual-node endpoint
+      if (conversationId) {
+        const res = await fetch("/api/v2/manual-node", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId,
+            title: node.title,
+            description: node.summary,
+            messageIds: node.messageIds,
+          }),
+        });
+        if (!res.ok) {
+          console.error("[ChatPanel] Failed to persist manual node:", await res.text());
+        }
+      }
+
+      // Notify parent to open the Knowledge Map
+      onCreateNodeFromMessages?.(node, selectedMessages);
+    } finally {
+      setIsCreatingNode(false);
+      setShowCreateNodeModal(false);
+      setNodeTitle("");
+      setNodeDescription("");
+      exitSelectMode();
+    }
+  }, [nodeTitle, nodeDescription, selectedMessageIds, messages, conversationId, onCreateNodeFromMessages, exitSelectMode]);
 
   // Auto-scroll to bottom on new messages (if user is near bottom)
   useEffect(() => {
@@ -109,35 +181,25 @@ export default function ChatPanel({
     return (
       <section className="mx-auto flex h-screen max-w-3xl flex-col px-6 pt-[calc(var(--header-height)+2rem)]">
         <div className="flex flex-1 flex-col items-center justify-center pb-32">
-          <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-hover)] text-white shadow-lg shadow-[var(--accent)]/20">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="6" cy="6" r="2" />
-              <circle cx="18" cy="18" r="2" />
-              <circle cx="18" cy="6" r="2" />
-              <path d="M6 8v8M8 6h8M16 18H8" />
-            </svg>
-          </div>
-          <h2 className="mb-2 text-xl font-semibold tracking-tight text-[var(--foreground)]">
-            Start a conversation
-          </h2>
-          <p className="mb-8 max-w-sm text-center text-[14px] leading-relaxed text-[var(--muted-foreground)]">
-            ContextGraph builds a knowledge graph from your conversations, giving AI persistent memory across sessions.
-          </p>
-          <div className="grid w-full max-w-md grid-cols-2 gap-2">
+          <EmptyState
+            title="Start a conversation"
+            description="ContextGraph builds a knowledge graph from your conversations, giving AI persistent memory across sessions."
+            headingLevel={2}
+          />
+          <div className="mt-6 grid w-full max-w-md grid-cols-2 gap-2">
             {[
               { icon: "💡", label: "Explore an idea", prompt: "I want to explore an idea — " },
               { icon: "📝", label: "Plan a project", prompt: "Help me plan a project for " },
               { icon: "🔬", label: "Deep-dive a topic", prompt: "I want to deep-dive into " },
               { icon: "🧩", label: "Solve a problem", prompt: "I need help solving " },
             ].map((item) => (
-              <button
+              <Button
                 key={item.label}
+                variant="secondary"
+                width="100%"
+                label={`${item.icon}  ${item.label}`}
                 onClick={() => onSendMessage(item.prompt)}
-                className="flex items-center gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-left text-[13px] text-[var(--foreground)] transition-all hover:border-[var(--muted-foreground)]/30 hover:shadow-sm active:scale-[0.98]"
-              >
-                <span className="text-base">{item.icon}</span>
-                <span>{item.label}</span>
-              </button>
+              />
             ))}
           </div>
         </div>
@@ -157,6 +219,25 @@ export default function ChatPanel({
   // Normal conversation view
   return (
     <section className="relative flex h-screen flex-col pt-[calc(var(--header-height)+0.5rem)]">
+      {/* Select mode toggle */}
+      {!isSelectMode && messages.length > 0 && (
+        <div className="absolute top-[calc(var(--header-height)+0.75rem)] right-6 z-10">
+          <Button
+            variant="secondary"
+            size="sm"
+            label="Select"
+            tooltip="Select messages to create a node"
+            icon={
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 11 12 14 22 4" />
+                <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+              </svg>
+            }
+            onClick={() => setIsSelectMode(true)}
+          />
+        </div>
+      )}
+
       {/* Message list — scrollable, full width so scrollbar sits at screen edge */}
       <div
         ref={scrollContainerRef}
@@ -177,6 +258,8 @@ export default function ChatPanel({
             message.createdAt &&
             (idx === 0 || isDifferentDay(prevMessage?.createdAt, message.createdAt));
 
+          const isMessageSelected = selectedMessageIds.has(message.id);
+
           return (
             <div key={message.id}>
               {showDateSeparator && message.createdAt && (
@@ -186,15 +269,37 @@ export default function ChatPanel({
                   </div>
                 </div>
               )}
-              <div className="py-2">
-                <ChatMessage
-                  key={message.id}
-                  message={message}
-                  isSelected={false}
-                  isHighlighted={highlightedMessageIds.includes(message.id)}
-                  onEdit={onEditMessage}
-                  isLatestUserMessage={isLatestUser}
-                />
+              <div className={`py-2 flex items-start gap-2 ${isSelectMode ? "cursor-pointer" : ""}`}
+                onClick={isSelectMode ? () => toggleMessageSelection(message.id) : undefined}
+              >
+                {/* Selection checkbox */}
+                {isSelectMode && (
+                  <div className="flex-shrink-0 pt-3">
+                    <div className={`flex h-5 w-5 items-center justify-center rounded-md border-2 transition-all ${
+                      isMessageSelected
+                        ? "border-[var(--accent)] bg-[var(--accent)]"
+                        : "border-[var(--border)] bg-[var(--surface)]"
+                    }`}>
+                      {isMessageSelected && (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div className={`flex-1 min-w-0 rounded-xl transition-all ${
+                  isSelectMode && isMessageSelected ? "ring-2 ring-[var(--accent)]/30 bg-[var(--accent-light)]/30" : ""
+                }`}>
+                  <ChatMessage
+                    key={message.id}
+                    message={message}
+                    isSelected={isMessageSelected}
+                    isHighlighted={highlightedMessageIds.includes(message.id)}
+                    onEdit={isSelectMode ? undefined : onEditMessage}
+                    isLatestUserMessage={isLatestUser}
+                  />
+                </div>
               </div>
             </div>
           );
@@ -229,17 +334,50 @@ export default function ChatPanel({
         </div>
       </div>
 
+      {/* ─── Floating selection action bar ─────────────────────────────────── */}
+      {isSelectMode && (
+        <div className="absolute bottom-28 left-1/2 z-20 -translate-x-1/2">
+          <div className="flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 shadow-xl">
+            <span className="text-[13px] font-medium text-[var(--foreground)]">
+              {selectedMessageIds.size} selected
+            </span>
+            <div className="h-4 w-px bg-[var(--border)]" />
+            <Button
+              variant="primary"
+              size="sm"
+              label="Create Node"
+              icon={
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              }
+              isDisabled={selectedMessageIds.size === 0}
+              onClick={() => {
+                if (selectedMessageIds.size > 0) {
+                  setShowCreateNodeModal(true);
+                }
+              }}
+            />
+            <Button variant="ghost" size="sm" label="Cancel" onClick={exitSelectMode} />
+          </div>
+        </div>
+      )}
+
       {/* Scroll to bottom FAB */}
       {showScrollButton && (
-        <button
-          onClick={scrollToBottom}
-          className="absolute bottom-24 right-8 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] shadow-lg transition-all hover:shadow-xl hover:scale-105 active:scale-95"
-          aria-label="Scroll to bottom"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--foreground)]">
-            <path d="M12 5v14M19 12l-7 7-7-7" />
-          </svg>
-        </button>
+        <div className="absolute bottom-24 right-8">
+          <IconButton
+            variant="secondary"
+            elevation="med"
+            label="Scroll to bottom"
+            icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M19 12l-7 7-7-7" />
+              </svg>
+            }
+            onClick={scrollToBottom}
+          />
+        </div>
       )}
 
       {/* Input — sticky at the bottom */}
@@ -252,6 +390,85 @@ export default function ChatPanel({
           />
         </div>
       </div>
+
+      {/* ─── Create Node confirmation modal ────────────────────────────────── */}
+      {showCreateNodeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+            onClick={() => setShowCreateNodeModal(false)}
+          />
+          <div className="relative z-10 w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-xl">
+            <h2 className="text-[16px] font-semibold text-[var(--foreground)]">
+              Create Node from Messages
+            </h2>
+            <p className="mt-1 text-[13px] text-[var(--muted-foreground)]">
+              {selectedMessageIds.size} message{selectedMessageIds.size > 1 ? "s" : ""} selected. This will create a manual node linked to the selected messages.
+            </p>
+
+            {/* Preview of selected messages */}
+            <div className="mt-3 max-h-32 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--muted)] p-3 space-y-1.5">
+              {messages
+                .filter((m) => selectedMessageIds.has(m.id))
+                .map((m) => (
+                  <div key={m.id} className="flex items-start gap-2 text-[12px]">
+                    <span className={`shrink-0 rounded px-1.5 py-0.5 font-medium ${
+                      m.role === "user"
+                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                        : "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
+                    }`}>
+                      {m.role === "user" ? "You" : "AI"}
+                    </span>
+                    <span className="text-[var(--muted-foreground)] line-clamp-2">
+                      {m.content.slice(0, 120)}{m.content.length > 120 ? "…" : ""}
+                    </span>
+                  </div>
+                ))}
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <TextInput
+                label="Node Title"
+                isRequired
+                value={nodeTitle}
+                onChange={setNodeTitle}
+                onEnter={handleCreateNodeConfirm}
+                placeholder="e.g. Project Requirements Discussion"
+                hasAutoFocus
+              />
+              <TextArea
+                label="Summary"
+                isOptional
+                value={nodeDescription}
+                onChange={setNodeDescription}
+                placeholder="Optional summary of what these messages cover..."
+                rows={2}
+              />
+            </div>
+
+            <div className="mt-3 rounded-lg bg-[var(--accent-light)] px-3 py-2">
+              <p className="text-[11px] text-[var(--accent)]">
+                <span className="font-medium">Provenance:</span> USER_CREATED — This node will be marked as manually created and will not be treated as SIE-generated semantic truth.
+              </p>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                label="Cancel"
+                onClick={() => setShowCreateNodeModal(false)}
+              />
+              <Button
+                variant="primary"
+                label={isCreatingNode ? "Creating…" : "Create Node"}
+                isDisabled={!nodeTitle.trim() || isCreatingNode}
+                isLoading={isCreatingNode}
+                onClick={handleCreateNodeConfirm}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -282,16 +499,14 @@ function StreamingIndicator() {
 /** Loading skeleton for initial conversation load */
 function LoadingSkeleton() {
   return (
-    <div className="w-full max-w-2xl space-y-6 animate-pulse">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className={`flex ${i % 2 === 0 ? "justify-start" : "justify-start"}`}>
-          <div className="w-full space-y-2 rounded-2xl bg-[var(--muted)] p-5">
-            <div className="h-3 w-16 rounded bg-[var(--border)]" />
-            <div className="space-y-1.5">
-              <div className="h-3 w-full rounded bg-[var(--border)]" />
-              <div className="h-3 w-4/5 rounded bg-[var(--border)]" />
-              {i === 2 && <div className="h-3 w-3/5 rounded bg-[var(--border)]" />}
-            </div>
+    <div className="w-full max-w-2xl space-y-6">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="w-full space-y-2 rounded-2xl bg-[var(--muted)] p-5">
+          <Skeleton width={64} height={12} index={i} />
+          <div className="space-y-1.5">
+            <Skeleton width="100%" height={12} index={i} />
+            <Skeleton width="80%" height={12} index={i} />
+            {i === 1 && <Skeleton width="60%" height={12} index={i} />}
           </div>
         </div>
       ))}

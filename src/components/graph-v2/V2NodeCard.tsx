@@ -55,43 +55,68 @@ export default function V2NodeCard({ data }: NodeProps<V2FlowNode>) {
 
   return (
     <>
-      <Handle type="target" position={Position.Top} className="!bg-slate-400 !w-2 !h-2" />
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!h-2 !w-2 !border-2"
+        style={{ background: "var(--surface)", borderColor: "var(--muted-foreground)" }}
+      />
 
       <div
-        className={`relative w-64 overflow-hidden rounded-xl border transition-all ${
-          isSelected
-            ? "border-purple-600 ring-4 ring-purple-200 shadow-lg shadow-purple-100 scale-[1.02]"
-            : "border-gray-200 shadow-sm hover:shadow-md"
-        }`}
-        style={{ backgroundColor: isSelected ? "#faf5ff" : "white" }}
+        className="relative w-64 overflow-hidden rounded-xl border transition-all"
+        style={{
+          backgroundColor: "var(--surface)",
+          borderColor: isSelected ? "var(--accent)" : "var(--border)",
+          boxShadow: isSelected
+            ? "0 0 0 3px var(--accent-light), 0 8px 24px rgba(0,0,0,0.12)"
+            : "0 1px 3px rgba(0,0,0,0.08)",
+        }}
       >
-        {/* Type accent bar */}
+        {/* Type accent bar — semantic category color */}
         <div className="h-1 w-full" style={{ backgroundColor: color }} />
 
         <div className="p-4">
           <div className="flex items-start gap-2">
             <span
-              className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-xs font-bold text-white"
+              className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px] font-bold text-white"
               style={{ backgroundColor: color }}
             >
               {icon}
             </span>
-            <p className="text-sm font-semibold leading-snug line-clamp-2">{data.title}</p>
+            <p className="text-[13px] font-semibold leading-snug line-clamp-2 text-[var(--foreground)]">
+              {data.title}
+            </p>
           </div>
 
-          <p className="mt-2 text-xs text-gray-500 line-clamp-2">{data.description}</p>
+          {data.description && (
+            <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted-foreground)] line-clamp-2">
+              {data.description}
+            </p>
+          )}
 
-          <div className="mt-2 flex items-center gap-2 text-[10px] text-gray-400">
-            <span className="rounded bg-gray-100 px-1.5 py-0.5">{data.objectType}</span>
-            <span>{data.propositionCount} props</span>
+          <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-[var(--muted-foreground)]">
+            <span className="rounded-md border border-[var(--border)] bg-[var(--muted)] px-1.5 py-0.5 font-medium capitalize">
+              {data.objectType}
+            </span>
+            <span className="tabular-nums">{data.propositionCount} props</span>
             {data.hasOverlap && (
-              <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-yellow-700">overlap</span>
+              <span
+                className="rounded-md px-1.5 py-0.5 font-medium"
+                style={{ backgroundColor: "var(--accent-light)", color: "var(--accent)" }}
+              >
+                overlap
+              </span>
             )}
           </div>
         </div>
       </div>
 
-      <Handle type="source" position={Position.Bottom} className="!bg-slate-400 !w-2 !h-2" />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!h-2 !w-2 !border-2"
+        style={{ background: "var(--surface)", borderColor: "var(--muted-foreground)" }}
+      />
     </>
   );
 }

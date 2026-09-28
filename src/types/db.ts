@@ -6,6 +6,9 @@ export type DbConversation = {
   title: string;
   created_at: string;
   updated_at?: string | null;
+  workspace_id?: string;
+  archived_at?: string | null;
+  conversation_scope?: "main" | "graph_workspace";
 };
 
 export type DbMessage = {

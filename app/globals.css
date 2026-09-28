@@ -1,4 +1,18 @@
-@import "tailwindcss";
+/* Layer order is declared first in ./layers.css (imported by app/layout.tsx
+   before this file) so it wins under webpack @import hoisting. */
+
+/* Tailwind v4 + Astryx coexistence — explicit layered imports.
+   Astryx reset/base/theme load before Tailwind utilities so migrated
+   components keep their design-system defaults while legacy utility
+   classes still win in the utilities layer. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "@astryxdesign/core/reset.css";
+@import "@astryxdesign/core/astryx.css";
+@import "@astryxdesign/theme-neutral/theme.css";
+@import "@astryxdesign/core/tailwind-theme.css";
+@import "tailwindcss/utilities.css" layer(utilities);
+
 @import "@xyflow/react/dist/style.css";
 
 :root {
@@ -164,4 +178,60 @@ body {
 }
 .scrollbar-thin::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* ─── React Flow — token-driven canvas/controls skin ──────────────────────
+   Presentation only: makes the Knowledge Map canvas, controls, and minimap
+   read as a deliberate workspace surface in both light and dark mode.
+   No behavior, layout, or data is affected. */
+
+/* Canvas surface — a subtle workspace field rather than a blank white page. */
+.react-flow {
+  --xy-background-color: var(--surface-raised);
+  background-color: var(--surface-raised);
+}
+
+/* Controls (zoom / fit) — token surface, border, and icon color. */
+.react-flow__controls {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+.dark .react-flow__controls {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.react-flow__controls-button {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+  width: 28px;
+  height: 28px;
+}
+.react-flow__controls-button:hover {
+  background: var(--muted);
+}
+.react-flow__controls-button svg {
+  fill: var(--muted-foreground);
+}
+.react-flow__controls-button:hover svg {
+  fill: var(--foreground);
+}
+
+/* Minimap — token surface + border. */
+.react-flow__minimap {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+/* Attribution (kept hidden via proOptions, but themed defensively). */
+.react-flow__attribution {
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+/* Node focus/selection outline uses the accent token. */
+.react-flow__node.selected .react-flow__handle {
+  border-color: var(--accent);
 }

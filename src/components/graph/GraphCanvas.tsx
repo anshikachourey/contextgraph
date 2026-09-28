@@ -76,11 +76,11 @@ function buildFlowEdges(semanticEdges: SemanticEdge[]): Edge[] {
       animated: false,
       markerEnd: { type: "arrowclosed" as const, width: 16, height: 16, color: "#64748b" },
       label,
-      labelStyle: { fontSize: 11, fill: "#475569", fontWeight: 500 },
-      labelBgStyle: { fill: "#f8fafc", stroke: "#e2e8f0", strokeWidth: 0.5 },
+      labelStyle: { fontSize: 11, fill: "var(--muted-foreground)", fontWeight: 500 },
+      labelBgStyle: { fill: "var(--surface)", stroke: "var(--border)", strokeWidth: 0.5 },
       labelBgPadding: [6, 3] as [number, number],
       style: {
-        stroke: "#64748b",
+        stroke: "var(--muted-foreground)",
         strokeWidth,
         opacity: hasRelationship ? 0.85 : 0.5,
       },
@@ -143,7 +143,7 @@ export default function GraphCanvas({
       proOptions={{ hideAttribution: true }}
       className="h-full w-full"
     >
-      <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#e5e7eb" />
+      <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--border)" />
       <Controls showInteractive={false} />
     </ReactFlow>
   );

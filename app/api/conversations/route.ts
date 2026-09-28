@@ -124,9 +124,10 @@ export async function POST(
 
   // Otherwise, create a new conversation — assign workspace from session
   const title = typeof body.title === "string" ? body.title : "New conversation";
+  const scope = body.scope === "graph_workspace" ? "graph_workspace" as const : undefined;
 
   try {
-    const data = await createConversation(title, [], session.workspace);
+    const data = await createConversation(title, [], session.workspace, scope ? { scope } : undefined);
     return NextResponse.json(
       { id: data.conversation.id, title: data.conversation.title },
       { status: 201, headers: { "Cache-Control": "no-store" } },

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Banner } from "@astryxdesign/core/Banner";
 import type { AttachmentMeta } from "@/src/types/message";
 import {
   validateFile,
@@ -8,6 +10,24 @@ import {
   ALLOWED_MIME_TYPES,
   MAX_ATTACHMENTS,
 } from "@/src/lib/attachments";
+
+/** Paperclip glyph for the attachment control. */
+function AttachGlyph() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+    </svg>
+  );
+}
+
+/** Send (arrow) glyph. */
+function SendGlyph() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 12h14M12 5l7 7-7 7" />
+    </svg>
+  );
+}
 
 type ChatInputProps = {
   onSendMessage: (content: string, attachments?: AttachmentMeta[]) => void;
@@ -211,40 +231,23 @@ export default function ChatInput({
 
         {/* Error message */}
         {attachmentError && (
-          <div className="mx-3 mt-2 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:bg-red-950/30 dark:text-red-400">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 8v4M12 16h.01" />
-            </svg>
-            {attachmentError}
+          <div className="mx-2 mt-2">
+            <Banner status="error" collapsible={false} title={attachmentError} />
           </div>
         )}
 
         {/* Input row — vertically centered items */}
         <div className="flex items-center gap-0.5 px-2 py-1.5">
           {/* Attachment button */}
-          <button
-            type="button"
+          <IconButton
+            variant="ghost"
+            size="sm"
+            label="Attach file"
+            tooltip="Attach file"
+            icon={<AttachGlyph />}
+            isDisabled={disabled || isUploading}
             onClick={handleAttachmentClick}
-            disabled={disabled || isUploading}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Attach file"
-            title="Attach file"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
-            </svg>
-          </button>
+          />
 
           {/* Hidden file input */}
           <input
@@ -278,27 +281,18 @@ export default function ChatInput({
             style={{ minHeight: "24px", maxHeight: "180px" }}
           />
 
-          {/* Send button — circular */}
-          <button
-            onClick={handleSend}
-            disabled={isDisabled}
-            className={`ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all duration-200 ${
-              hasContent && !disabled
-                ? "bg-[var(--accent)] text-white shadow-sm hover:bg-[var(--accent-hover)] hover:shadow-md active:scale-90"
-                : "bg-[var(--muted)] text-[var(--muted-foreground)]/60 cursor-not-allowed"
-            }`}
-            aria-label={disabled ? "Stop generating" : "Send message"}
-          >
-            {isUploading ? (
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="animate-spin">
-                <path d="M21 12a9 9 0 11-6.219-8.56" />
-              </svg>
-            ) : (
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14M12 5l7 7-7 7" />
-              </svg>
-            )}
-          </button>
+          {/* Send button */}
+          <div className="ml-1">
+            <IconButton
+              variant="primary"
+              size="sm"
+              label={disabled ? "Stop generating" : "Send message"}
+              icon={<SendGlyph />}
+              isLoading={isUploading}
+              isDisabled={isDisabled}
+              onClick={handleSend}
+            />
+          </div>
         </div>
       </div>
 

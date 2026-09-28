@@ -1,0 +1,17 @@
+/*
+ * Cascade layer order for Astryx + Tailwind v4 coexistence.
+ *
+ * Per Astryx's migration docs: with webpack-based bundlers (including Next.js)
+ * the @layer order declaration must live in its own file imported FIRST,
+ * because webpack hoists @import content above inline CSS that follows it.
+ *
+ * Order (earliest → latest, later wins):
+ *   reset        → Astryx :where() reset + any legacy reset
+ *   theme        → Tailwind theme.css
+ *   base         → Tailwind preflight
+ *   astryx-base  → Astryx component foundations
+ *   astryx-theme → Astryx theme tokens
+ *   components   → app component styles
+ *   utilities    → Tailwind utilities (kept last so app utilities keep winning)
+ */
+@layer reset, theme, base, astryx-base, astryx-theme, components, utilities;

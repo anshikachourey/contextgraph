@@ -50,6 +50,7 @@ type ConceptualMapViewProps = {
   selectedNodeId: string | null;
   onNodeClick: (objectId: string) => void;
   onClearSelection: () => void;
+  onConnect?: (connection: { source: string; target: string }) => void;
 };
 
 // ─── Role styling ───────────────────────────────────────────────────────────
@@ -183,6 +184,7 @@ export default function ConceptualMapView({
   selectedNodeId,
   onNodeClick,
   onClearSelection,
+  onConnect,
 }: ConceptualMapViewProps) {
   const [focusedObjectId, setFocusedObjectId] = useState<string | null>(null);
 
@@ -437,6 +439,7 @@ export default function ConceptualMapView({
             selectedNodeId={selectedNodeId}
             edgeMode="structure"
             onNodeClick={onNodeClick}
+            onConnect={onConnect ? (conn) => { if (conn.source && conn.target) onConnect({ source: conn.source, target: conn.target }); } : undefined}
           />
         </div>
       </div>
@@ -453,6 +456,7 @@ export default function ConceptualMapView({
           onNodesChange={handleNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeClick={handleNodeClick}
+          onConnect={onConnect ? (conn) => { if (conn.source && conn.target) onConnect({ source: conn.source, target: conn.target }); } : undefined}
           nodeTypes={overviewNodeTypes}
           nodesDraggable
           fitView

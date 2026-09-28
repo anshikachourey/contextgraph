@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+// Cascade layer order must be imported before globals.css (webpack hoists
+// @import content, so the @layer declaration needs to load first).
+import "./layers.css";
 import "./globals.css";
+import AstryxThemeProvider from "@/src/components/providers/AstryxThemeProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,7 +48,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--foreground)]">
-        {children}
+        <AstryxThemeProvider>{children}</AstryxThemeProvider>
       </body>
     </html>
   );

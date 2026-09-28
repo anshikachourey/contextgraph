@@ -1,3 +1,4 @@
+import { EmptyState } from "@astryxdesign/core/EmptyState";
 import type { ContextNode } from "@/src/types/node";
 import type { ChatMessage } from "@/src/types/message";
 import type { SemanticEdge } from "@/src/types/edge";
@@ -105,7 +106,7 @@ export default function GraphDrawer({
       )}
 
       <aside
-        className={`fixed right-0 top-0 z-40 h-full transform border-l border-gray-200 bg-white shadow-2xl transition-all duration-300 ${
+        className={`fixed right-0 top-0 z-40 h-full transform border-l border-[var(--border)] bg-[var(--surface)] shadow-2xl transition-all duration-300 ${
           isOpen ? "translate-x-0" : "translate-x-full"
         } ${isMaximized ? "w-full" : "w-[460px]"}`}
       >
@@ -120,15 +121,11 @@ export default function GraphDrawer({
 
         <div className="h-[calc(100%-4rem)]">
           {isEmpty ? (
-            <div className="flex h-full items-center justify-center bg-gray-50 text-center text-gray-500 px-8">
-              <div className="max-w-xs">
-                <div className="mb-4 text-5xl opacity-30">🧠</div>
-                <p className="text-lg font-medium text-gray-700">Your knowledge graph</p>
-                <p className="mt-2 text-sm leading-relaxed">
-                  Keep chatting — as your ideas evolve, I&apos;ll capture the insights
-                  and connections here automatically.
-                </p>
-              </div>
+            <div className="flex h-full items-center justify-center bg-[var(--surface-raised)] px-8">
+              <EmptyState
+                title="Your knowledge graph"
+                description="Keep chatting — as your ideas evolve, insights and connections are captured here automatically."
+              />
             </div>
           ) : isMaximized && hasPanel ? (
             <div className="flex h-full">
@@ -141,7 +138,7 @@ export default function GraphDrawer({
                   onEdgeClick={onEdgeClick}
                 />
               </div>
-              <div className="w-80 shrink-0 border-l border-gray-200">
+              <div className="w-80 shrink-0 border-l border-[var(--border)]">
                 {renderPanel()}
               </div>
             </div>

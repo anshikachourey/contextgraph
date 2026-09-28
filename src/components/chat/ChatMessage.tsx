@@ -6,6 +6,9 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 import type { Components } from "react-markdown";
+import { Button } from "@astryxdesign/core/Button";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Banner } from "@astryxdesign/core/Banner";
 import ImageLightbox from "@/src/components/ui/ImageLightbox";
 
 /**
@@ -192,8 +195,8 @@ function ExternalLink({
 /** Table components for GFM tables */
 function Table({ children, ...props }: React.HTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="my-3 overflow-x-auto rounded-lg border border-[var(--border)]">
-      <table className="min-w-full text-[13px]" {...props}>
+    <div className="my-4 overflow-x-auto rounded-lg border border-[var(--border)]">
+      <table className="min-w-full text-[14px]" {...props}>
         {children}
       </table>
     </div>
@@ -236,7 +239,7 @@ function TableHeaderCell({ children, ...props }: React.HTMLAttributes<HTMLTableC
 function Blockquote({ children, ...props }: React.HTMLAttributes<HTMLQuoteElement>) {
   return (
     <blockquote
-      className="my-3 border-l-3 border-[var(--accent)]/40 pl-4 italic text-[var(--muted-foreground)]"
+      className="my-4 border-l-[3px] border-[var(--accent)]/40 pl-4 italic leading-[1.6] text-[var(--muted-foreground)]"
       {...props}
     >
       {children}
@@ -247,7 +250,7 @@ function Blockquote({ children, ...props }: React.HTMLAttributes<HTMLQuoteElemen
 /** Ordered and unordered lists */
 function UnorderedList({ children, ...props }: React.HTMLAttributes<HTMLUListElement>) {
   return (
-    <ul className="my-2 ml-4 list-disc space-y-1 marker:text-[var(--muted-foreground)]" {...props}>
+    <ul className="my-3 ml-5 list-disc space-y-1.5 leading-[1.6] marker:text-[var(--muted-foreground)]" {...props}>
       {children}
     </ul>
   );
@@ -255,21 +258,26 @@ function UnorderedList({ children, ...props }: React.HTMLAttributes<HTMLUListEle
 
 function OrderedList({ children, ...props }: React.HTMLAttributes<HTMLOListElement>) {
   return (
-    <ol className="my-2 ml-4 list-decimal space-y-1 marker:text-[var(--muted-foreground)]" {...props}>
+    <ol className="my-3 ml-5 list-decimal space-y-1.5 leading-[1.6] marker:text-[var(--muted-foreground)]" {...props}>
       {children}
     </ol>
   );
 }
 
-/** Headings with proper sizing */
+/** Paragraph — body rhythm for assistant markdown */
+function Paragraph({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
+  return <p className="my-3 first:mt-0 last:mb-0 leading-[1.7]" {...props}>{children}</p>;
+}
+
+/** Headings with a clear ChatGPT-style hierarchy */
 function H1({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h1 className="mt-5 mb-2 text-[18px] font-bold leading-tight" {...props}>{children}</h1>;
+  return <h1 className="mt-6 mb-3 text-[24px] font-bold leading-tight first:mt-0" {...props}>{children}</h1>;
 }
 function H2({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h2 className="mt-4 mb-2 text-[16px] font-semibold leading-tight" {...props}>{children}</h2>;
+  return <h2 className="mt-5 mb-2.5 text-[20px] font-semibold leading-snug first:mt-0" {...props}>{children}</h2>;
 }
 function H3({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h3 className="mt-3 mb-1.5 text-[15px] font-semibold leading-tight" {...props}>{children}</h3>;
+  return <h3 className="mt-4 mb-2 text-[17px] font-semibold leading-snug first:mt-0" {...props}>{children}</h3>;
 }
 
 /** Horizontal rule */
@@ -280,6 +288,7 @@ function HorizontalRule(props: React.HTMLAttributes<HTMLHRElement>) {
 const markdownComponents: Components = {
   code: CodeBlock as Components["code"],
   a: ExternalLink as Components["a"],
+  p: Paragraph as Components["p"],
   table: Table as Components["table"],
   thead: TableHead as Components["thead"],
   tr: TableRow as Components["tr"],
@@ -381,14 +390,9 @@ export default function ChatMessage({
           <span className="text-[12px] font-medium text-[var(--muted-foreground)]">Editing message</span>
         </div>
         {willBranch && (
-          <p className="mb-2.5 flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
-              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-              <line x1="12" y1="9" x2="12" y2="13" />
-              <line x1="12" y1="17" x2="12.01" y2="17" />
-            </svg>
-            This will create a new conversation branch.
-          </p>
+          <div className="mb-2.5">
+            <Banner status="warning" collapsible={false} title="This will create a new conversation branch." />
+          </div>
         )}
         <textarea
           ref={textareaRef}
@@ -405,18 +409,18 @@ export default function ChatMessage({
           rows={Math.max(2, editContent.split("\n").length)}
         />
         <div className="mt-3 flex items-center gap-2">
-          <button
+          <Button
+            variant="primary"
+            size="sm"
+            label={willBranch ? "Branch & send" : "Save & regenerate"}
             onClick={handleEditSave}
-            className="rounded-lg bg-[var(--foreground)] px-3.5 py-1.5 text-[12px] font-medium text-[var(--background)] transition hover:opacity-90 active:scale-[0.97]"
-          >
-            {willBranch ? "Branch & send" : "Save & regenerate"}
-          </button>
-          <button
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            label="Cancel"
             onClick={handleEditCancel}
-            className="rounded-lg border border-[var(--border)] px-3.5 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition hover:bg-[var(--muted)]"
-          >
-            Cancel
-          </button>
+          />
           <span className="ml-auto text-[11px] text-[var(--muted-foreground)]/60">
             Esc to cancel
           </span>
@@ -442,10 +446,10 @@ export default function ChatMessage({
               ? "ring-2 ring-[var(--accent)] bg-[var(--accent-light)]"
               : isHighlighted
                 ? "ring-2 ring-[var(--accent)]/50 bg-[var(--accent-light)]"
-                : "bg-[var(--foreground)] text-[var(--background)]"
+                : "bg-[#e6e0f8] text-black"
           }`}
         >
-          <p className="whitespace-pre-wrap text-[14px] leading-[1.7]">{message.content}</p>
+          <p className="whitespace-pre-wrap text-[16px] leading-[1.7]">{message.content}</p>
 
           {/* Attachments */}
           {message.attachments && message.attachments.length > 0 && (
@@ -463,26 +467,30 @@ export default function ChatMessage({
           {showActions && (
             <div className="absolute -top-7 right-0" ref={menuRef}>
               <div className="flex items-center gap-0.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-0.5 shadow-sm">
-                <button
+                <IconButton
+                  variant="ghost"
+                  size="sm"
+                  label="Edit message"
+                  tooltip="Edit"
                   onClick={handleEditStart}
-                  className="rounded-md p-1.5 text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-                  title="Edit"
-                  aria-label="Edit message"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                </button>
-                <button
+                  icon={
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  }
+                />
+                <IconButton
+                  variant="ghost"
+                  size="sm"
+                  label="Copy message"
+                  tooltip="Copy"
                   onClick={handleCopy}
-                  className="rounded-md p-1.5 text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-                  title="Copy"
-                  aria-label="Copy message"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                </button>
+                  icon={
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  }
+                />
               </div>
             </div>
           )}
@@ -511,7 +519,7 @@ export default function ChatMessage({
           </div>
 
           {/* Content */}
-          <div className="text-[14px] leading-[1.7] text-[var(--foreground)]">
+          <div className="text-[16px] leading-[1.7] text-[var(--foreground)]">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeSanitize]}
@@ -536,27 +544,31 @@ export default function ChatMessage({
           {/* Actions on hover */}
           {showActions && (
             <div className="absolute right-3 top-3 flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
-              <button
+              <IconButton
+                variant="ghost"
+                size="sm"
+                label="Copy message"
+                tooltip="Copy"
                 onClick={handleCopy}
-                className="rounded-lg p-1.5 text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-                title="Copy"
-                aria-label="Copy message"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-              </button>
-              {onRetry && (
-                <button
-                  onClick={() => onRetry(message.id)}
-                  className="rounded-lg p-1.5 text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-                  title="Retry"
-                  aria-label="Retry response"
-                >
+                icon={
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   </svg>
-                </button>
+                }
+              />
+              {onRetry && (
+                <IconButton
+                  variant="ghost"
+                  size="sm"
+                  label="Retry response"
+                  tooltip="Retry"
+                  onClick={() => onRetry(message.id)}
+                  icon={
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  }
+                />
               )}
             </div>
           )}

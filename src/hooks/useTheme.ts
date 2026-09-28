@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 
 export type ThemeMode = "system" | "light" | "dark";
 
-const STORAGE_KEY = "contextgraph-theme";
+export const STORAGE_KEY = "contextgraph-theme";
+/** Fired on the window whenever the theme mode changes within the same tab. */
+export const THEME_CHANGE_EVENT = "contextgraph-theme-change";
 
 function getSystemPreference(): "light" | "dark" {
   if (typeof window === "undefined") return "light";
@@ -52,6 +54,13 @@ export function useTheme() {
     setModeState(newMode);
     localStorage.setItem(STORAGE_KEY, newMode);
     applyTheme(newMode);
+    // Notify same-tab listeners (e.g. the Astryx <Theme> provider bridge) so
+    // the design-system mode stays in sync with the app's `.dark` class.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent<ThemeMode>(THEME_CHANGE_EVENT, { detail: newMode }),
+      );
+    }
   }, []);
 
   const resolvedTheme: "light" | "dark" =
