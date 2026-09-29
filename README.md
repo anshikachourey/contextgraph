@@ -1,5 +1,7 @@
 # ContextGraph
 
+[![CI](https://github.com/anshikachourey/contextgraph/actions/workflows/ci.yml/badge.svg)](https://github.com/anshikachourey/contextgraph/actions/workflows/ci.yml)
+
 Visual AI conversations as navigable knowledge graphs.
 
 ## Vision

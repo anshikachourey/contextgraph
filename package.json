@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "generate:sie-types": "npx openapi-typescript ml-service/contracts/sie-openapi.json -o src/lib/intelligence-v2/sie/generated/transport-types.ts"
