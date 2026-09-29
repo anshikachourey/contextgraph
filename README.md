@@ -39,16 +39,16 @@ the relationships between branches easier to understand and revisit.
 
 ### Persistent conversation state
 
-Conversation structure and graph relationships are persisted in PostgreSQL (via
-Supabase), so users can return to earlier conversations and continue from their
+Conversation structure and graph relationships are persisted in PostgreSQL via
+Supabase, so users can return to earlier conversations and continue from their
 existing context.
 
 ### Semantic Intelligence Engine (SIE)
 
 A semantic layer analyzes conversation content and proposes how new material
-relates to the existing graph — for example, whether an incoming packet matches an
-existing concern or should form a new one. Decisions use an explicit outcome enum
-defined in the service contract (`PipelineOutcome`):
+relates to the existing graph — for example, whether new conversation content
+matches an existing concern or should form a new one. Decisions use an explicit
+outcome enum defined in the service contract (`PipelineOutcome`):
 
 ```text
 YES · NO · UNRESOLVED · DEFER · RETRIEVAL_INCONCLUSIVE · REQUIRES_VALIDATION
@@ -82,8 +82,8 @@ flowchart TD
     V -- ProcessRequest --> ML
     ML -- ProcessResult --> V
 
-    subgraph PY[Python ML service &#40;FastAPI&#41;]
-      ML[Semantic Intelligence Engine<br/>embedding · segmentation · grouping · identity]
+    subgraph PY[Python ML service]
+      ML[Semantic Intelligence Engine<br/>FastAPI · embedding · segmentation · grouping · identity]
     end
 
     C[[sie-openapi.json<br/>versioned contract]]
@@ -122,7 +122,7 @@ contextgraph/
 
 ## Getting Started
 
-Clone and install (Node version is pinned in `.node-version`):
+Clone and install. The Node version is pinned in `.node-version`.
 
 ```bash
 git clone https://github.com/anshikachourey/contextgraph.git
@@ -136,16 +136,17 @@ Start the development server:
 npm run dev
 ```
 
-Then open http://localhost:3000. The Python ML service in `ml-service/` runs
-separately — see `ml-service/README.md`.
+Then open http://localhost:3000.
+
+The Python ML service in `ml-service/` runs separately. See `ml-service/README.md`.
 
 ## Development scripts
 
 ```bash
-npm test          # Vitest suite
-npm run typecheck # tsc --noEmit
-npm run lint      # ESLint
-npm run build     # production build
+npm test           # Vitest suite
+npm run typecheck  # tsc --noEmit
+npm run lint       # ESLint
+npm run build      # production build
 ```
 
 ContextGraph is under active development and continues to evolve.
