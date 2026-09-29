@@ -1,5 +1,5 @@
 import { cosineSimilarity } from "./cosineSimilarity";
-import { POSSIBLY_RELATED_THRESHOLD } from "./similarityThresholds";
+import { POSSIBLY_RELATED_THRESHOLD, getEdgeThresholds } from "./similarityThresholds";
 import { complete } from "@/src/lib/ai";
 import { EDGE_MODEL } from "@/src/lib/ai/models";
 import type { SuggestedEdge } from "@/src/types/edge";
@@ -29,13 +29,20 @@ type Candidate = {
  *
  * Algorithm:
  * 1. Compute all pairwise similarities (skip nodes without embeddings).
- * 2. Filter below POSSIBLY_RELATED_THRESHOLD.
+ * 2. Filter below the "possibly related" threshold.
  * 3. For each node, keep only the top MAX_CANDIDATES_PER_NODE neighbors.
  * 4. Deduplicate: each unordered pair appears exactly once.
  *
+ * `possiblyRelatedThreshold` defaults to the compile-time constant so this
+ * function stays pure and synchronous. Callers that want the data-calibrated
+ * value resolve it via getEdgeThresholds() and pass it in.
+ *
  * Returns candidates sorted by similarity descending.
  */
-export function selectCandidates(nodes: NodeForSuggestion[]): Candidate[] {
+export function selectCandidates(
+  nodes: NodeForSuggestion[],
+  possiblyRelatedThreshold: number = POSSIBLY_RELATED_THRESHOLD,
+): Candidate[] {
   const withEmbeddings = nodes.filter(
     (n): n is NodeForSuggestion & { embedding: number[] } =>
       n.embedding !== null && n.embedding.length > 0,
@@ -51,7 +58,7 @@ export function selectCandidates(nodes: NodeForSuggestion[]): Candidate[] {
         withEmbeddings[i].embedding,
         withEmbeddings[j].embedding,
       );
-      if (score >= POSSIBLY_RELATED_THRESHOLD) {
+      if (score >= possiblyRelatedThreshold) {
         allPairs.push({ a: withEmbeddings[i].id, b: withEmbeddings[j].id, score });
       }
     }
@@ -149,7 +156,9 @@ Write one sentence explaining the relationship:`;
 export async function computeSuggestedEdges(
   nodes: NodeForSuggestion[],
 ): Promise<SuggestedEdge[]> {
-  const candidates = selectCandidates(nodes);
+  // Resolve the (possibly calibrated) threshold once, then run pure selection.
+  const { possiblyRelated } = await getEdgeThresholds();
+  const candidates = selectCandidates(nodes, possiblyRelated);
 
   if (candidates.length === 0) return [];
 
