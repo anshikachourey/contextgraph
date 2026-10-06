@@ -311,6 +311,8 @@ type ChatMessageProps = {
   onRetry?: (messageId: string) => void;
   onEdit?: (messageId: string, newContent: string) => void;
   isLatestUserMessage?: boolean;
+  /** True while this assistant message is actively streaming its reply. */
+  isStreaming?: boolean;
 };
 
 export default function ChatMessage({
@@ -320,6 +322,7 @@ export default function ChatMessage({
   onRetry,
   onEdit,
   isLatestUserMessage = false,
+  isStreaming = false,
 }: ChatMessageProps) {
   const [showActions, setShowActions] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -519,7 +522,11 @@ export default function ChatMessage({
           </div>
 
           {/* Content */}
-          <div className="text-[16px] leading-[1.7] text-[var(--foreground)]">
+          <div
+            className={`text-[16px] leading-[1.7] text-[var(--foreground)] ${
+              isStreaming ? "cg-streaming" : ""
+            }`}
+          >
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeSanitize]}
@@ -527,6 +534,12 @@ export default function ChatMessage({
             >
               {message.content}
             </ReactMarkdown>
+            {isStreaming && (
+              <span
+                className="cg-caret"
+                aria-hidden="true"
+              />
+            )}
           </div>
 
           {/* Attachments */}
