@@ -10,6 +10,7 @@ import GraphDrawer from "@/src/components/graph/GraphDrawer";
 import V2GraphPreview from "@/src/components/graph-v2/V2GraphPreview";
 import SettingsModal from "@/src/components/settings/SettingsModal";
 import { useStreamChat } from "@/src/hooks/useStreamChat";
+import { useSmoothStream } from "@/src/hooks/useSmoothStream";
 import { useTheme } from "@/src/hooks/useTheme";
 import type { ContextNode } from "@/src/types/node";
 import type { ChatMessage } from "@/src/types/message";
@@ -135,21 +136,30 @@ export default function Home() {
   const streamingBranchInfoRef = useRef<{ parentNodeId: string | null; branchRootMessageId: string | null } | null>(null);
   const streamingV2ContinuationRef = useRef<V2ContinuationContext | null>(null);
 
+  // Smoothing buffer: releases streamed tokens at a steady per-frame rate so the
+  // assistant reply reveals smoothly instead of jumping in bursty network chunks.
+  const smoothStream = useSmoothStream((revealed: string) => {
+    const assistantId = streamingAssistantIdRef.current;
+    if (!assistantId) return;
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === assistantId ? { ...m, content: m.content + revealed } : m,
+      ),
+    );
+  });
+
   const { sendMessage: streamSendMessage, isStreaming } = useStreamChat({
     onToken: (content: string) => {
-      const assistantId = streamingAssistantIdRef.current;
-      if (!assistantId) return;
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId ? { ...m, content: m.content + content } : m,
-        ),
-      );
+      // Queue the token; the smoothing loop drains it into state steadily.
+      smoothStream.push(content);
     },
     onComplete: (fullContent: string, _stopReason: string) => {
       const assistantId = streamingAssistantIdRef.current;
       if (!assistantId) return;
 
-      // Finalize the assistant message content
+      // Release anything still buffered, then set the exact final content so the
+      // persisted message is never truncated by an in-flight reveal.
+      smoothStream.flushNow();
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantId ? { ...m, content: fullContent } : m,
@@ -217,7 +227,9 @@ export default function Home() {
       const assistantId = streamingAssistantIdRef.current;
       if (!assistantId) return;
 
-      // Append error indicator to the partial content
+      // Reveal any buffered text first so the error note appends after the full
+      // partial content rather than mid-reveal.
+      smoothStream.flushNow();
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantId
@@ -864,6 +876,9 @@ export default function Home() {
       branchRootMessageId: isBranching ? branchRootId : null,
     };
     setMessages((prev) => [...prev, placeholderAssistant]);
+
+    // Clear any residual smoothing buffer before this stream begins.
+    smoothStream.reset();
 
     // Store refs for the streaming callbacks
     streamingAssistantIdRef.current = assistantId;

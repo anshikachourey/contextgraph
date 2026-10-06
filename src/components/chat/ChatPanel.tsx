@@ -298,6 +298,12 @@ export default function ChatPanel({
                     isHighlighted={highlightedMessageIds.includes(message.id)}
                     onEdit={isSelectMode ? undefined : onEditMessage}
                     isLatestUserMessage={isLatestUser}
+                    isStreaming={
+                      isAssistantResponding &&
+                      message.role === "assistant" &&
+                      idx === messages.length - 1 &&
+                      message.content !== ""
+                    }
                   />
                 </div>
               </div>
