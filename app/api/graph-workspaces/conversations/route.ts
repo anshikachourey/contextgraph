@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
+import { resolveRequestDbClient, useRlsScopedAccess } from "@/src/lib/db/request-client";
 import {
   getGraphWorkspace,
   addConversationToGraph,
@@ -20,14 +21,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "graphId is required" }, { status: 400 });
   }
 
+  const db = await resolveRequestDbClient();
+
   try {
-    // Verify ownership
-    const workspace = await getGraphWorkspace(graphId);
-    if (!workspace || workspace.workspace_id !== session.workspace) {
+    // Verify ownership (RLS on flag-true, manual workspace_id on flag-false)
+    const workspace = await getGraphWorkspace(graphId, db);
+    if (!workspace || (!useRlsScopedAccess() && workspace.workspace_id !== session.workspace)) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const conversations = await listGraphConversations(graphId);
+    const conversations = await listGraphConversations(graphId, db);
     return NextResponse.json(conversations, {
       headers: { "Cache-Control": "no-store" },
     });
@@ -64,10 +67,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  const db = await resolveRequestDbClient();
+
   try {
-    // Verify graph ownership
-    const workspace = await getGraphWorkspace(graphId);
-    if (!workspace || workspace.workspace_id !== session.workspace) {
+    // Verify graph ownership (RLS on flag-true, manual workspace_id on flag-false)
+    const workspace = await getGraphWorkspace(graphId, db);
+    if (!workspace || (!useRlsScopedAccess() && workspace.workspace_id !== session.workspace)) {
       return NextResponse.json({ error: "Graph not found" }, { status: 404 });
     }
 
@@ -75,7 +80,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const access = await requireConversationAccess(conversationId, session);
     if (isAuthError(access)) return access;
 
-    await addConversationToGraph(graphId, conversationId, sourceNodeId);
+    await addConversationToGraph(graphId, conversationId, sourceNodeId, db);
 
     return NextResponse.json(
       { graphId, conversationId, status: "associated" },
@@ -113,14 +118,16 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  const db = await resolveRequestDbClient();
+
   try {
-    // Verify graph ownership
-    const workspace = await getGraphWorkspace(graphId);
-    if (!workspace || workspace.workspace_id !== session.workspace) {
+    // Verify graph ownership (RLS on flag-true, manual workspace_id on flag-false)
+    const workspace = await getGraphWorkspace(graphId, db);
+    if (!workspace || (!useRlsScopedAccess() && workspace.workspace_id !== session.workspace)) {
       return NextResponse.json({ error: "Graph not found" }, { status: 404 });
     }
 
-    await removeConversationFromGraph(graphId, conversationId);
+    await removeConversationFromGraph(graphId, conversationId, db);
 
     return NextResponse.json({ graphId, conversationId, status: "removed" });
   } catch (err) {

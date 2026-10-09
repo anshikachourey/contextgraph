@@ -9,7 +9,8 @@
  * Serialization scope: PROCESS-LOCAL only.
  */
 
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { createServiceRoleClient } from "@/src/lib/supabase/service-role";
+import { resolveDbClient, type DbClient } from "@/src/lib/db/client";
 import { runIncrementalV2Update } from "./index";
 import type { V2Snapshot } from "./schemas";
 import type { ChatMessage } from "@/src/types/message";
@@ -21,6 +22,15 @@ export interface UpdateJob {
   messages: ChatMessage[];
   v2ContinuationObjectId: string | null;
   enqueuedAt: string;
+  /**
+   * Optional user-scoped Supabase client for the request-triggered path (Task
+   * 5.2). When provided, the processing chain for this job uses it so RLS
+   * applies; when omitted, it falls back to the legacy service-role client,
+   * preserving pre-cutover behavior. NOTE: the BACKGROUND recovery sweep
+   * (`recoverAbandonedWork`/`triggerRecoveryOnce`) deliberately stays on the
+   * service-role path (group (d) allowlist) and never receives this client.
+   */
+  client?: DbClient;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -36,11 +46,11 @@ let recoveryTriggered = false;
 
 export function enqueueV2Update(job: UpdateJob): void {
   triggerRecoveryOnce();
-  markQueued(job.conversationId);
+  markQueued(job.conversationId, job.client);
 
   const chain = conversationChains.get(job.conversationId) ?? Promise.resolve();
   const next = chain
-    .then(() => processFromCursor(job.conversationId, job.v2ContinuationObjectId))
+    .then(() => processFromCursor(job.conversationId, job.v2ContinuationObjectId, job.client))
     .catch((err) => {
       console.error(`[v2-runner] ${job.conversationId}:`, err instanceof Error ? err.message : err);
     });
@@ -78,7 +88,13 @@ export function triggerRecoveryOnce(): void {
  * Returns the number of conversations reclaimed.
  */
 export async function recoverAbandonedWork(): Promise<number> {
-  const db = createServerSupabaseClient();
+  // BACKGROUND sweep — not request-triggered, so it stays on the service-role
+  // path (group (d) allowlist). It never receives a user-scoped client because
+  // there is no request/auth.uid() to scope by. It constructs the GUARDED
+  // factory directly (conspicuous opt-in marker), NOT the legacy bridge, so it
+  // keeps working as a genuine background path in cutover mode rather than
+  // hard-failing. Routes only ever call the fire-and-forget triggerRecoveryOnce.
+  const db = createServiceRoleClient({ allowServiceRole: true });
   const staleThreshold = new Date(Date.now() - STALE_TIMEOUT_MS).toISOString();
 
   const { data: rows } = await db
@@ -104,8 +120,8 @@ export async function recoverAbandonedWork(): Promise<number> {
 
 // ─── Core Processor ─────────────────────────────────────────────────────────
 
-async function processFromCursor(conversationId: string, v2ContinuationObjectId: string | null): Promise<void> {
-  const db = createServerSupabaseClient();
+async function processFromCursor(conversationId: string, v2ContinuationObjectId: string | null, client?: DbClient): Promise<void> {
+  const db = resolveDbClient(client);
 
   // 1. Read persisted cursor
   const { data: stateRow } = await db
@@ -245,8 +261,8 @@ async function processFromCursor(conversationId: string, v2ContinuationObjectId:
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-async function markQueued(conversationId: string): Promise<void> {
-  const db = createServerSupabaseClient();
+async function markQueued(conversationId: string, client?: DbClient): Promise<void> {
+  const db = resolveDbClient(client);
   await db.from("v2_update_state").upsert({
     conversation_id: conversationId,
     update_status: "queued",
@@ -255,7 +271,7 @@ async function markQueued(conversationId: string): Promise<void> {
   }, { onConflict: "conversation_id" });
 }
 
-async function setIdle(db: ReturnType<typeof createServerSupabaseClient>, conversationId: string): Promise<void> {
+async function setIdle(db: DbClient, conversationId: string): Promise<void> {
   await db.from("v2_update_state").upsert({
     conversation_id: conversationId,
     update_status: "idle",

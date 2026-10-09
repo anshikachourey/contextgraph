@@ -5,7 +5,7 @@
  * Shadow mode: reads messages, produces plan, persists nothing.
  */
 
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { resolveDbClient, type DbClient } from "@/src/lib/db/client";
 import { buildUtterances } from "./utterances";
 import { extractPropositions } from "./propositions";
 import { formThreads } from "./threads";
@@ -29,9 +29,13 @@ export interface LayerDiagnostics {
  * Run the full V2 canonical pipeline on a conversation.
  * Returns the complete derivation chain + validated plan + layer diagnostics.
  */
-export async function runV2GraphPlan(conversationId: string, options?: { maxMessageSeq?: number }): Promise<V2GraphPlan & { _diagnostics: LayerDiagnostics[] }> {
+export async function runV2GraphPlan(conversationId: string, options?: { maxMessageSeq?: number; client?: DbClient }): Promise<V2GraphPlan & { _diagnostics: LayerDiagnostics[] }> {
   const diagnostics: LayerDiagnostics[] = [];
-  const db = createServerSupabaseClient();
+  // Request-triggered path (/api/v2/graph-snapshot) injects the user-scoped
+  // client so RLS applies in cutover mode. When omitted (e.g. the
+  // requireDebugAccess()-gated /api/debug/v2-graph-plan diagnostic), falls back
+  // to the legacy service-role client (behavior-neutral pre-cutover).
+  const db = resolveDbClient(options?.client);
 
   // Load main-thread messages, optionally bounded by message_seq
   let msgData: Array<Record<string, unknown>> | null = null;

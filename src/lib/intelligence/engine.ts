@@ -11,7 +11,7 @@
  * Called from /api/messages after persistence.
  */
 
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { resolveDbClient, type DbClient } from "@/src/lib/db/client";
 import { generateEmbedding } from "@/src/lib/embeddings";
 import { cosineSimilarity } from "@/src/lib/cosineSimilarity";
 import { parseJsonFromLLM, isTitleSummaryResponse } from "@/src/lib/llmJson";
@@ -142,8 +142,15 @@ function createEmptyLog(conversationId: string): PipelineLog {
 export async function runIntelligenceEngine(
   conversationId: string,
   newMessageIds?: { userMessageId: string; assistantMessageId: string },
+  client?: DbClient,
 ): Promise<EngineResult> {
   console.log(">>> ENTER runIntelligenceEngine", { conversationId });
+
+  // Resolve the DB client ONCE and thread it through every helper. On the
+  // request-triggered path (/api/messages) the caller injects the user-scoped
+  // client so RLS applies in cutover mode; when omitted, resolveDbClient falls
+  // back to the legacy service-role client (behavior-neutral pre-cutover).
+  const db = resolveDbClient(client);
 
   const result: EngineResult = {
     mutations: [],
@@ -158,7 +165,7 @@ export async function runIntelligenceEngine(
   try {
     // ─── Load context ───────────────────────────────────────────────────
     console.log(">>> Before loadPipelineContext");
-    const ctx = await loadPipelineContext(conversationId, newMessageIds);
+    const ctx = await loadPipelineContext(db, conversationId, newMessageIds);
     console.log(">>> After loadPipelineContext:", {
       hasNewExchange: !!ctx.newExchange,
       openSegExchanges: ctx.engineState.openSegment?.exchangeCount ?? 0,
@@ -233,7 +240,7 @@ export async function runIntelligenceEngine(
       console.log("[engine] → SEGMENT FROZEN (max_segment_length):", { exchangeCount: openSeg.exchangeCount });
 
       frozenSegmentMessageIds = await getSegmentMessageIds(
-        conversationId, openSeg.startMessageId, openSeg.endMessageId,
+        db, conversationId, openSeg.startMessageId, openSeg.endMessageId,
       );
       frozenSegmentEmbedding = openSeg.embedding;
 
@@ -290,7 +297,7 @@ export async function runIntelligenceEngine(
 
         // Collect message IDs from the frozen segment
         frozenSegmentMessageIds = await getSegmentMessageIds(
-          conversationId, openSeg.startMessageId, openSeg.endMessageId,
+          db, conversationId, openSeg.startMessageId, openSeg.endMessageId,
         );
         frozenSegmentEmbedding = openSeg.embedding;
 
@@ -369,7 +376,7 @@ export async function runIntelligenceEngine(
       log.stages.routing.segmentMessageCount = frozenSegmentMessageIds.length;
 
       // ─── Action Classification (replaces pure cosine routing) ─────────
-      const segmentText = await loadSegmentText(frozenSegmentMessageIds);
+      const segmentText = await loadSegmentText(db, frozenSegmentMessageIds);
       const graphContext = {
         nodes: ctx.nodes.map((n) => ({ id: n.id, title: n.title, summary: n.summary })),
         candidates: ctx.candidates.map((c) => ({
@@ -510,10 +517,10 @@ export async function runIntelligenceEngine(
           id: "", segments: [segment], embedding: frozenSegmentEmbedding, confidence, lastTouchedRun: null,
         };
         if (shouldMaterialize(tempCandidate, ctx.nodes)) {
-          const candidateMessages = await loadCandidateMessages(tempCandidate);
+          const candidateMessages = await loadCandidateMessages(db, tempCandidate);
           const pipelineResult = await evaluateMaterializationReadiness(candidateMessages, 0);
           if (pipelineResult.shouldMaterialize) {
-            const node = await materializeToNode(conversationId, tempCandidate, ctx, pipelineResult.insightSeed);
+            const node = await materializeToNode(db, conversationId, tempCandidate, ctx, pipelineResult.insightSeed);
             if (node) {
               result.mutations.push(node.mutation);
               result.nodesCreated++;
@@ -598,7 +605,7 @@ export async function runIntelligenceEngine(
     if (!segmentFrozen || !affectedNodeId) {
       // Only run stale promotion when the current turn didn't already materialize something
       const stalePromoted = await promoteStaleCandidates(
-        conversationId, ctx, result, log,
+        db, conversationId, ctx, result, log,
       );
       if (stalePromoted) {
         // Update affected node for edge computation
@@ -623,7 +630,7 @@ export async function runIntelligenceEngine(
     // Also skips if this run already created a node.
     if (result.nodesCreated === 0 && ctx.nodes.length === 0 &&
         !result.mutations.some((m) => m.type === "materialize")) {
-      const db2 = createServerSupabaseClient();
+      const db2 = db;
 
       // Count existing nodes (fresh DB query)
       const { count } = await db2
@@ -726,7 +733,7 @@ export async function runIntelligenceEngine(
     // ─── Stage 8b: PROACTIVE EDGE CREATION ───────────────────────────────
     // After any node is created/extended, connect it to related existing nodes
     if (affectedNodeId && affectedNodeEmbedding && affectedNodeEmbedding.length > 0) {
-      const db3 = createServerSupabaseClient();
+      const db3 = db;
       const { data: allNodes } = await db3
         .from("nodes")
         .select("id, title, summary, embedding")
@@ -801,7 +808,7 @@ export async function runIntelligenceEngine(
     log.stages.persistence.mutationsApplied = result.mutations.length;
     log.stages.persistence.totalNodesAfter = ctx.nodes.length + result.nodesCreated;
     log.stages.persistence.totalEdgesAfter = ctx.edges.length + result.edgesAdded - result.edgesRemoved;
-    await persistMutations(conversationId, result.mutations, ctx);
+    await persistMutations(db, conversationId, result.mutations, ctx);
 
   } catch (err) {
     log.error = err instanceof Error ? err.message : String(err);
@@ -816,11 +823,10 @@ export async function runIntelligenceEngine(
 // ─── State loading ──────────────────────────────────────────────────────────
 
 async function loadPipelineContext(
+  db: DbClient,
   conversationId: string,
   newMessageIds?: { userMessageId: string; assistantMessageId: string },
 ): Promise<PipelineContext> {
-  const db = createServerSupabaseClient();
-
   // Load engine state
   debugLog("[engine] loading state for:", conversationId);
 
@@ -997,12 +1003,11 @@ async function loadPipelineContext(
 // ─── Helper: get message IDs in a range ─────────────────────────────────────
 
 async function getSegmentMessageIds(
+  db: DbClient,
   conversationId: string,
   startMessageId: string,
   endMessageId: string,
 ): Promise<string[]> {
-  const db = createServerSupabaseClient();
-
   // Get timestamps for range boundaries
   const { data: startMsg } = await db
     .from("messages")
@@ -1033,6 +1038,7 @@ async function getSegmentMessageIds(
 // ─── Materialization helper ─────────────────────────────────────────────────
 
 async function materializeToNode(
+  db: DbClient,
   conversationId: string,
   candidate: CandidateState,
   ctx: PipelineContext,
@@ -1041,7 +1047,6 @@ async function materializeToNode(
   const messageIds = [...new Set(candidate.segments.flatMap((s) => s.messageIds))];
 
   // Load the actual messages for LLM summarization
-  const db = createServerSupabaseClient();
   const { data: msgData } = await db
     .from("messages")
     .select("id, role, content")
@@ -1106,9 +1111,8 @@ async function materializeToNode(
 
 // ─── Helper: load formatted messages for a candidate ────────────────────────
 
-async function loadSegmentText(messageIds: string[]): Promise<string> {
+async function loadSegmentText(db: DbClient, messageIds: string[]): Promise<string> {
   if (messageIds.length === 0) return "";
-  const db = createServerSupabaseClient();
   const { data: msgData } = await db
     .from("messages")
     .select("role, content")
@@ -1121,11 +1125,10 @@ async function loadSegmentText(messageIds: string[]): Promise<string> {
     .slice(0, 4000);
 }
 
-async function loadCandidateMessages(candidate: CandidateState): Promise<string> {
+async function loadCandidateMessages(db: DbClient, candidate: CandidateState): Promise<string> {
   const messageIds = [...new Set(candidate.segments.flatMap((s) => s.messageIds))];
   if (messageIds.length === 0) return "";
 
-  const db = createServerSupabaseClient();
   const { data: msgData } = await db
     .from("messages")
     .select("role, content")
@@ -1265,6 +1268,7 @@ async function runGraphSynthesisPass(
 // ─── Stale Candidate Promotion ──────────────────────────────────────────────
 
 async function promoteStaleCandidates(
+  db: DbClient,
   conversationId: string,
   ctx: PipelineContext,
   result: EngineResult,
@@ -1293,7 +1297,7 @@ async function promoteStaleCandidates(
     if (blockCheck.blocked) continue;
 
     // Promote this candidate — run pipeline first
-    const candidateMessages = await loadCandidateMessages(candidate);
+    const candidateMessages = await loadCandidateMessages(db, candidate);
     const pipelineResult = await evaluateMaterializationReadiness(candidateMessages, runsSinceTouch);
 
     if (!pipelineResult.shouldMaterialize) {
@@ -1312,7 +1316,7 @@ async function promoteStaleCandidates(
       insightSeed: pipelineResult.insightSeed,
     });
 
-    const node = await materializeToNode(conversationId, candidate, ctx, pipelineResult.insightSeed);
+    const node = await materializeToNode(db, conversationId, candidate, ctx, pipelineResult.insightSeed);
     if (node) {
       result.mutations.push(node.mutation);
       result.nodesCreated++;
@@ -1342,12 +1346,11 @@ async function promoteStaleCandidates(
 // ─── Mutation persistence ───────────────────────────────────────────────────
 
 async function persistMutations(
+  db: DbClient,
   conversationId: string,
   mutations: GraphMutation[],
   ctx?: PipelineContext,
 ): Promise<void> {
-  const db = createServerSupabaseClient();
-
   for (const m of mutations) {
     try {
       switch (m.type) {
@@ -1434,7 +1437,7 @@ async function persistMutations(
 
           if (freshEmbedding && freshEmbedding.length > 0) {
             try {
-              await assignNodeToNeighborhood(conversationId, m.nodeId, freshEmbedding, m.title);
+              await assignNodeToNeighborhood(conversationId, m.nodeId, freshEmbedding, m.title, db);
               // Log would go here but we don't have access to log in this scope
             } catch (err) {
               errorLog("[engine] Neighborhood assignment failed:", err);

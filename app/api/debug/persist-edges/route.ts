@@ -1,5 +1,6 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextResponse } from "next/server";
+import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 import { loadLatestConversation } from "@/src/lib/db/conversations";
 import { loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
 import { persistEdges } from "@/src/lib/db/edges";
@@ -26,7 +27,8 @@ export async function POST(): Promise<
   if (debugAuthError) return debugAuthError;
 
   try {
-    const data = await loadLatestConversation();
+    const db = await resolveRequestDbClient();
+    const data = await loadLatestConversation(undefined, db);
     if (!data) {
       return NextResponse.json(
         { error: "No conversation found." },
@@ -34,7 +36,7 @@ export async function POST(): Promise<
       );
     }
 
-    const nodes = await loadNodesWithEmbeddings(data.conversation.id);
+    const nodes = await loadNodesWithEmbeddings(data.conversation.id, db);
     const allSuggestions = await computeSuggestedEdges(nodes);
 
     // Only persist strongly related edges
@@ -42,7 +44,7 @@ export async function POST(): Promise<
       (s) => s.similarity >= STRONGLY_RELATED_THRESHOLD,
     );
 
-    const persisted = await persistEdges(data.conversation.id, strongEdges);
+    const persisted = await persistEdges(data.conversation.id, strongEdges, db);
 
     return NextResponse.json({ persisted, total: strongEdges.length });
   } catch (err) {

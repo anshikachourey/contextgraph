@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { resolveDbClient, type DbClient } from "./client";
 import type { TopicCandidate, DbTopicCandidate, MessageSegment } from "@/src/types/graphEngine";
 
 /**
@@ -6,8 +6,9 @@ import type { TopicCandidate, DbTopicCandidate, MessageSegment } from "@/src/typ
  */
 export async function loadActiveCandidates(
   conversationId: string,
+  client?: DbClient,
 ): Promise<TopicCandidate[]> {
-  const db = createServerSupabaseClient();
+  const db = resolveDbClient(client);
 
   const { data, error } = await db
     .from("topic_candidates")
@@ -29,8 +30,9 @@ export async function createCandidate(
   segment: MessageSegment,
   embedding: number[],
   confidence: number,
+  client?: DbClient,
 ): Promise<TopicCandidate> {
-  const db = createServerSupabaseClient();
+  const db = resolveDbClient(client);
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -71,8 +73,9 @@ export async function updateCandidate(
   segments: MessageSegment[],
   embedding: number[],
   confidence: number,
+  client?: DbClient,
 ): Promise<void> {
-  const db = createServerSupabaseClient();
+  const db = resolveDbClient(client);
 
   const { error } = await db
     .from("topic_candidates")
@@ -93,8 +96,9 @@ export async function updateCandidate(
 export async function materializeCandidate(
   candidateId: string,
   nodeId: string,
+  client?: DbClient,
 ): Promise<void> {
-  const db = createServerSupabaseClient();
+  const db = resolveDbClient(client);
 
   const { error } = await db
     .from("topic_candidates")
@@ -114,8 +118,9 @@ export async function materializeCandidate(
 export async function discardStaleCandidates(
   conversationId: string,
   staleBeforeDate: string,
+  client?: DbClient,
 ): Promise<number> {
-  const db = createServerSupabaseClient();
+  const db = resolveDbClient(client);
 
   const { data, error } = await db
     .from("topic_candidates")

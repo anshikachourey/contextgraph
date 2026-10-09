@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
+import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 import {
   getConversationNodePositions,
   saveConversationNodePositions,
@@ -21,8 +22,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const access = await requireConversationAccess(conversationId, session);
   if (isAuthError(access)) return access;
 
+  const db = await resolveRequestDbClient();
+
   try {
-    const positions = await getConversationNodePositions(conversationId);
+    const positions = await getConversationNodePositions(conversationId, db);
     return NextResponse.json(positions, {
       headers: { "Cache-Control": "no-store" },
     });
@@ -71,8 +74,10 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
   const access = await requireConversationAccess(conversationId, session);
   if (isAuthError(access)) return access;
 
+  const db = await resolveRequestDbClient();
+
   try {
-    await saveConversationNodePositions(conversationId, positions);
+    await saveConversationNodePositions(conversationId, positions, db);
     return NextResponse.json({ status: "saved", count: positions.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

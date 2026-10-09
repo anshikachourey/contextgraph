@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession, isAuthError } from "@/src/lib/auth";
+import { resolveRequestDbClient, useRlsScopedAccess } from "@/src/lib/db/request-client";
 import {
   getGraphWorkspace,
   listGraphConversations,
@@ -19,13 +20,19 @@ export async function GET(
 
   const { id } = await params;
 
+  // Flag-aware client: service-role (behavior-neutral) while disabled,
+  // user-scoped (RLS on graph_workspaces) once enabled.
+  const db = await resolveRequestDbClient();
+
   try {
-    const workspace = await getGraphWorkspace(id);
-    if (!workspace || workspace.workspace_id !== session.workspace) {
+    const workspace = await getGraphWorkspace(id, db);
+    // Flag-true relies on RLS (non-member → null → 404); flag-false keeps the
+    // legacy manual workspace_id check for behavior-neutrality.
+    if (!workspace || (!useRlsScopedAccess() && workspace.workspace_id !== session.workspace)) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const conversations = await listGraphConversations(id);
+    const conversations = await listGraphConversations(id, db);
 
     return NextResponse.json(
       {

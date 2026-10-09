@@ -18,7 +18,7 @@
  *   controls; do not bypass or mutate authority state.
  */
 
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { resolveDbClient, type DbClient } from "@/src/lib/db/client";
 import { validateInvariants } from "./invariant-validator";
 import { projectToV2Snapshot, type V2SnapshotProjection } from "./v2-projection";
 import {
@@ -754,7 +754,8 @@ export async function commitSIEResult(
   processResult: ProcessResult,
   sieGraphState: SIEGraphState,
   v2Projection?: V2SnapshotProjection,
-  authorityState?: AuthorityState
+  authorityState?: AuthorityState,
+  client?: DbClient
 ): Promise<CommitResult> {
   // ─── Step 1: Validate generated contract completeness ───────────────
   const contractViolations = validateContractCompleteness(processResult);
@@ -837,7 +838,9 @@ export async function commitSIEResult(
   const v2Mutations = formatMutationsForV2(commitBundle);
 
   // ─── Step 10: Execute base atomic RPC call ──────────────────────────
-  const db = createServerSupabaseClient();
+  // Request-triggered path: use the injected user-scoped client when provided
+  // (RLS applies; RPC runs under auth.uid()), else fall back to service-role.
+  const db = resolveDbClient(client);
 
   const { data, error } = await db.rpc("v2_commit_update", {
     // Original 8 parameters (V2 compatibility)

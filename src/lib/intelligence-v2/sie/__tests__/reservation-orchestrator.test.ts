@@ -31,7 +31,7 @@ import type { ProcessResult } from "../types";
 
 const mockRpc = vi.fn();
 
-vi.mock("@/src/lib/supabase/server", () => ({
+vi.mock("@/src/lib/supabase/legacy-service-role", () => ({
   createServerSupabaseClient: () => ({
     rpc: mockRpc,
   }),
