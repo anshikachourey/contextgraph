@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
-import type { DbClient } from "@/src/lib/db/client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
 
 /**
@@ -39,9 +38,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const access = await requireConversationAccess(conversationId, session);
   if (isAuthError(access)) return access;
 
-  // Flag-aware client: service-role (behavior-neutral) while disabled,
-  // user-scoped (RLS applies) once enabled. Scoped by the verified conversation.
-  const db = await resolveRequestDbClient();
+  const db = createServerSupabaseClient();
 
   switch (action) {
     case "create_node":
@@ -70,7 +67,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-type DB = DbClient;
+type DB = ReturnType<typeof createServerSupabaseClient>;
 
 async function loadPayload(db: DB, conversationId: string) {
   const { data, error } = await db

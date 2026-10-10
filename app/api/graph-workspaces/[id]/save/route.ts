@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession, isAuthError } from "@/src/lib/auth";
-import { resolveRequestDbClient, useRlsScopedAccess } from "@/src/lib/db/request-client";
 import {
   getGraphWorkspace,
   saveGraphWorkspacePayload,
@@ -41,14 +40,10 @@ export async function PUT(
     );
   }
 
-  // Flag-aware client: service-role (behavior-neutral) while disabled,
-  // user-scoped (RLS on graph_workspaces) once enabled.
-  const db = await resolveRequestDbClient();
-
-  // Verify ownership (RLS on flag-true, manual workspace_id on flag-false)
+  // Verify ownership
   try {
-    const existing = await getGraphWorkspace(id, db);
-    if (!existing || (!useRlsScopedAccess() && existing.workspace_id !== session.workspace)) {
+    const existing = await getGraphWorkspace(id);
+    if (!existing || existing.workspace_id !== session.workspace) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
@@ -57,7 +52,7 @@ export async function PUT(
       edges: edges as GraphPayloadV1["edges"],
     };
 
-    await saveGraphWorkspacePayload(id, payload, db);
+    await saveGraphWorkspacePayload(id, payload);
 
     return NextResponse.json({
       status: "saved",

@@ -1,6 +1,5 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextRequest, NextResponse } from "next/server";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 import { loadLatestConversation } from "@/src/lib/db/conversations";
 import { loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
 import { cosineSimilarity } from "@/src/lib/cosineSimilarity";
@@ -27,13 +26,12 @@ export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get("q")?.toLowerCase() ?? "";
 
   try {
-    const db = await resolveRequestDbClient();
-    const data = await loadLatestConversation(undefined, db);
+    const data = await loadLatestConversation();
     if (!data) {
       return NextResponse.json({ error: "No conversation found." }, { status: 404 });
     }
 
-    const rawNodes = await loadNodesWithEmbeddings(data.conversation.id, db);
+    const rawNodes = await loadNodesWithEmbeddings(data.conversation.id);
 
     // Filter nodes matching query (case-insensitive title search)
     const matchingNodes = query

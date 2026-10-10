@@ -55,7 +55,7 @@ type ProcessRequest = components["schemas"]["ProcessRequest"];
 
 const mockRpc = vi.fn();
 
-vi.mock("@/src/lib/supabase/legacy-service-role", () => ({
+vi.mock("@/src/lib/supabase/server", () => ({
   createServerSupabaseClient: () => ({
     rpc: mockRpc,
   }),

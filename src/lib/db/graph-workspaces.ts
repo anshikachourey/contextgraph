@@ -1,15 +1,11 @@
 /**
  * Database operations for graph workspaces.
- *
- * TRANSITION (Task 5.1): each function now accepts an OPTIONAL injected Supabase
- * client as its trailing parameter. When provided (converted/user-scoped
- * callers, Tasks 12+), RLS applies through that client. When omitted (every
- * current route handler, unchanged), it falls back to the legacy service-role
- * client via `resolveDbClient`, preserving identical pre-cutover behavior.
- * Authorization is enforced at the API route layer until RLS takes over.
+ * 
+ * All functions use the service-role client (bypasses RLS).
+ * Authorization is enforced at the API route layer.
  */
 
-import { resolveDbClient, type DbClient } from "./client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -75,8 +71,8 @@ export type GraphWorkspaceConversation = {
 
 // ─── List ─────────────────────────────────────────────────────────────────────
 
-export async function listGraphWorkspaces(workspaceId: string, client?: DbClient): Promise<GraphWorkspaceListItem[]> {
-  const db = resolveDbClient(client);
+export async function listGraphWorkspaces(workspaceId: string): Promise<GraphWorkspaceListItem[]> {
+  const db = createServerSupabaseClient();
 
   const { data, error } = await db
     .from("graph_workspaces")
@@ -100,8 +96,8 @@ export async function listGraphWorkspaces(workspaceId: string, client?: DbClient
 
 // ─── Get ──────────────────────────────────────────────────────────────────────
 
-export async function getGraphWorkspace(id: string, client?: DbClient): Promise<GraphWorkspace | null> {
-  const db = resolveDbClient(client);
+export async function getGraphWorkspace(id: string): Promise<GraphWorkspace | null> {
+  const db = createServerSupabaseClient();
 
   const { data, error } = await db
     .from("graph_workspaces")
@@ -124,9 +120,8 @@ export async function createGraphWorkspace(
     graphPayload?: GraphPayloadV1;
     legacyImportKey?: string;
   },
-  client?: DbClient,
 ): Promise<GraphWorkspace> {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   const payload = options?.graphPayload ?? { nodes: [], edges: [] };
 
@@ -158,9 +153,8 @@ export async function importLegacyGraphWorkspace(
   workspaceId: string,
   legacyImportKey: string,
   payload: GraphPayloadV1,
-  client?: DbClient,
 ): Promise<{ graphWorkspace: GraphWorkspace; alreadyExisted: boolean }> {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   // Check if already imported
   const { data: existing } = await db
@@ -173,25 +167,19 @@ export async function importLegacyGraphWorkspace(
     return { graphWorkspace: existing as GraphWorkspace, alreadyExisted: true };
   }
 
-  // Create new graph workspace with the legacy data. Thread the same injected
-  // client through so the injected path never falls back to service-role.
-  const graphWorkspace = await createGraphWorkspace(
-    workspaceId,
-    "Graph Dashboard",
-    {
-      graphPayload: payload,
-      legacyImportKey,
-    },
-    client,
-  );
+  // Create new graph workspace with the legacy data
+  const graphWorkspace = await createGraphWorkspace(workspaceId, "Graph Dashboard", {
+    graphPayload: payload,
+    legacyImportKey,
+  });
 
   return { graphWorkspace, alreadyExisted: false };
 }
 
 // ─── Rename ───────────────────────────────────────────────────────────────────
 
-export async function renameGraphWorkspace(id: string, name: string, client?: DbClient): Promise<void> {
-  const db = resolveDbClient(client);
+export async function renameGraphWorkspace(id: string, name: string): Promise<void> {
+  const db = createServerSupabaseClient();
 
   const { error } = await db
     .from("graph_workspaces")
@@ -206,9 +194,8 @@ export async function renameGraphWorkspace(id: string, name: string, client?: Db
 export async function saveGraphWorkspacePayload(
   id: string,
   payload: GraphPayloadV1,
-  client?: DbClient,
 ): Promise<void> {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   const { error } = await db
     .from("graph_workspaces")
@@ -220,8 +207,8 @@ export async function saveGraphWorkspacePayload(
 
 // ─── Delete ───────────────────────────────────────────────────────────────────
 
-export async function deleteGraphWorkspace(id: string, client?: DbClient): Promise<void> {
-  const db = resolveDbClient(client);
+export async function deleteGraphWorkspace(id: string): Promise<void> {
+  const db = createServerSupabaseClient();
 
   const { error } = await db
     .from("graph_workspaces")
@@ -233,8 +220,8 @@ export async function deleteGraphWorkspace(id: string, client?: DbClient): Promi
 
 // ─── Conversation Membership ──────────────────────────────────────────────────
 
-export async function listGraphConversations(graphId: string, client?: DbClient): Promise<GraphWorkspaceConversation[]> {
-  const db = resolveDbClient(client);
+export async function listGraphConversations(graphId: string): Promise<GraphWorkspaceConversation[]> {
+  const db = createServerSupabaseClient();
 
   const { data, error } = await db
     .from("graph_workspace_conversations")
@@ -266,9 +253,8 @@ export async function addConversationToGraph(
   graphId: string,
   conversationId: string,
   sourceNodeId?: string | null,
-  client?: DbClient,
 ): Promise<void> {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   const { error } = await db
     .from("graph_workspace_conversations")
@@ -287,9 +273,8 @@ export async function addConversationToGraph(
 export async function removeConversationFromGraph(
   graphId: string,
   conversationId: string,
-  client?: DbClient,
 ): Promise<void> {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   const { error } = await db
     .from("graph_workspace_conversations")
@@ -307,9 +292,8 @@ export async function removeConversationFromGraph(
 export async function unlinkNodeFromConversations(
   graphId: string,
   nodeId: string,
-  client?: DbClient,
 ): Promise<void> {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   const { error } = await db
     .from("graph_workspace_conversations")
@@ -330,9 +314,8 @@ export type NodePosition = {
 
 export async function getConversationNodePositions(
   conversationId: string,
-  client?: DbClient,
 ): Promise<NodePosition[]> {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   const { data, error } = await db
     .from("conversation_node_positions")
@@ -347,11 +330,10 @@ export async function getConversationNodePositions(
 export async function saveConversationNodePositions(
   conversationId: string,
   positions: Array<{ nodeId: string; x: number; y: number }>,
-  client?: DbClient,
 ): Promise<void> {
   if (positions.length === 0) return;
 
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   const rows = positions.map((p) => ({
     conversation_id: conversationId,

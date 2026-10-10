@@ -1,4 +1,4 @@
-import { resolveDbClient, type DbClient } from "./client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import {
   generateEmbedding,
   generateEvidenceSummary,
@@ -19,9 +19,8 @@ export async function persistNode(
   node: ContextNode,
   linkedMessages: ChatMessage[],
   metadata: NodeMetadata = {},
-  client?: DbClient,
 ): Promise<void> {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   // Step 1: Generate evidence summary from linked messages (soft-fail)
   // Skip for very short content where AI can't produce a meaningful summary.
@@ -84,7 +83,6 @@ export async function persistNode(
 // Not used by the main conversation load — kept separate deliberately.
 export async function loadNodesWithEmbeddings(
   conversationId: string,
-  client?: DbClient,
 ): Promise<
   Array<{
     id: string;
@@ -94,7 +92,7 @@ export async function loadNodesWithEmbeddings(
     embedding: number[] | null;
   }>
 > {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   const { data, error } = await db
     .from("nodes")

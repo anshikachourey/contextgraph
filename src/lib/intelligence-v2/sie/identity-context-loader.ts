@@ -15,7 +15,7 @@
  * identity decisions — those are exclusively Python's domain.
  */
 
-import { resolveDbClient, type DbClient } from "@/src/lib/db/client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import type { components } from "./generated";
 
 // ─── Transport types from generated contract ────────────────────────────────
@@ -234,10 +234,9 @@ interface RawContextResponse {
  *   validation failure.
  */
 export async function loadIdentityContext(
-  conversationId: string,
-  client?: DbClient
+  conversationId: string
 ): Promise<IdentityContextLoadResult> {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   // ── 1. Call the atomic context-loader RPC ─────────────────────────────
   const { data, error } = await db.rpc("v2_load_sie_identity_context", {

@@ -1,6 +1,6 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextResponse } from "next/server";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { loadLatestConversation } from "@/src/lib/db/conversations";
 import { generateEmbedding, buildNodeEmbeddingText } from "@/src/lib/embeddings";
 
@@ -19,12 +19,12 @@ export async function POST() {
   if (debugAuthError) return debugAuthError;
 
   try {
-    const db = await resolveRequestDbClient();
-    const data = await loadLatestConversation(undefined, db);
+    const data = await loadLatestConversation();
     if (!data) {
       return NextResponse.json({ error: "No conversation found." }, { status: 404 });
     }
 
+    const db = createServerSupabaseClient();
     const conversationId = data.conversation.id;
 
     // Load all nodes with their text fields

@@ -1,6 +1,6 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextRequest, NextResponse } from "next/server";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { runIncrementalV2Update } from "@/src/lib/intelligence-v2/incremental";
 import type { V2Snapshot } from "@/src/lib/intelligence-v2/incremental";
 
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const db = await resolveRequestDbClient();
+    const db = createServerSupabaseClient();
 
     // Load snapshot (from override or DB)
     let snapshot: V2Snapshot;

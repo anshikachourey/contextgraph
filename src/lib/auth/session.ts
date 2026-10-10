@@ -1,21 +1,8 @@
 /**
- * Server-only session management.
+ * Server-only session management for the two-workspace login system.
  *
- * This module hosts BOTH session mechanisms during the cutover window:
- *
- *   1. The LEGACY owner/demo HMAC `cg_session` cookie (create/get/destroy).
- *      Active while `AUTH_SUPABASE_CUTOVER_ENABLED` is false — the legacy login
- *      still runs. Per the cutover guardrail, actual REMOVAL of the HMAC path is
- *      deferred to Task 17 (the strict last step); see TODO(cutover) below.
- *
- *   2. The NEW Supabase identity resolver `getAuthClaims(client)` — identity
- *      ONLY, via Supabase `getClaims()`. No manual Google ID-token / self-JWT
- *      verification, no cache, no PG pool (Req 4, 5). This is what the converted
- *      request paths use once the flag is flipped.
- *
- * The two paths are selected by the cutover flag so runtime behavior is
- * unchanged while the flag is false. Never import this file from client
- * components.
+ * Issues and validates signed HTTP-only cookies containing workspace identity.
+ * Never import this file from client components.
  */
 
 import { cookies } from "next/headers";
@@ -177,58 +164,8 @@ export async function getSessionFromRequest(
 
 /**
  * Destroy the session by clearing the cookie.
- *
- * TODO(cutover, Task 17): the legacy HMAC `cg_session` create/get/destroy path
- * above is removed as the strict last step of the cutover, together with the
- * `TEMP_OWNER_*`/`TEMP_DEMO_*` credential login. It is retained UNCHANGED here
- * for now because the legacy login still runs while
- * `AUTH_SUPABASE_CUTOVER_ENABLED` is false. The design says "remove the HMAC";
- * that removal is intentionally deferred so there is no behavior change today.
  */
 export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete(COOKIE_NAME);
-}
-
-// ─── Supabase identity resolver (Req 4, 5) ────────────────────────────────────
-
-/**
- * The canonical authenticated identity derived from Supabase verified claims.
- * `userId` is `claims.sub` = the Supabase_User_Id (`auth.users.id`), NEVER the
- * Google provider subject.
- */
-export type AuthClaims = { userId: string; email?: string };
-
-/**
- * Minimal structural type for the Supabase client surface this resolver needs.
- * Both the user-scoped SSR client and the middleware client expose
- * `auth.getClaims()`.
- */
-export type ClaimsCapableClient = {
-  auth: {
-    getClaims: () => Promise<{
-      data?: { claims?: { sub?: string; email?: string } | null } | null;
-      error?: unknown;
-    }>;
-  };
-};
-
-/**
- * Resolve the authenticated identity from Supabase verified claims — identity
- * ONLY. Used by middleware and route handlers once the cutover flag is enabled.
- *
- * - Canonical identity is `claims.sub` = Supabase_User_Id (Req 4.2). The Google
- *   provider subject is never used (Req 4.3).
- * - Performs NO manual Google ID-token verification and NO self-minted JWT
- *   validation (Req 4.5) — it trusts Supabase's `getClaims()` exclusively.
- * - Resolves context through Supabase only — no cache, no PG pool (Req 5).
- *
- * Returns `null` when there is no valid session / no `sub` claim (Req 4.4).
- */
-export async function getAuthClaims(
-  client: ClaimsCapableClient,
-): Promise<AuthClaims | null> {
-  const { data, error } = await client.auth.getClaims();
-  if (error || !data?.claims?.sub) return null;
-  return { userId: data.claims.sub, email: data.claims.email };
 }

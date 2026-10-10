@@ -21,7 +21,7 @@
  * - Reusing with different fingerprint fails validation
  */
 
-import { resolveDbClient, type DbClient } from "@/src/lib/db/client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import type { ProcessResult } from "./types";
 
 // ─── Reservation Outcome Types ──────────────────────────────────────────────
@@ -148,8 +148,7 @@ export async function reserveRequest(
   requestId: string,
   idempotencyKey: string,
   payloadFingerprintHash: string,
-  config: ReservationConfig,
-  client?: DbClient
+  config: ReservationConfig
 ): Promise<ReservationResult> {
   const startTime = Date.now();
   let attempts = 0;
@@ -169,8 +168,7 @@ export async function reserveRequest(
       idempotencyKey,
       payloadFingerprintHash,
       config.leaseOwner,
-      config.leaseDurationMs,
-      client
+      config.leaseDurationMs
     );
 
     switch (rpcResult.outcome) {
@@ -248,10 +246,9 @@ export async function recordAnalyzedResult(
   requestId: string,
   leaseOwner: string,
   analyzedResult: ProcessResult,
-  graphVersionAnalyzed: number,
-  client?: DbClient
+  graphVersionAnalyzed: number
 ): Promise<RecordAnalyzedResultOutcome> {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   const { data, error } = await db.rpc("sie_record_analyzed_result", {
     p_request_id: requestId,
@@ -294,10 +291,9 @@ export async function recordAnalyzedResult(
 export async function renewLease(
   requestId: string,
   leaseOwner: string,
-  leaseDurationMs: number,
-  client?: DbClient
+  leaseDurationMs: number
 ): Promise<LeaseRenewalResult> {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   const { data, error } = await db.rpc("sie_renew_lease", {
     p_request_id: requestId,
@@ -345,10 +341,9 @@ export async function renewLease(
 export async function markFailedRetryable(
   requestId: string,
   leaseOwner: string,
-  failureReason: string,
-  client?: DbClient
+  failureReason: string
 ): Promise<MarkFailedResult> {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   const { data, error } = await db.rpc("sie_mark_failed_retryable", {
     p_request_id: requestId,
@@ -392,10 +387,9 @@ export async function supersedeRequest(
   requestId: string,
   leaseOwner: string,
   successorRequestId: string,
-  successorIdempotencyKey: string,
-  client?: DbClient
+  successorIdempotencyKey: string
 ): Promise<{ success: boolean; reason?: string }> {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   const { data, error } = await db.rpc("sie_supersede_request", {
     p_request_id: requestId,
@@ -435,10 +429,9 @@ async function callReserveRPC(
   idempotencyKey: string,
   payloadFingerprintHash: string,
   leaseOwner: string,
-  leaseDurationMs: number,
-  client?: DbClient
+  leaseDurationMs: number
 ): Promise<ReservationRPCResult> {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   const { data, error } = await db.rpc("sie_reserve_request", {
     p_conversation_id: conversationId,

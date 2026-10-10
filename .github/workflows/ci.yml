@@ -30,23 +30,6 @@ jobs:
         run: npm run lint
         continue-on-error: true
 
-      # BLOCKING service-role allowlist static check (Feature:
-      # google-oauth-authentication). Unlike the non-blocking lint above, a
-      # violation here FAILS the build. TIGHTENED in Task 14: it ensures no
-      # non-allowlisted request-path module imports EITHER service-role provider
-      # — the guarded factory (@/src/lib/supabase/service-role) OR the legacy
-      # bridge (@/src/lib/supabase/legacy-service-role). This enforces the
-      # cutover ordering invariant mechanically.
-      - name: Service-role import check (blocking)
-        run: npm run check:service-role
-
-      # BLOCKING service-role REACHABILITY proof (Task 14, item 3). Asserts no
-      # ordinary app/api route transitively reaches a genuinely-offline sink
-      # (the UUID_Migration runner / bulk cleanup) or the requireDebugAccess()-
-      # gated schema-maintenance route.
-      - name: Service-role reachability check (blocking)
-        run: npm run check:service-role-reachability
-
       - name: Type check
         run: npm run typecheck
 

@@ -1,6 +1,6 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextRequest, NextResponse } from "next/server";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 
 /**
  * GET /api/debug/pipeline-health?id=<conversationId>
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "id required" }, { status: 400 });
   }
 
-  const db = await resolveRequestDbClient();
+  const db = createServerSupabaseClient();
 
   // Messages
   const { data: msgs } = await db

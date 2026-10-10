@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
 
 type ApplyRequest = {
@@ -53,10 +53,7 @@ export async function POST(
   if (isAuthError(access)) return access;
 
   try {
-    // Flag-aware client: service-role (behavior-neutral) while disabled,
-    // user-scoped (RLS applies) once enabled. The upsert is scoped by node_id
-    // whose conversation requireConversationAccess has verified.
-    const db = await resolveRequestDbClient();
+    const db = createServerSupabaseClient();
 
     const links = messageIds.map((messageId) => ({
       node_id: nodeId,
