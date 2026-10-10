@@ -1,6 +1,6 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const debugAuthError = await requireDebugAccess();
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const db = createServerSupabaseClient();
+  const db = await resolveRequestDbClient();
 
   const { data, error } = await db
     .from("topic_candidates")

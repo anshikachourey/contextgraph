@@ -35,7 +35,7 @@ type PacketSplitRecord = components["schemas"]["PacketSplitRecord"];
 
 const mockRpc = vi.fn();
 
-vi.mock("@/src/lib/supabase/server", () => ({
+vi.mock("@/src/lib/supabase/legacy-service-role", () => ({
   createServerSupabaseClient: () => ({
     rpc: mockRpc,
   }),

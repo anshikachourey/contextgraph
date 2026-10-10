@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { resolveDbClient, type DbClient } from "./client";
 import type { DbConversation, DbMessage, DbNode, DbNodeMessage } from "@/src/types/db";
 import type { ChatMessage } from "@/src/types/message";
 import type { ContextNode } from "@/src/types/node";
@@ -21,8 +21,8 @@ export type ConversationListItem = {
 
 // List all active (non-archived) conversations for a workspace, most recent first.
 // By default only returns 'main' scope conversations (for the application sidebar).
-export async function listConversations(workspaceId: string, options?: { scope?: "main" | "graph_workspace" | "all" }): Promise<ConversationListItem[]> {
-  const db = createServerSupabaseClient();
+export async function listConversations(workspaceId: string, options?: { scope?: "main" | "graph_workspace" | "all" }, client?: DbClient): Promise<ConversationListItem[]> {
+  const db = resolveDbClient(client);
 
   let query = db
     .from("conversations")
@@ -49,8 +49,8 @@ export async function listConversations(workspaceId: string, options?: { scope?:
 }
 
 // List archived conversations for a workspace.
-export async function listArchivedConversations(workspaceId: string): Promise<ConversationListItem[]> {
-  const db = createServerSupabaseClient();
+export async function listArchivedConversations(workspaceId: string, client?: DbClient): Promise<ConversationListItem[]> {
+  const db = resolveDbClient(client);
 
   const { data, error } = await db
     .from("conversations")
@@ -70,8 +70,8 @@ export async function listArchivedConversations(workspaceId: string): Promise<Co
 }
 
 // Archive a conversation.
-export async function archiveConversation(id: string): Promise<void> {
-  const db = createServerSupabaseClient();
+export async function archiveConversation(id: string, client?: DbClient): Promise<void> {
+  const db = resolveDbClient(client);
   const { error } = await db
     .from("conversations")
     .update({ archived_at: new Date().toISOString() })
@@ -80,8 +80,8 @@ export async function archiveConversation(id: string): Promise<void> {
 }
 
 // Restore an archived conversation.
-export async function restoreConversation(id: string): Promise<void> {
-  const db = createServerSupabaseClient();
+export async function restoreConversation(id: string, client?: DbClient): Promise<void> {
+  const db = resolveDbClient(client);
   const { error } = await db
     .from("conversations")
     .update({ archived_at: null })
@@ -90,8 +90,8 @@ export async function restoreConversation(id: string): Promise<void> {
 }
 
 // Permanently delete a conversation and all its related data.
-export async function deleteConversation(id: string): Promise<void> {
-  const db = createServerSupabaseClient();
+export async function deleteConversation(id: string, client?: DbClient): Promise<void> {
+  const db = resolveDbClient(client);
 
   // 1. Get all node IDs for this conversation (needed for node_messages cleanup)
   const { data: nodeData } = await db
@@ -149,8 +149,8 @@ export async function deleteConversation(id: string): Promise<void> {
 }
 
 // Load a specific conversation by ID.
-export async function loadConversationById(id: string): Promise<ConversationData | null> {
-  const db = createServerSupabaseClient();
+export async function loadConversationById(id: string, client?: DbClient): Promise<ConversationData | null> {
+  const db = resolveDbClient(client);
 
   const { data: convData, error: convError } = await db
     .from("conversations")
@@ -162,12 +162,12 @@ export async function loadConversationById(id: string): Promise<ConversationData
   if (!convData || convData.length === 0) return null;
 
   const conversation = convData[0] as DbConversation;
-  return loadConversationData(conversation);
+  return loadConversationData(conversation, client);
 }
 
 // Update conversation title.
-export async function updateConversationTitle(id: string, title: string): Promise<void> {
-  const db = createServerSupabaseClient();
+export async function updateConversationTitle(id: string, title: string, client?: DbClient): Promise<void> {
+  const db = resolveDbClient(client);
 
   const { error } = await db
     .from("conversations")
@@ -178,8 +178,8 @@ export async function updateConversationTitle(id: string, title: string): Promis
 }
 
 // Shared helper: given a DbConversation, load its messages, nodes, and edges.
-async function loadConversationData(conversation: DbConversation): Promise<ConversationData> {
-  const db = createServerSupabaseClient();
+async function loadConversationData(conversation: DbConversation, client?: DbClient): Promise<ConversationData> {
+  const db = resolveDbClient(client);
 
   // Load messages ordered by creation time
   const { data: dbMessages, error: msgError } = await db
@@ -286,16 +286,17 @@ async function loadConversationData(conversation: DbConversation): Promise<Conve
     hierarchyDepth: (n as any).hierarchy_depth ?? 0,
   }));
 
-  // Load persisted semantic edges
-  const edges = await loadEdges(conversation.id);
+  // Load persisted semantic edges (thread the injected client through so the
+  // injected path never falls back to the service-role client)
+  const edges = await loadEdges(conversation.id, client);
 
   return { conversation, messages, nodes, edges };
 }
 
 // Load the most recent conversation for a workspace.
 // Returns null if no conversations exist yet.
-export async function loadLatestConversation(workspaceId?: string): Promise<ConversationData | null> {
-  const db = createServerSupabaseClient();
+export async function loadLatestConversation(workspaceId?: string, client?: DbClient): Promise<ConversationData | null> {
+  const db = resolveDbClient(client);
 
   let query = db
     .from("conversations")
@@ -313,7 +314,7 @@ export async function loadLatestConversation(workspaceId?: string): Promise<Conv
   if (!conversations || conversations.length === 0) return null;
 
   const conversation = conversations[0] as DbConversation;
-  return loadConversationData(conversation);
+  return loadConversationData(conversation, client);
 }
 
 // Create a new conversation, optionally seeding it with messages.
@@ -323,8 +324,9 @@ export async function createConversation(
   seedMessages: ChatMessage[] = [],
   workspaceId?: string,
   options?: { scope?: "main" | "graph_workspace" },
+  client?: DbClient,
 ): Promise<ConversationData> {
-  const db = createServerSupabaseClient();
+  const db = resolveDbClient(client);
 
   const insertData: Record<string, unknown> = { title };
   if (workspaceId) {

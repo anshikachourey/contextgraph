@@ -1,5 +1,6 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextResponse } from "next/server";
+import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 import { loadLatestConversation } from "@/src/lib/db/conversations";
 import { detectTopicShifts, type TopicShiftAnalysis } from "@/src/lib/topicShiftDetector";
 
@@ -25,7 +26,8 @@ export async function GET(): Promise<
   if (debugAuthError) return debugAuthError;
 
   try {
-    const data = await loadLatestConversation();
+    const db = await resolveRequestDbClient();
+    const data = await loadLatestConversation(undefined, db);
 
     if (!data) {
       return NextResponse.json(

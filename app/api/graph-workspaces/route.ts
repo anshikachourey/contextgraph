@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession, isAuthError } from "@/src/lib/auth";
+import { resolveRequestDbClient, useRlsScopedAccess } from "@/src/lib/db/request-client";
 import {
   listGraphWorkspaces,
   createGraphWorkspace,
@@ -7,6 +8,32 @@ import {
   deleteGraphWorkspace,
   getGraphWorkspace,
 } from "@/src/lib/db/graph-workspaces";
+import type { DbClient } from "@/src/lib/db/client";
+
+/**
+ * Verify the caller may act on a graph workspace.
+ *
+ * Flag-true (RLS): `getGraphWorkspace` runs under the user-scoped client, so a
+ * non-member sees zero rows → null → caller translates to 404. No manual
+ * workspace_id string comparison (RLS is the boundary).
+ *
+ * Flag-false (behavior-neutral): keep the legacy manual workspace_id check,
+ * identical to the pre-feature implementation.
+ *
+ * Returns the workspace row when authorized, or null when it should 404.
+ */
+async function authorizeGraphWorkspace(
+  id: string,
+  sessionWorkspace: string,
+  db: DbClient,
+): Promise<{ workspace_id: string } | null> {
+  const existing = await getGraphWorkspace(id, db);
+  if (!existing) return null;
+  if (!useRlsScopedAccess() && existing.workspace_id !== sessionWorkspace) {
+    return null;
+  }
+  return existing;
+}
 
 /**
  * GET /api/graph-workspaces
@@ -16,8 +43,10 @@ export async function GET(): Promise<NextResponse> {
   const session = await requireSession();
   if (isAuthError(session)) return session;
 
+  const db = await resolveRequestDbClient();
+
   try {
-    const workspaces = await listGraphWorkspaces(session.workspace);
+    const workspaces = await listGraphWorkspaces(session.workspace, db);
     return NextResponse.json(workspaces, {
       headers: { "Cache-Control": "no-store" },
     });
@@ -36,6 +65,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const session = await requireSession();
   if (isAuthError(session)) return session;
 
+  const db = await resolveRequestDbClient();
+
   let body: Record<string, unknown> = {};
   try {
     body = await request.json();
@@ -48,7 +79,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     : "Untitled Graph";
 
   try {
-    const workspace = await createGraphWorkspace(session.workspace, name);
+    const workspace = await createGraphWorkspace(session.workspace, name, undefined, db);
     return NextResponse.json(
       { id: workspace.id, name: workspace.name },
       { status: 201, headers: { "Cache-Control": "no-store" } },
@@ -68,6 +99,8 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
   const session = await requireSession();
   if (isAuthError(session)) return session;
 
+  const db = await resolveRequestDbClient();
+
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -82,14 +115,14 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "id and name are required" }, { status: 400 });
   }
 
-  // Verify ownership
+  // Verify ownership (RLS on flag-true, manual workspace_id on flag-false)
   try {
-    const existing = await getGraphWorkspace(id);
-    if (!existing || existing.workspace_id !== session.workspace) {
+    const existing = await authorizeGraphWorkspace(id, session.workspace, db);
+    if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    await renameGraphWorkspace(id, name.trim());
+    await renameGraphWorkspace(id, name.trim(), db);
     return NextResponse.json({ id, name: name.trim() });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -106,6 +139,8 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
   const session = await requireSession();
   if (isAuthError(session)) return session;
 
+  const db = await resolveRequestDbClient();
+
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -118,14 +153,14 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
 
-  // Verify ownership
+  // Verify ownership (RLS on flag-true, manual workspace_id on flag-false)
   try {
-    const existing = await getGraphWorkspace(id);
-    if (!existing || existing.workspace_id !== session.workspace) {
+    const existing = await authorizeGraphWorkspace(id, session.workspace, db);
+    if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    await deleteGraphWorkspace(id);
+    await deleteGraphWorkspace(id, db);
     return NextResponse.json({ id, status: "deleted" });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

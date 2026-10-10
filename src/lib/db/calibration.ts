@@ -6,10 +6,34 @@
  * writes only happen on an explicit calibration trigger.
  */
 
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { createServiceRoleClient } from "@/src/lib/supabase/service-role";
+import { resolveDbClient, type DbClient } from "@/src/lib/db/client";
 import type { CalibrationResult } from "@/src/lib/calibration/threshold-calibration";
 
 const GLOBAL_ID = "global";
+
+/**
+ * Global-maintenance service-role client for the calibration singleton.
+ *
+ * ── Why service-role here is legitimate (group (d)) ─────────────────────────
+ * Calibration operates on a SINGLE GLOBAL row (`id = 'global'`) and a global
+ * read of `nodes.id/embedding` — it is never scoped to a caller's workspace or
+ * conversation, so it cannot leak one workspace's rows to another. The write
+ * path (`loadAllNodeEmbeddings` + `saveCalibration`) is a privileged global
+ * maintenance operation reached ONLY from the `requireDebugAccess()`-gated
+ * `/api/debug/calibrate-thresholds` route.
+ *
+ * It constructs the GUARDED factory directly (with the conspicuous opt-in
+ * marker), NOT the legacy bridge — so it keeps working in cutover mode as a
+ * genuine background/maintenance path rather than hard-failing. The
+ * request-reachable READ path (`getStoredCalibration`, reached lazily via
+ * `getEdgeThresholds`) instead takes the INJECTED user-scoped client so RLS
+ * applies on the hot path; the global calibration row is world-readable to
+ * authenticated users via its RLS policy.
+ */
+function globalMaintenanceClient() {
+  return createServiceRoleClient({ allowServiceRole: true });
+}
 
 export type StoredCalibration = {
   stronglyRelated: number;
@@ -26,7 +50,9 @@ export type StoredCalibration = {
 export async function loadAllNodeEmbeddings(): Promise<
   { id: string; embedding: number[] | null }[]
 > {
-  const db = createServerSupabaseClient();
+  // Privileged GLOBAL read (all nodes, id+embedding only) — reached only from
+  // the requireDebugAccess()-gated calibrate-thresholds route. Guarded factory.
+  const db = globalMaintenanceClient();
   const { data, error } = await db.from("nodes").select("id, embedding");
   if (error) throw new Error(`Failed to load node embeddings: ${error.message}`);
 
@@ -40,8 +66,17 @@ export async function loadAllNodeEmbeddings(): Promise<
  * Read the current stored calibration, or null if none has ever been computed.
  * When null, callers fall back to the compile-time constants.
  */
-export async function getStoredCalibration(): Promise<StoredCalibration | null> {
-  const db = createServerSupabaseClient();
+export async function getStoredCalibration(
+  client?: DbClient,
+): Promise<StoredCalibration | null> {
+  // Takes the INJECTED user-scoped client when a caller threads one (so RLS
+  // applies and the global calibration row is read as the authenticated user).
+  // When omitted, falls back via resolveDbClient to the legacy service-role
+  // client (behavior-neutral pre-cutover). This read is NOT on any ordinary
+  // request hot path today (the async getEdgeThresholds caller has no route
+  // handler), so the cutover hard-fail guard is never tripped by a request;
+  // the reachability assertion test documents this.
+  const db = resolveDbClient(client);
   const { data, error } = await db
     .from("similarity_calibration")
     .select("strongly_related, possibly_related, is_applied, reason, computed_at")
@@ -66,7 +101,9 @@ export async function getStoredCalibration(): Promise<StoredCalibration | null> 
  * these mirror the fallback constants and is_applied is false.
  */
 export async function saveCalibration(result: CalibrationResult): Promise<void> {
-  const db = createServerSupabaseClient();
+  // Privileged GLOBAL singleton write — reached only from the
+  // requireDebugAccess()-gated calibrate-thresholds route. Guarded factory.
+  const db = globalMaintenanceClient();
   const { error } = await db.from("similarity_calibration").upsert(
     {
       id: GLOBAL_ID,
