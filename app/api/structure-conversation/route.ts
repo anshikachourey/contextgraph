@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { complete } from "@/src/lib/ai";
 import { STRUCTURE_MODEL } from "@/src/lib/ai/models";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { persistNode, loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
 import { persistEdges } from "@/src/lib/db/edges";
 import { generateEmbedding, buildNodeEmbeddingText, buildClusterEmbeddingText } from "@/src/lib/embeddings";
@@ -90,10 +90,7 @@ export async function POST(
 
   // ─── Step 1: Load messages from DB ──────────────────────────────────────
 
-  // Flag-aware client: service-role (behavior-neutral) while disabled,
-  // user-scoped (RLS applies) once enabled. All reads/writes below are scoped
-  // by conversation_id, which requireConversationAccess has verified.
-  const db = await resolveRequestDbClient();
+  const db = createServerSupabaseClient();
   const { data: dbMessages, error: msgError } = await db
     .from("messages")
     .select("*")
@@ -171,7 +168,7 @@ export async function POST(
 
   // ─── Step 3: Load existing nodes for duplicate suppression ──────────────
 
-  const existingNodes = await loadNodesWithEmbeddings(conversationId, db);
+  const existingNodes = await loadNodesWithEmbeddings(conversationId);
 
   // ─── Step 4: Process each cluster ──────────────────────────────────────
 
@@ -292,7 +289,7 @@ Respond with raw JSON only.`,
       await persistNode(conversationId, node, clusterMessages, {
         createdBy: "ai",
         messageCount: clusterMessages.length,
-      }, db);
+      });
       nodesCreated++;
 
       // Add to existing nodes list so subsequent clusters can check against it
@@ -320,12 +317,12 @@ Respond with raw JSON only.`,
 
   let edgesCreated = 0;
   try {
-    const allNodes = await loadNodesWithEmbeddings(conversationId, db);
+    const allNodes = await loadNodesWithEmbeddings(conversationId);
     const suggestions = await computeSuggestedEdges(allNodes);
     const strongEdges = suggestions.filter(
       (s) => s.similarity >= STRONGLY_RELATED_THRESHOLD,
     );
-    edgesCreated = await persistEdges(conversationId, strongEdges, db);
+    edgesCreated = await persistEdges(conversationId, strongEdges);
     console.log(
       `[structure] Edges: ${edgesCreated} persisted (${strongEdges.length} strong, ${suggestions.length} total)`,
     );

@@ -1,6 +1,6 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextRequest, NextResponse } from "next/server";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { evaluateGraphQuality } from "@/src/lib/intelligence/benchmark";
 import type { GraphSnapshot } from "@/src/lib/intelligence/benchmark";
 
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const db = await resolveRequestDbClient();
+  const db = createServerSupabaseClient();
 
   // Load nodes
   const { data: nodeData, error: nodeError } = await db

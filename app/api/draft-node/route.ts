@@ -7,7 +7,6 @@ import { DRAFT_SUPPRESS_THRESHOLD } from "@/src/lib/aiDraftConfig";
 import { loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
 import { parseJsonFromLLM, isTitleSummaryResponse } from "@/src/lib/llmJson";
 import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 import type { ChatMessage } from "@/src/types/message";
 
 type DraftRequest = {
@@ -84,12 +83,9 @@ export async function POST(
 
   const conversationId = b.conversationId as string;
 
-  // Verify conversation ownership (RLS on flag-true, manual check on flag-false)
+  // Verify conversation ownership
   const access = await requireConversationAccess(conversationId, session);
   if (isAuthError(access)) return access;
-
-  // Flag-aware client threaded into loadNodesWithEmbeddings below.
-  const db = await resolveRequestDbClient();
 
   const messages = b.messages as ChatMessage[];
 
@@ -118,7 +114,7 @@ export async function POST(
     embedding: number[] | null;
   }>;
   try {
-    const loaded = await loadNodesWithEmbeddings(conversationId, db);
+    const loaded = await loadNodesWithEmbeddings(conversationId);
     existingNodes = loaded.map((n) => ({
       id: n.id,
       title: n.title,

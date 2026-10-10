@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { persistMessages } from "@/src/lib/db/messages";
 import { runIntelligenceEngine } from "@/src/lib/intelligence";
 import { enqueueV2Update } from "@/src/lib/intelligence-v2/incremental/update-runner";
@@ -25,14 +25,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   if (!conversationId) return NextResponse.json([], { status: 200 });
 
-  // Verify conversation ownership (RLS on flag-true, manual check on flag-false)
+  // Verify conversation ownership
   const access = await requireConversationAccess(conversationId, session);
   if (isAuthError(access)) return access;
 
-  // Flag-aware client: service-role (behavior-neutral) while disabled,
-  // user-scoped (RLS applies) once enabled. Rows are already scoped by
-  // conversation_id, which requireConversationAccess has verified.
-  const db = await resolveRequestDbClient();
+  const db = createServerSupabaseClient();
 
   // Fetch by explicit IDs
   let sourceMessages: Array<Record<string, unknown>> = [];
@@ -116,12 +113,9 @@ export async function POST(
 
   const conversationId = b.conversationId as string;
 
-  // Verify conversation ownership (RLS on flag-true, manual check on flag-false)
+  // Verify conversation ownership
   const access = await requireConversationAccess(conversationId, session);
   if (isAuthError(access)) return access;
-
-  // Flag-aware client threaded into persistMessages + the snapshot read below.
-  const db = await resolveRequestDbClient();
 
   const messages = b.messages as ChatMessage[];
   const freshIds = b.freshIds === true;
@@ -129,7 +123,7 @@ export async function POST(
 
   // ─── Persist messages ───────────────────────────────────────────────────
   try {
-    await persistMessages(conversationId, messages, { freshIds }, db);
+    await persistMessages(conversationId, messages, { freshIds });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: `Failed to persist messages: ${message}` }, { status: 500 });
@@ -149,7 +143,7 @@ export async function POST(
       : undefined;
 
     try {
-      const engineResult = await runIntelligenceEngine(conversationId, newMessageIds, db);
+      const engineResult = await runIntelligenceEngine(conversationId, newMessageIds);
       engineRan = true;
       nodesCreated = engineResult.nodesCreated;
       nodesExtended = engineResult.nodesExtended;
@@ -160,6 +154,7 @@ export async function POST(
 
   // ─── V2 Incremental Update (NON-BLOCKING, SEQUENTIAL) ──────────────────
   let v2Queued = false;
+  const db = createServerSupabaseClient();
   const { data: snapCheck } = await db
     .from("v2_graph_snapshots")
     .select("status, diagnostics")
@@ -176,9 +171,6 @@ export async function POST(
       messages,
       v2ContinuationObjectId,
       enqueuedAt: new Date().toISOString(),
-      // Thread the flag-aware client so the request-triggered incremental
-      // update runs under the user-scoped client on the flag-true branch.
-      client: db,
     });
     v2Queued = true;
   }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
 
 type SuccessResponse = { ok: true };
@@ -28,10 +28,7 @@ export async function POST(
   }
 
   const b = body as Record<string, unknown>;
-  // Flag-aware client: service-role (behavior-neutral) while disabled,
-  // user-scoped (RLS applies) once enabled. The lookup + mutations below are
-  // scoped by conversation, which requireConversationAccess verifies.
-  const db = await resolveRequestDbClient();
+  const db = createServerSupabaseClient();
 
   // Look up the message's conversation for access check
   const messageId = b.messageId as string;

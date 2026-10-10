@@ -1,4 +1,4 @@
-import { resolveDbClient, type DbClient } from "./client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import type { ChatMessage } from "@/src/types/message";
 
 /**
@@ -14,9 +14,8 @@ export async function persistMessages(
   conversationId: string,
   messages: ChatMessage[],
   options?: { freshIds?: boolean },
-  client?: DbClient,
 ): Promise<void> {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   const baseTime = Date.now();
   const rows = messages.map((m, idx) => ({

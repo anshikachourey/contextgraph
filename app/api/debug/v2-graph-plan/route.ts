@@ -1,7 +1,6 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextRequest, NextResponse } from "next/server";
 import { runV2GraphPlan } from "@/src/lib/intelligence-v2";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 
 export const maxDuration = 120;
 
@@ -24,12 +23,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    // Flag-aware client: user-scoped (RLS applies) in cutover mode, legacy
-    // service-role pre-cutover (behavior-neutral). This diagnostic is already
-    // gated by requireDebugAccess(); threading the client keeps it off the
-    // legacy service-role bridge once the cutover flag is on.
-    const db = await resolveRequestDbClient();
-    const plan = await runV2GraphPlan(conversationId, { client: db });
+    const plan = await runV2GraphPlan(conversationId);
 
     return NextResponse.json({
       ...plan,

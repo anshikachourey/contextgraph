@@ -12,7 +12,7 @@
  *   in this implementation plan. All flags are disabled by default.
  */
 
-import { resolveDbClient, type DbClient } from "@/src/lib/db/client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { SIE_AUTHORITY_ENABLED } from "./feature-flags";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -47,10 +47,9 @@ interface UpdateStateRow {
  * Loads the current authority state and graph version for a conversation.
  */
 async function loadAuthorityState(
-  conversationId: string,
-  client?: DbClient
+  conversationId: string
 ): Promise<{ engine: AuthorityState; graphVersion: number } | null> {
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
   const { data, error } = await db
     .from("v2_update_state")
     .select("authoritative_engine, update_version")
@@ -75,9 +74,8 @@ async function writeAuthorityAudit(params: {
   newAuthority: AuthorityState;
   graphVersion: number;
   operation: "cutover" | "rollback";
-  client?: DbClient;
 }): Promise<void> {
-  const db = resolveDbClient(params.client);
+  const db = createServerSupabaseClient();
   await db.from("sie_audit_history").insert({
     entity_type: "authority_state",
     entity_id: params.conversationId,
@@ -106,8 +104,7 @@ async function writeAuthorityAudit(params: {
  */
 export async function requestCutover(
   conversationId: string,
-  currentGraphVersion: number,
-  client?: DbClient
+  currentGraphVersion: number
 ): Promise<CutoverResult> {
   // ─── Guard: Feature flag must be enabled ──────────────────────────────
   if (!SIE_AUTHORITY_ENABLED) {
@@ -121,7 +118,7 @@ export async function requestCutover(
   }
 
   // ─── Guard: Load current state ────────────────────────────────────────
-  const state = await loadAuthorityState(conversationId, client);
+  const state = await loadAuthorityState(conversationId);
   if (!state) {
     return {
       success: false,
@@ -152,7 +149,7 @@ export async function requestCutover(
   }
 
   // ─── Transition: SIE_SHADOW → SIE ────────────────────────────────────
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
   const { error: updateError } = await db
     .from("v2_update_state")
     .update({
@@ -178,7 +175,6 @@ export async function requestCutover(
     newAuthority: "SIE",
     graphVersion: currentGraphVersion,
     operation: "cutover",
-    client,
   });
 
   return {
@@ -201,11 +197,10 @@ export async function requestCutover(
  */
 export async function requestRollback(
   conversationId: string,
-  currentGraphVersion: number,
-  client?: DbClient
+  currentGraphVersion: number
 ): Promise<RollbackResult> {
   // ─── Guard: Load current state ────────────────────────────────────────
-  const state = await loadAuthorityState(conversationId, client);
+  const state = await loadAuthorityState(conversationId);
   if (!state) {
     return {
       success: false,
@@ -236,7 +231,7 @@ export async function requestRollback(
   }
 
   // ─── Transition: SIE → SIE_SHADOW ────────────────────────────────────
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
   const { error: updateError } = await db
     .from("v2_update_state")
     .update({
@@ -261,7 +256,6 @@ export async function requestRollback(
     newAuthority: "SIE_SHADOW",
     graphVersion: currentGraphVersion,
     operation: "rollback",
-    client,
   });
 
   return {

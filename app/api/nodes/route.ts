@@ -4,7 +4,6 @@ import { persistEdges } from "@/src/lib/db/edges";
 import { computeSuggestedEdges } from "@/src/lib/edgeSuggestions";
 import { STRONGLY_RELATED_THRESHOLD } from "@/src/lib/similarityThresholds";
 import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 import type { ContextNode } from "@/src/types/node";
 import type { ChatMessage } from "@/src/types/message";
 import type { NodeMetadata } from "@/src/types/db";
@@ -43,12 +42,9 @@ export async function POST(
 
   const conversationId = b.conversationId as string;
 
-  // Verify conversation ownership (RLS on flag-true, manual check on flag-false)
+  // Verify conversation ownership
   const access = await requireConversationAccess(conversationId, session);
   if (isAuthError(access)) return access;
-
-  // Flag-aware client threaded into every refactored helper below.
-  const db = await resolveRequestDbClient();
 
   // ─── Step 1: Persist the node (with evidence summary + embedding) ───────
   try {
@@ -57,7 +53,6 @@ export async function POST(
       b.node as ContextNode,
       b.linkedMessages as ChatMessage[],
       (b.metadata as NodeMetadata) ?? {},
-      db,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -74,12 +69,12 @@ export async function POST(
   //   3. Insert only strongly related edges
   // If this fails, the node is still saved — edges are additive enrichment.
   try {
-    const allNodes = await loadNodesWithEmbeddings(conversationId, db);
+    const allNodes = await loadNodesWithEmbeddings(conversationId);
     const suggestions = await computeSuggestedEdges(allNodes);
     const strongEdges = suggestions.filter(
       (s) => s.similarity >= STRONGLY_RELATED_THRESHOLD,
     );
-    const persisted = await persistEdges(conversationId, strongEdges, db);
+    const persisted = await persistEdges(conversationId, strongEdges);
     console.log(
       `[nodes/route] Auto-computed edges: ${persisted} persisted (${strongEdges.length} strongly related, ${suggestions.length} total candidates)`,
     );

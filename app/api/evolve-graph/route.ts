@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
 import { loadEdges } from "@/src/lib/db/edges";
 import { generateEmbedding, buildClusterEmbeddingText } from "@/src/lib/embeddings";
@@ -63,15 +63,12 @@ export async function POST(
   if (isAuthError(access)) return access;
 
   try {
-    // Flag-aware client: service-role (behavior-neutral) while disabled,
-    // user-scoped (RLS applies) once enabled. All reads are scoped by
-    // conversation_id, which requireConversationAccess has verified.
-    const db = await resolveRequestDbClient();
+    const db = createServerSupabaseClient();
 
     // ─── Load state ─────────────────────────────────────────────────────
 
     // Nodes with embeddings
-    const rawNodes = await loadNodesWithEmbeddings(conversationId, db);
+    const rawNodes = await loadNodesWithEmbeddings(conversationId);
     const nodes: NodeWithEmbedding[] = rawNodes
       .filter((n) => n.embedding !== null && n.embedding!.length > 0)
       .map((n) => ({
@@ -119,7 +116,7 @@ export async function POST(
     }));
 
     // Load edges for parent detection
-    const edges = await loadEdges(conversationId, db);
+    const edges = await loadEdges(conversationId);
 
     // ─── Identify unlinked messages ─────────────────────────────────────
 

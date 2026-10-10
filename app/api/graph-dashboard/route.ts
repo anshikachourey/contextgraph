@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { requireSession, isAuthError } from "@/src/lib/auth";
 
 /**
@@ -38,9 +38,7 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
 
   console.log(`[graph-dashboard GET] workspace=${workspace} dashboardId=${dashboardId}`);
 
-  // Flag-aware client: service-role (behavior-neutral) while disabled,
-  // user-scoped (RLS on graph_workspaces / snapshots) once enabled.
-  const db = await resolveRequestDbClient();
+  const db = createServerSupabaseClient();
 
   const { data, error } = await db
     .from("v2_graph_snapshots")
@@ -91,7 +89,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   console.log(`[graph-dashboard POST] workspace=${workspace} dashboardId=${dashboardId} nodes=${nodes.length} edges=${edges.length}`);
 
-  const db = await resolveRequestDbClient();
+  const db = createServerSupabaseClient();
   const now = new Date().toISOString();
 
   // Step 1: Ensure the synthetic conversation row exists (satisfies UUID FK)

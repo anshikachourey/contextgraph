@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
-import type { DbClient } from "@/src/lib/db/client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import { runV2GraphPlan } from "@/src/lib/intelligence-v2";
 import { triggerRecoveryOnce } from "@/src/lib/intelligence-v2/incremental/update-runner";
 import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
@@ -27,9 +26,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const access = await requireConversationAccess(conversationId, session);
   if (isAuthError(access)) return access;
 
-  // Flag-aware client: service-role (behavior-neutral) while disabled,
-  // user-scoped (RLS applies, .rpc runs as auth.uid()) once enabled.
-  const db = await resolveRequestDbClient();
+  const db = createServerSupabaseClient();
   const { data, error } = await db
     .from("v2_graph_snapshots")
     .select("*")
@@ -144,9 +141,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const access = await requireConversationAccess(conversationId as string, session);
   if (isAuthError(access)) return access;
 
-  // Flag-aware client: service-role (behavior-neutral) while disabled,
-  // user-scoped (RLS applies, .rpc runs as auth.uid()) once enabled.
-  const db = await resolveRequestDbClient();
+  const db = createServerSupabaseClient();
 
   // ═══════════════════════════════════════════════════════════════════════
   // STEP 1: Validate conversation has enough messages
@@ -240,10 +235,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // STEP 3: Return 202 immediately — generation continues asynchronously
   // ═══════════════════════════════════════════════════════════════════════
 
-  // Fire-and-forget: run generation in background. The flag-aware client (bound
-  // to this request's cookies when user-scoped) is threaded through so the .rpc
-  // commit runs as auth.uid() on the flag-true branch.
-  runGenerationAttempt(db, conversationId, attemptId, baselineMessageSeq).catch((err) => {
+  // Fire-and-forget: run generation in background
+  runGenerationAttempt(conversationId, attemptId, baselineMessageSeq).catch((err) => {
     console.error(`[v2-snapshot] Background generation crashed for ${conversationId} attempt ${attemptId}:`, err);
   });
 
@@ -264,13 +257,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function runGenerationAttempt(
-  db: DbClient,
   conversationId: string,
   attemptId: string,
   baselineMessageSeq: number,
 ): Promise<void> {
+  const db = createServerSupabaseClient();
+
   try {
-    const plan = await runV2GraphPlan(conversationId, { maxMessageSeq: baselineMessageSeq, client: db });
+    const plan = await runV2GraphPlan(conversationId, { maxMessageSeq: baselineMessageSeq });
 
     // ─── Guard: check our attempt is still the active one ────────────────
     const isActive = await isAttemptStillActive(db, conversationId, attemptId);
@@ -388,9 +382,6 @@ async function runGenerationAttempt(
         messages: [],
         v2ContinuationObjectId: null,
         enqueuedAt: new Date().toISOString(),
-        // Thread the flag-aware client so the follow-up incremental update runs
-        // under the user-scoped client on the flag-true branch.
-        client: db,
       });
     }
 
@@ -434,7 +425,7 @@ async function runGenerationAttempt(
  * Returns false if a newer retry has superseded it.
  */
 async function isAttemptStillActive(
-  db: DbClient,
+  db: ReturnType<typeof createServerSupabaseClient>,
   conversationId: string,
   attemptId: string,
 ): Promise<boolean> {

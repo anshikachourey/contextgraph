@@ -5,7 +5,6 @@ import {
   createConversation,
 } from "@/src/lib/db/conversations";
 import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 import { mockMessages } from "@/src/data/mockMessages";
 import type { ChatMessage } from "@/src/types/message";
 import type { ContextNode } from "@/src/types/node";
@@ -26,10 +25,6 @@ export async function GET(
   const session = await requireSession();
   if (isAuthError(session)) return session;
 
-  // Flag-aware client: service-role while cutover disabled (behavior-neutral),
-  // user-scoped (RLS applies) once enabled. Threaded into the refactored helpers.
-  const db = await resolveRequestDbClient();
-
   try {
     const { searchParams } = new URL(request.url);
     const idParam = searchParams.get("id");
@@ -41,7 +36,7 @@ export async function GET(
       const access = await requireConversationAccess(idParam, session);
       if (isAuthError(access)) return access;
 
-      data = await loadConversationById(idParam, db);
+      data = await loadConversationById(idParam);
       if (!data) {
         return NextResponse.json(
           { error: `Conversation not found: ${idParam}` },
@@ -50,7 +45,7 @@ export async function GET(
       }
     } else {
       // Load the most recent conversation for this workspace
-      data = await loadLatestConversation(session.workspace, db);
+      data = await loadLatestConversation(session.workspace);
 
       // No conversation yet — create one (seed only for owner)
       if (!data) {
@@ -59,8 +54,6 @@ export async function GET(
           "New conversation",
           seedMessages,
           session.workspace,
-          undefined,
-          db,
         );
       }
     }

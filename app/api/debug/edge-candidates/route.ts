@@ -1,6 +1,5 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextResponse } from "next/server";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 import { loadLatestConversation } from "@/src/lib/db/conversations";
 import { loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
 import { loadEdges } from "@/src/lib/db/edges";
@@ -19,15 +18,14 @@ export async function GET() {
   if (debugAuthError) return debugAuthError;
 
   try {
-    const db = await resolveRequestDbClient();
-    const data = await loadLatestConversation(undefined, db);
+    const data = await loadLatestConversation();
     if (!data) {
       return NextResponse.json({ error: "No conversation found." }, { status: 404 });
     }
 
     const conversationId = data.conversation.id;
-    const rawNodes = await loadNodesWithEmbeddings(conversationId, db);
-    const rawEdges = await loadEdges(conversationId, db);
+    const rawNodes = await loadNodesWithEmbeddings(conversationId);
+    const rawEdges = await loadEdges(conversationId);
 
     // Build existing edge lookup (canonical pairs)
     const existingEdgeSet = new Set<string>();

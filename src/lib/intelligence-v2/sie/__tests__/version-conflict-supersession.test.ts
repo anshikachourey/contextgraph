@@ -734,9 +734,7 @@ describe("Version-Conflict Supersession", () => {
 
       // Graph state was reloaded twice
       expect(mockRetrieveGraphState).toHaveBeenCalledTimes(2);
-      // retrieveGraphState now accepts an optional injected client as a 2nd arg;
-      // the supersession path forwards its (undefined here) client through.
-      expect(mockRetrieveGraphState).toHaveBeenCalledWith("conv-001", undefined);
+      expect(mockRetrieveGraphState).toHaveBeenCalledWith("conv-001");
 
       // Python was called with different base versions
       const calls = (mockPython as ReturnType<typeof vi.fn>).mock.calls;

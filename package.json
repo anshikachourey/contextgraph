@@ -13,9 +13,6 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:cutover": "AUTH_SUPABASE_CUTOVER_ENABLED=true vitest run",
-    "check:service-role": "node scripts/check-service-role-usage.mjs",
-    "check:service-role-reachability": "node scripts/check-service-role-reachability.mjs",
     "generate:sie-types": "npx openapi-typescript ml-service/contracts/sie-openapi.json -o src/lib/intelligence-v2/sie/generated/transport-types.ts"
   },
   "dependencies": {
@@ -23,7 +20,6 @@
     "@astryxdesign/core": "^0.5.4",
     "@astryxdesign/theme-neutral": "^0.5.4",
     "@dagrejs/dagre": "^3.0.0",
-    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.108.2",
     "@xyflow/react": "^12.11.0",
     "next": "16.2.9",

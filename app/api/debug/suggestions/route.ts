@@ -1,6 +1,5 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextResponse } from "next/server";
-import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 import { loadLatestConversation } from "@/src/lib/db/conversations";
 import { loadNodesWithEmbeddings } from "@/src/lib/db/nodes";
 import { computeSuggestedEdges } from "@/src/lib/edgeSuggestions";
@@ -26,8 +25,7 @@ export async function GET(): Promise<
   if (debugAuthError) return debugAuthError;
 
   try {
-    const db = await resolveRequestDbClient();
-    const data = await loadLatestConversation(undefined, db);
+    const data = await loadLatestConversation();
     if (!data) {
       return NextResponse.json(
         { error: "No conversation found." },
@@ -35,7 +33,7 @@ export async function GET(): Promise<
       );
     }
 
-    const nodes = await loadNodesWithEmbeddings(data.conversation.id, db);
+    const nodes = await loadNodesWithEmbeddings(data.conversation.id);
     const suggestions = await computeSuggestedEdges(nodes);
 
     // Build a name lookup for the frontend

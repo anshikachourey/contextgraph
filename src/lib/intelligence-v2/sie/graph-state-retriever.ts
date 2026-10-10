@@ -14,7 +14,7 @@
  * - Loads ACTIVE + contextually relevant SUPERSEDED propositions.
  */
 
-import { resolveDbClient, type DbClient } from "@/src/lib/db/client";
+import { createServerSupabaseClient } from "@/src/lib/supabase/server";
 import type { components } from "./generated";
 import type { SIEGraphState } from "./types";
 
@@ -136,14 +136,9 @@ interface PendingDecisionRow {
  * GraphStateContext for Python and the local SIEGraphState for TypeScript.
  */
 export async function retrieveGraphState(
-  conversationId: string,
-  client?: DbClient
+  conversationId: string
 ): Promise<GraphStateRetrievalResult> {
-  // Injected user-scoped client when called on a request-triggered path (RLS
-  // applies in cutover mode); falls back to the legacy service-role client
-  // pre-cutover (behavior-neutral). SIE orchestration is itself gated behind
-  // SIE_SHADOW/SIE_AUTHORITY flags (both false by default).
-  const db = resolveDbClient(client);
+  const db = createServerSupabaseClient();
 
   // ── 1. Load graph version and authoritative engine ──────────────────────
   const { data: updateState, error: updateStateError } = await db
