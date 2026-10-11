@@ -6,7 +6,7 @@
  * Color hue is derived deterministically from the neighborhood.
  */
 
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { resolveDbClient, type DbClient } from "@/src/lib/db/client";
 import { cosineSimilarity } from "@/src/lib/cosineSimilarity";
 
 /** Minimum similarity to assign a node to an existing neighborhood. */
@@ -35,8 +35,12 @@ export async function assignNodeToNeighborhood(
   nodeId: string,
   nodeEmbedding: number[],
   nodeTitle: string,
+  client?: DbClient,
 ): Promise<{ neighborhoodId: string; hue: number }> {
-  const db = createServerSupabaseClient();
+  // Request-triggered path (from runIntelligenceEngine) threads the injected
+  // user-scoped client so RLS applies in cutover mode. When omitted (pre-cutover
+  // behavior-neutral), falls back to the legacy service-role client.
+  const db = resolveDbClient(client);
 
   // Load existing neighborhoods
   const { data: nbData } = await db

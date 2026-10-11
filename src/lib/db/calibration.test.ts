@@ -17,8 +17,16 @@ import type { CalibrationResult } from "@/src/lib/calibration/threshold-calibrat
 
 const mockFrom = vi.fn();
 
-vi.mock("@/src/lib/supabase/server", () => ({
+// getStoredCalibration falls back (no injected client) to the legacy bridge via
+// resolveDbClient; loadAllNodeEmbeddings/saveCalibration use the guarded
+// service-role factory directly. Mock BOTH providers to the same fake table.
+vi.mock("@/src/lib/supabase/legacy-service-role", () => ({
   createServerSupabaseClient: () => ({ from: mockFrom }),
+}));
+
+vi.mock("@/src/lib/supabase/service-role", () => ({
+  createServiceRoleClient: () => ({ from: mockFrom }),
+  grantServiceRoleCapability: (reason: string) => ({ reason }),
 }));
 
 // ─── In-memory singleton store + range constraint ────────────────────────────

@@ -1,6 +1,6 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 import { buildUtterances } from "@/src/lib/intelligence-v2/utterances";
 import { extractPropositions } from "@/src/lib/intelligence-v2/propositions";
 import { formThreads } from "@/src/lib/intelligence-v2/threads";
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const db = createServerSupabaseClient();
+    const db = await resolveRequestDbClient();
     const { data: msgData, error: dbError } = await db
       .from("messages")
       .select("id, role, content, conversation_id, created_at, parent_node_id, branch_root_message_id")

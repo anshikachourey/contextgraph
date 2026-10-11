@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
 
 /**
@@ -41,7 +41,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const access = await requireConversationAccess(conversationId, session);
   if (isAuthError(access)) return access;
 
-  const db = createServerSupabaseClient();
+  // Flag-aware client: service-role (behavior-neutral) while disabled,
+  // user-scoped (RLS applies) once enabled. Scoped by the verified conversation.
+  const db = await resolveRequestDbClient();
 
   // Load or create snapshot
   const { data: existing, error: fetchError } = await db

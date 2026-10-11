@@ -1,6 +1,6 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 
 type PipelineDebugResponse = {
   conversationId: string;
@@ -64,7 +64,7 @@ export async function GET(
     );
   }
 
-  const db = createServerSupabaseClient();
+  const db = await resolveRequestDbClient();
 
   try {
     // Messages

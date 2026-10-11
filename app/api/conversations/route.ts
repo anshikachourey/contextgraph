@@ -9,6 +9,7 @@ import {
   deleteConversation,
 } from "@/src/lib/db/conversations";
 import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
+import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 import type { ConversationListItem } from "@/src/lib/db/conversations";
 
 type ErrorResponse = { error: string };
@@ -20,12 +21,16 @@ export async function GET(
   const session = await requireSession();
   if (isAuthError(session)) return session;
 
+  // Flag-aware client: service-role while cutover disabled (behavior-neutral),
+  // user-scoped (RLS applies) once enabled. Threaded into the refactored helpers.
+  const db = await resolveRequestDbClient();
+
   try {
     const { searchParams } = new URL(request.url);
     const showArchived = searchParams.get("archived") === "true";
     const conversations = showArchived
-      ? await listArchivedConversations(session.workspace)
-      : await listConversations(session.workspace);
+      ? await listArchivedConversations(session.workspace, db)
+      : await listConversations(session.workspace, undefined, db);
     return NextResponse.json(conversations, {
       headers: { "Cache-Control": "no-store" },
     });
@@ -47,6 +52,8 @@ export async function POST(
   const session = await requireSession();
   if (isAuthError(session)) return session;
 
+  const db = await resolveRequestDbClient();
+
   let body: Record<string, unknown> = {};
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -60,7 +67,7 @@ export async function POST(
     if (isAuthError(access)) return access;
 
     try {
-      await updateConversationTitle(body.id, body.title);
+      await updateConversationTitle(body.id, body.title, db);
       return NextResponse.json({ id: body.id, title: body.title });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -77,7 +84,7 @@ export async function POST(
     if (isAuthError(access)) return access;
 
     try {
-      await archiveConversation(body.id);
+      await archiveConversation(body.id, db);
       return NextResponse.json({ id: body.id, title: "archived" });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -94,7 +101,7 @@ export async function POST(
     if (isAuthError(access)) return access;
 
     try {
-      await restoreConversation(body.id);
+      await restoreConversation(body.id, db);
       return NextResponse.json({ id: body.id, title: "restored" });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -111,7 +118,7 @@ export async function POST(
     if (isAuthError(access)) return access;
 
     try {
-      await deleteConversation(body.id);
+      await deleteConversation(body.id, db);
       return NextResponse.json({ id: body.id, title: "deleted" });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -127,7 +134,7 @@ export async function POST(
   const scope = body.scope === "graph_workspace" ? "graph_workspace" as const : undefined;
 
   try {
-    const data = await createConversation(title, [], session.workspace, scope ? { scope } : undefined);
+    const data = await createConversation(title, [], session.workspace, scope ? { scope } : undefined, db);
     return NextResponse.json(
       { id: data.conversation.id, title: data.conversation.title },
       { status: 201, headers: { "Cache-Control": "no-store" } },

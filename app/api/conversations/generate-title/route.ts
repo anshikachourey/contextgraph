@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { complete } from "@/src/lib/ai";
 import { SUMMARY_MODEL } from "@/src/lib/ai/models";
 import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { resolveRequestDbClient, useRlsScopedAccess } from "@/src/lib/db/request-client";
 
 type GenerateTitleRequest = {
   conversationId: string;
@@ -48,19 +48,28 @@ export async function POST(
     );
   }
 
-  // Verify workspace ownership
+  // Verify workspace ownership. On the flag-true branch this relies on RLS
+  // (non-member → zero rows → 404); on flag-false it keeps the legacy manual
+  // workspace_id check inside requireConversationAccess.
   const access = await requireConversationAccess(conversationId, session);
   if (isAuthError(access)) return access;
 
-  const db = createServerSupabaseClient();
+  // Flag-aware client: service-role (behavior-neutral) while disabled, user-scoped
+  // (RLS applies) once enabled. `rlsScoped` toggles the manual workspace_id filters.
+  const db = await resolveRequestDbClient();
+  const rlsScoped = useRlsScopedAccess();
 
-  // Check if the conversation still has the default title AND belongs to workspace
-  const { data: conv, error: convErr } = await db
+  // Check if the conversation still has the default title. While the cutover is
+  // disabled we keep the manual workspace_id filter (identical behavior); once
+  // enabled RLS already scopes the row to a workspace the caller is a member of.
+  let convQuery = db
     .from("conversations")
     .select("title, workspace_id")
-    .eq("id", conversationId)
-    .eq("workspace_id", session.workspace)
-    .single();
+    .eq("id", conversationId);
+  if (!rlsScoped) {
+    convQuery = convQuery.eq("workspace_id", session.workspace);
+  }
+  const { data: conv, error: convErr } = await convQuery.single();
 
   if (convErr || !conv) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
@@ -100,12 +109,16 @@ export async function POST(
     title = deriveFallbackTitle(messageContent);
   }
 
-  // Persist the generated title — scoped by workspace
-  const { error: updateErr } = await db
+  // Persist the generated title. Flag-false keeps the manual workspace_id scope
+  // (behavior-neutral); flag-true relies on RLS to constrain the update.
+  let updateQuery = db
     .from("conversations")
     .update({ title })
-    .eq("id", conversationId)
-    .eq("workspace_id", session.workspace);
+    .eq("id", conversationId);
+  if (!rlsScoped) {
+    updateQuery = updateQuery.eq("workspace_id", session.workspace);
+  }
+  const { error: updateErr } = await updateQuery;
 
   if (updateErr) {
     console.error("[generate-title] Failed to update title:", updateErr);
