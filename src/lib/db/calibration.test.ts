@@ -26,6 +26,7 @@ vi.mock("@/src/lib/supabase/legacy-service-role", () => ({
 
 vi.mock("@/src/lib/supabase/service-role", () => ({
   createServiceRoleClient: () => ({ from: mockFrom }),
+  grantServiceRoleCapability: (reason: string) => ({ reason }),
 }));
 
 // ─── In-memory singleton store + range constraint ────────────────────────────

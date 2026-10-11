@@ -6,7 +6,7 @@
  * writes only happen on an explicit calibration trigger.
  */
 
-import { createServiceRoleClient } from "@/src/lib/supabase/service-role";
+import { createServiceRoleClient, grantServiceRoleCapability } from "@/src/lib/supabase/service-role";
 import { resolveDbClient, type DbClient } from "@/src/lib/db/client";
 import type { CalibrationResult } from "@/src/lib/calibration/threshold-calibration";
 
@@ -32,7 +32,12 @@ const GLOBAL_ID = "global";
  * authenticated users via its RLS policy.
  */
 function globalMaintenanceClient() {
-  return createServiceRoleClient({ allowServiceRole: true });
+  return createServiceRoleClient({
+    allowServiceRole: true,
+    capability: grantServiceRoleCapability(
+      "global-singleton similarity-calibration maintenance (id='global' only)",
+    ),
+  });
 }
 
 export type StoredCalibration = {

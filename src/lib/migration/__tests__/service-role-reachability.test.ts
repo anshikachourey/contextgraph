@@ -51,7 +51,7 @@ describe("reachability (approach a) — offline sinks unreachable from ordinary 
 describe("reachability (approach b) — per-module privilege/offline assertions", () => {
   it("uuid-migration.ts: only the guarded factory, with the opt-in marker; no route imports it", () => {
     const src = read("src/lib/migration/uuid-migration.ts");
-    expect(src).toMatch(/createServiceRoleClient\(\s*\{\s*allowServiceRole:\s*true\s*\}\s*\)/);
+    expect(src).toMatch(/createServiceRoleClient\(\s*\{[\s\S]*?allowServiceRole:\s*true[\s\S]*?capability:\s*grantServiceRoleCapability\(/);
     // Not reachable from any ordinary route (also covered by approach a).
     const reachingRoutes = findOrdinaryRouteEntrypoints(ROOT).filter((r) =>
       transitiveImports(r, ROOT).has("src/lib/migration/uuid-migration.ts"),
@@ -63,7 +63,7 @@ describe("reachability (approach b) — per-module privilege/offline assertions"
     const src = read("app/api/debug/migrate-engine-state/route.ts");
     // Privileged + gated.
     expect(src).toMatch(/requireDebugAccess\(\)/);
-    expect(src).toMatch(/createServiceRoleClient\(\s*\{\s*allowServiceRole:\s*true\s*\}\s*\)/);
+    expect(src).toMatch(/createServiceRoleClient\(\s*\{[\s\S]*?allowServiceRole:\s*true[\s\S]*?capability:\s*grantServiceRoleCapability\(/);
     // No other ordinary route transitively imports this privileged route module.
     const importers = findOrdinaryRouteEntrypoints(ROOT).filter((r) =>
       transitiveImports(r, ROOT).has("app/api/debug/migrate-engine-state/route.ts"),
@@ -84,7 +84,7 @@ describe("reachability (approach b) — per-module privilege/offline assertions"
     const nextFnStart = runner.indexOf("async function processFromCursor");
     expect(recoveryFnStart).toBeGreaterThan(-1);
     const recoveryBody = runner.slice(recoveryFnStart, nextFnStart);
-    expect(recoveryBody).toMatch(/createServiceRoleClient\(\s*\{\s*allowServiceRole:\s*true\s*\}\s*\)/);
+    expect(recoveryBody).toMatch(/createServiceRoleClient\(\s*\{[\s\S]*?allowServiceRole:\s*true[\s\S]*?capability:\s*grantServiceRoleCapability\(/);
     // The request-triggered path must NOT construct a service-role client — it
     // resolves the injected/user-scoped client via resolveDbClient.
     const processStart = runner.indexOf("async function processFromCursor");
@@ -112,7 +112,7 @@ describe("reachability (approach b) — per-module privilege/offline assertions"
     expect(src).toMatch(/GLOBAL_ID\s*=\s*["']global["']/);
     expect(src).toMatch(/\.eq\(\s*["']id["']\s*,\s*GLOBAL_ID\s*\)/);
     // Global maintenance uses the guarded factory (not the legacy bridge).
-    expect(src).toMatch(/createServiceRoleClient\(\s*\{\s*allowServiceRole:\s*true\s*\}\s*\)/);
+    expect(src).toMatch(/createServiceRoleClient\(\s*\{[\s\S]*?allowServiceRole:\s*true[\s\S]*?capability:\s*grantServiceRoleCapability\(/);
     // The request-reachable read takes an injected client via resolveDbClient.
     expect(src).toMatch(/getStoredCalibration\([\s\S]*?client\?:\s*DbClient/);
     expect(src).toMatch(/resolveDbClient\(client\)/);

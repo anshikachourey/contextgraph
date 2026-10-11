@@ -62,6 +62,30 @@ beforeAll(() => {
     path.join(legacyRouteDir, "route.ts"),
     `import { createServerSupabaseClient } from "@/src/lib/supabase/legacy-service-role";\nexport const GET = () => createServerSupabaseClient();\n`,
   );
+
+  // Capability boundary (incident fix for 260ec8b): a non-allowlisted request
+  // module must not be able to import EITHER service-role export. The capability
+  // only prevents ACCIDENTAL misuse at runtime; the authorization of WHICH
+  // modules may import/mint it is enforced HERE, statically. So importing
+  // grantServiceRoleCapability — not just createServiceRoleClient — from a
+  // non-allowlisted request path must be flagged too.
+  const capRouteDir = path.join(tmpRoot, "app/api/cap-evil");
+  fs.mkdirSync(capRouteDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(capRouteDir, "route.ts"),
+    `import { grantServiceRoleCapability } from "@/src/lib/supabase/service-role";\n` +
+      `export const GET = () => grantServiceRoleCapability("sneaky");\n`,
+  );
+
+  // Combined import of BOTH exports from a non-allowlisted request path.
+  const comboRouteDir = path.join(tmpRoot, "app/api/combo-evil");
+  fs.mkdirSync(comboRouteDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(comboRouteDir, "route.ts"),
+    `import { createServiceRoleClient, grantServiceRoleCapability } from "@/src/lib/supabase/service-role";\n` +
+      `export const GET = () =>\n` +
+      `  createServiceRoleClient({ allowServiceRole: true, capability: grantServiceRoleCapability("x") });\n`,
+  );
 });
 
 afterAll(() => {
@@ -85,6 +109,37 @@ describe("check-service-role-usage static check", () => {
 
   it("does not flag modules importing the look-alike allowlist helper", () => {
     const violations = findViolations({ root: tmpRoot });
+    expect(violations).not.toContain("src/lib/other/ok.ts");
+  });
+
+  it("flags a non-allowlisted request module that imports grantServiceRoleCapability", () => {
+    // The capability guards against ACCIDENTAL runtime misuse; module
+    // authorization is enforced statically here. Importing the capability
+    // mint from a non-allowlisted request path is itself a violation —
+    // acquiring the capability is exactly what the static layer forbids.
+    const violations = findViolations({ root: tmpRoot });
+    expect(violations).toContain("app/api/cap-evil/route.ts");
+  });
+
+  it("flags a non-allowlisted request module importing BOTH exports together", () => {
+    const violations = findViolations({ root: tmpRoot });
+    expect(violations).toContain("app/api/combo-evil/route.ts");
+  });
+
+  it("neither service-role export is reachable from a non-allowlisted request path (summary)", () => {
+    const violations = findViolations({ root: tmpRoot });
+    // All four non-allowlisted request routes — importing the factory, the
+    // legacy bridge, the capability mint, or both — are rejected; the
+    // allowlisted module and the allowlist-helper importer are not.
+    for (const flagged of [
+      "app/api/evil/route.ts",
+      "app/api/legacy-evil/route.ts",
+      "app/api/cap-evil/route.ts",
+      "app/api/combo-evil/route.ts",
+    ]) {
+      expect(violations).toContain(flagged);
+    }
+    expect(violations).not.toContain("src/lib/migration/uuid-migration.ts");
     expect(violations).not.toContain("src/lib/other/ok.ts");
   });
 });

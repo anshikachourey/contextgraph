@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cutover": "AUTH_SUPABASE_CUTOVER_ENABLED=true vitest run",
+    "test:build-it": "RUN_BUILD_IT=1 vitest run app/api/__tests__/service-role-bundle.build-it.test.ts",
     "check:service-role": "node scripts/check-service-role-usage.mjs",
     "check:service-role-reachability": "node scripts/check-service-role-reachability.mjs",
     "generate:sie-types": "npx openapi-typescript ml-service/contracts/sie-openapi.json -o src/lib/intelligence-v2/sie/generated/transport-types.ts"

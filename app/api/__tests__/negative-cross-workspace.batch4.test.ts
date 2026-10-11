@@ -63,6 +63,7 @@ vi.mock("@/src/lib/supabase/legacy-service-role", () => ({
 // migrate-engine-state (group d) uses the guarded service-role client — stub it.
 vi.mock("@/src/lib/supabase/service-role", () => ({
   createServiceRoleClient: vi.fn(() => userScopedClient()),
+  grantServiceRoleCapability: vi.fn((reason: string) => ({ reason })),
 }));
 
 function jsonReq(url: string, body: unknown): NextRequest {

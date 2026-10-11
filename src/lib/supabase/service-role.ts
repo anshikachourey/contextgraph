@@ -1,28 +1,78 @@
 import { createClient } from "@supabase/supabase-js";
-import { isAllowlistedModule } from "./service-role-allowlist";
 
 /**
  * Service-role Supabase client factory — PRIVILEGED, RLS-BYPASSING.
  *
- * Feature: google-oauth-authentication (Task 1.3)
+ * Feature: google-oauth-authentication (Task 1.3 → bundle-safe capability
+ * boundary, incident fix for 260ec8b)
  *
- * Deliberately conspicuous name. This factory is permitted ONLY from modules on
- * the service-role allowlist (`./service-role-allowlist`) and ONLY when called
- * with the explicit opt-in marker `{ allowServiceRole: true }`. It must NEVER be
- * reachable from middleware or page/route request paths (Req 10.5).
+ * Deliberately conspicuous name. The service-role client bypasses RLS and must
+ * NEVER be reachable from middleware or page/route request paths (Req 10.5).
  *
- * Enforcement is layered:
- *   - This runtime hard-violation guard (last line of defense) throws unless the
- *     opt-in marker is present AND the calling module is allowlisted.
- *   - A blocking CI static check + ESLint `no-restricted-imports` prevent any
- *     non-allowlisted module from importing this factory in the first place.
+ * ── Why this no longer inspects the call stack ──────────────────────────────
  *
- * Normal account provisioning does NOT use this factory — it runs through the
- * `auth.users` trigger or the `auth.uid()`-bound `provision_self()` RPC via the
- * user-scoped client.
+ * The previous implementation authorized callers by parsing `new Error().stack`
+ * and matching the caller's SOURCE FILE PATH against the allowlist. That is
+ * fundamentally unsound in a production build: Next.js/Turbopack bundles every
+ * module into opaque chunks (e.g. `.next/server/chunks/[root-of-the-server]__…_.js`),
+ * so the "caller module" is a chunk path that is never on the allowlist. On
+ * deployment 260ec8b this made the LEGITIMATE flag-false legacy-compatibility
+ * call throw a hard violation, 500-ing `GET /api/conversations` before any DB
+ * query ran. Runtime authorization based on stack traces / caller filenames is
+ * removed entirely.
+ *
+ * ── The replacement: an explicit, bundle-safe capability boundary ───────────
+ *
+ * Two independent layers, with a clear division of responsibility:
+ *
+ *   1. CAPABILITY (runtime) — prevents ACCIDENTAL MISUSE. Constructing a
+ *      service-role client requires an unforgeable {@link ServiceRoleCapability}
+ *      value, obtainable only via {@link grantServiceRoleCapability}(reason).
+ *      The capability is a module-private branded object: it cannot be
+ *      fabricated from a plain `{}` or JSON, and the brand symbol is
+ *      module-scoped (not on the global registry). Because it is a VALUE
+ *      threaded explicitly through the call site (not ambient caller context),
+ *      it survives bundling unchanged — the boundary behaves identically in
+ *      `tsx` dev, `vitest`, and the bundled `.next/server/chunks` runtime. This
+ *      is what the old stack/filename check failed to be: it makes a privileged
+ *      construction impossible BY ACCIDENT, with the reason visible at the call
+ *      site. It does NOT, and is not meant to, decide WHICH modules are allowed
+ *      to do this.
+ *
+ *   2. CI IMPORT / REACHABILITY RULES (build time) — ENFORCE MODULE
+ *      AUTHORIZATION. Deciding which modules may import this factory (and thus
+ *      acquire the capability) is enforced statically, where source paths are
+ *      meaningful, by the retained DEFENSE-IN-DEPTH layer:
+ *        - the blocking CI static check (`scripts/check-service-role-usage.mjs`)
+ *          — fails the build if any non-allowlisted module imports EITHER
+ *          service-role export (`createServiceRoleClient` OR
+ *          `grantServiceRoleCapability`) from this module or the legacy bridge,
+ *        - the import-reachability check (`scripts/check-service-role-reachability.mjs`),
+ *        - the ESLint `no-restricted-imports` rule,
+ *      all keyed off the `service-role-allowlist.ts` module list.
+ *
+ * In short: the capability stops accidental misuse at runtime; the CI
+ * import/reachability rules decide and enforce who is authorized. Neither layer
+ * depends on stack traces or caller filenames, so neither is defeated by
+ * production bundling.
  *
  * Requirements: 10.3, 10.5, 12.1
  */
+
+/** Module-private brand. Not on the global symbol registry, so a capability
+ *  object cannot be forged from outside this module. */
+const CAPABILITY_BRAND: unique symbol = Symbol("service-role-capability");
+
+/**
+ * An unforgeable grant permitting construction of the service-role client.
+ * Obtain one via {@link grantServiceRoleCapability}; it cannot be constructed
+ * as a plain object literal because the brand symbol is module-private.
+ */
+export type ServiceRoleCapability = {
+  readonly [CAPABILITY_BRAND]: true;
+  /** Human-readable justification, surfaced in errors/telemetry. */
+  readonly reason: string;
+};
 
 export type ServiceRoleOptions = {
   /**
@@ -30,59 +80,44 @@ export type ServiceRoleOptions = {
    * service-role client is a privileged act and must be impossible by accident.
    */
   allowServiceRole: true;
+  /** The capability grant (see {@link grantServiceRoleCapability}). */
+  capability: ServiceRoleCapability;
 };
 
 /**
- * Extracts the caller's source-file path from a captured stack trace, skipping
- * frames inside this module itself. Returns null if it cannot be determined
- * (in which case the guard fails closed).
- *
- * Exported for unit testing of the stack-parsing logic (Task 1.4).
+ * Mint a service-role capability. Callers must pass a short, explicit reason
+ * documenting why RLS bypass is legitimate for this path (e.g. "legacy
+ * pre-cutover compatibility bridge", "uuid-migration runner", "offline recovery
+ * sweep"). Only modules that import this factory module can call this; the
+ * build-time static checks ensure those modules are exactly the allowlisted
+ * ones.
  */
-export function resolveCallerModule(stack: string | undefined): string | null {
-  if (!stack) return null;
+export function grantServiceRoleCapability(reason: string): ServiceRoleCapability {
+  return { [CAPABILITY_BRAND]: true, reason } as ServiceRoleCapability;
+}
 
-  const lines = stack.split("\n").slice(1); // drop the "Error" header line
-  for (const line of lines) {
-    // Match "(path:line:col)" or bare "path:line:col" frames.
-    const match =
-      line.match(/\((.*?):\d+:\d+\)\s*$/) ?? line.match(/at\s+(.*?):\d+:\d+\s*$/);
-    if (!match) continue;
-
-    let file = match[1];
-    // Strip URL scheme / node internals we don't care about.
-    file = file.replace(/^file:\/\//, "");
-    if (file.startsWith("node:")) continue;
-
-    // Skip frames inside this guard module and the allowlist module.
-    if (
-      file.includes("supabase/service-role.ts") ||
-      file.includes("supabase/service-role.js") ||
-      file.includes("supabase/service-role-allowlist")
-    ) {
-      continue;
-    }
-
-    return file;
-  }
-
-  return null;
+/** Type guard: a genuine, module-minted capability (not a forged literal). */
+function isServiceRoleCapability(value: unknown): value is ServiceRoleCapability {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<PropertyKey, unknown>)[CAPABILITY_BRAND] === true
+  );
 }
 
 /**
- * Constructs a service-role Supabase client. Throws a hard violation unless:
+ * Constructs a service-role Supabase client. Throws a hard MISUSE violation
+ * unless:
  *   1. the opt-in marker `allowServiceRole: true` is supplied, and
- *   2. the calling module is on the service-role allowlist.
+ *   2. a genuine, module-minted {@link ServiceRoleCapability} is supplied.
  *
- * @param __stackForTest Internal testing seam ONLY: lets a test supply a stack
- *   string so the allowlisted-caller path can be exercised deterministically.
- *   Never pass this from production code.
+ * There is NO stack/filename inspection — authorization of WHICH modules may
+ * acquire the capability is enforced statically at build time (see the module
+ * doc), which is the only sound approach in a bundled runtime.
+ *
  * @throws Error — hard violation; the operation is blocked (Req 10.5).
  */
-export function createServiceRoleClient(
-  options: ServiceRoleOptions,
-  __stackForTest?: string,
-) {
+export function createServiceRoleClient(options: ServiceRoleOptions) {
   if (!options || options.allowServiceRole !== true) {
     throw new Error(
       "[service-role] Hard violation: createServiceRoleClient requires the explicit " +
@@ -91,14 +126,13 @@ export function createServiceRoleClient(
     );
   }
 
-  const caller = resolveCallerModule(__stackForTest ?? new Error().stack);
-
-  if (!caller || !isAllowlistedModule(caller)) {
+  if (!isServiceRoleCapability(options.capability)) {
     throw new Error(
-      "[service-role] Hard violation: createServiceRoleClient was invoked from a " +
-        `non-allowlisted module (${caller ?? "unknown caller"}). Only the UUID_Migration ` +
-        "runner and allowlisted offline/system jobs may use the service-role client. " +
-        "Request paths must use createUserScopedClient() so RLS applies.",
+      "[service-role] Hard violation: createServiceRoleClient requires an unforgeable " +
+        "ServiceRoleCapability minted via grantServiceRoleCapability(reason). A plain " +
+        "object cannot be used. Only allowlisted modules (enforced by the blocking CI " +
+        "static + reachability checks and the ESLint rule) may import this factory and " +
+        "mint the capability; request paths must use createUserScopedClient() so RLS applies.",
     );
   }
 

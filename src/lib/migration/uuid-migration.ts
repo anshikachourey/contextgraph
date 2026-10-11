@@ -29,7 +29,7 @@
  * CI — it is a manual, one-time operation.
  */
 
-import { createServiceRoleClient } from "@/src/lib/supabase/service-role";
+import { createServiceRoleClient, grantServiceRoleCapability } from "@/src/lib/supabase/service-role";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** Canonical v4-ish UUID shape check (also accepts other RFC-4122 versions). */
@@ -138,7 +138,12 @@ export async function runOwnerUuidMigration(
   const target = targetUserId.trim();
 
   // Guarded, allowlisted service-role construction (group (d)).
-  const db = createServiceRoleClient({ allowServiceRole: true });
+  const db = createServiceRoleClient({
+    allowServiceRole: true,
+    capability: grantServiceRoleCapability(
+      "one-time UUID_Migration runner (rewrites ownership before RLS admits rows)",
+    ),
+  });
 
   // TS-side PREFLIGHT: verify the real schema has the tables/columns this
   // migration depends on and FAIL FAST before any mutation (defense-in-depth

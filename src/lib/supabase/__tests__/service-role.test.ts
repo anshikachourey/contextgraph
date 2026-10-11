@@ -1,18 +1,20 @@
 /**
- * Unit tests for the service-role hard-violation guard.
+ * Unit tests for the service-role hard-violation guard (capability boundary).
  *
- * Feature: google-oauth-authentication (Task 1.4)
+ * Feature: google-oauth-authentication (Task 1.4 → bundle-safe capability
+ * boundary, incident fix for 260ec8b)
  * Requirements: 10.5
  *
- * The guard must:
+ * The guard is now a MISUSE guard with a bundle-safe, explicit CAPABILITY
+ * boundary (no stack-trace / caller-filename inspection, which was unsound in a
+ * production bundle). It must:
  *   - throw when invoked WITHOUT the opt-in marker,
- *   - throw when invoked from a NON-allowlisted module (even with the marker),
- *   - succeed only from an allowlisted module WITH { allowServiceRole: true }.
- *
- * Because the guard resolves the caller from the stack trace, we exercise the
- * allowlisted-success path through a tiny fixture module placed on the allowlist
- * (`src/lib/db/calibration.ts` is allowlisted; we simulate an allowlisted caller
- * by stubbing the stack via a wrapper that reports an allowlisted frame).
+ *   - throw when invoked WITHOUT a genuine, module-minted capability,
+ *   - throw when handed a FORGED (plain-object) capability,
+ *   - succeed when given the opt-in marker AND a real
+ *     grantServiceRoleCapability(...) value — regardless of which module calls
+ *     it (authorization of WHICH modules may import/mint is enforced statically
+ *     at build time, not at runtime).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -22,7 +24,7 @@ const ENV = {
   SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
 };
 
-describe("createServiceRoleClient hard-violation guard", () => {
+describe("createServiceRoleClient capability guard", () => {
   beforeEach(() => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = ENV.NEXT_PUBLIC_SUPABASE_URL;
     process.env.SUPABASE_SERVICE_ROLE_KEY = ENV.SUPABASE_SERVICE_ROLE_KEY;
@@ -42,53 +44,59 @@ describe("createServiceRoleClient hard-violation guard", () => {
     );
   });
 
-  it("throws when invoked from a non-allowlisted module (even with the marker)", async () => {
+  it("throws when the capability is missing (marker alone is insufficient)", async () => {
     const { createServiceRoleClient } = await import("../service-role");
-    // This very test file is NOT on the allowlist, so the caller frame
-    // (service-role.test.ts) is rejected.
+    // @ts-expect-error — capability omitted
     expect(() => createServiceRoleClient({ allowServiceRole: true })).toThrow(
-      /non-allowlisted module/i,
+      /unforgeable ServiceRoleCapability/i,
     );
   });
 
-  it("succeeds from an allowlisted module with the opt-in marker", async () => {
+  it("throws when handed a FORGED (plain-object) capability", async () => {
+    const { createServiceRoleClient } = await import("../service-role");
+    expect(() =>
+      createServiceRoleClient({
+        allowServiceRole: true,
+        // A plain object cannot carry the module-private brand symbol.
+        capability: { reason: "I promise I'm allowed" } as never,
+      }),
+    ).toThrow(/unforgeable ServiceRoleCapability/i);
+  });
+
+  it("succeeds with the opt-in marker AND a genuine minted capability", async () => {
     const srMod = await import("../service-role");
-
-    // Supply a stack whose caller frame is an allowlisted module.
-    const allowlistedFrame =
-      "Error\n    at Object.<anonymous> (/repo/src/lib/migration/uuid-migration.ts:10:20)\n" +
-      "    at createServiceRoleClient (/repo/src/lib/supabase/service-role.ts:1:1)";
-
-    const client = srMod.createServiceRoleClient(
-      { allowServiceRole: true },
-      allowlistedFrame,
-    );
-
+    const client = srMod.createServiceRoleClient({
+      allowServiceRole: true,
+      capability: srMod.grantServiceRoleCapability("unit-test legitimate use"),
+    });
     expect(client).toBeTruthy();
     expect(typeof client.from).toBe("function");
   });
 
-  it("fails closed when the caller cannot be resolved", async () => {
+  it("does NOT inspect the call stack — succeeds no matter which frame calls it", async () => {
     const srMod = await import("../service-role");
-    expect(() =>
-      srMod.createServiceRoleClient({ allowServiceRole: true }, undefined),
-    ).toThrow(/non-allowlisted module|unknown caller/i);
-    // Also: an empty/garbage stack resolves to no caller → fail closed.
-    expect(() =>
-      srMod.createServiceRoleClient({ allowServiceRole: true }, "Error\n"),
-    ).toThrow(/non-allowlisted module|unknown caller/i);
+    // Call through an anonymous indirection to prove no caller-path check runs.
+    const callThrough = () =>
+      srMod.createServiceRoleClient({
+        allowServiceRole: true,
+        capability: srMod.grantServiceRoleCapability("indirect caller"),
+      });
+    expect(callThrough()).toBeTruthy();
   });
 
-  it("resolveCallerModule skips guard frames and resolves the real caller", async () => {
-    const { resolveCallerModule } = await import("../service-role");
-    const stack =
-      "Error\n" +
-      "    at resolveCallerModule (/repo/src/lib/supabase/service-role.ts:30:5)\n" +
-      "    at createServiceRoleClient (/repo/src/lib/supabase/service-role.ts:90:20)\n" +
-      "    at run (/repo/src/lib/migration/uuid-migration.ts:12:10)";
-    expect(resolveCallerModule(stack)).toBe(
-      "/repo/src/lib/migration/uuid-migration.ts",
-    );
-    expect(resolveCallerModule(undefined)).toBeNull();
+  it("still fails closed on missing Supabase env even with a valid capability", async () => {
+    const srMod = await import("../service-role");
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    expect(() =>
+      srMod.createServiceRoleClient({
+        allowServiceRole: true,
+        capability: srMod.grantServiceRoleCapability("env-missing case"),
+      }),
+    ).toThrow(/Missing Supabase environment variables/i);
+  });
+
+  it("no longer exports stack-trace parsing (resolveCallerModule removed)", async () => {
+    const srMod = (await import("../service-role")) as Record<string, unknown>;
+    expect(srMod.resolveCallerModule).toBeUndefined();
   });
 });

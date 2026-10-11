@@ -9,7 +9,7 @@
  * Serialization scope: PROCESS-LOCAL only.
  */
 
-import { createServiceRoleClient } from "@/src/lib/supabase/service-role";
+import { createServiceRoleClient, grantServiceRoleCapability } from "@/src/lib/supabase/service-role";
 import { resolveDbClient, type DbClient } from "@/src/lib/db/client";
 import { runIncrementalV2Update } from "./index";
 import type { V2Snapshot } from "./schemas";
@@ -94,7 +94,12 @@ export async function recoverAbandonedWork(): Promise<number> {
   // factory directly (conspicuous opt-in marker), NOT the legacy bridge, so it
   // keeps working as a genuine background path in cutover mode rather than
   // hard-failing. Routes only ever call the fire-and-forget triggerRecoveryOnce.
-  const db = createServiceRoleClient({ allowServiceRole: true });
+  const db = createServiceRoleClient({
+    allowServiceRole: true,
+    capability: grantServiceRoleCapability(
+      "offline recovery sweep (no request/auth.uid() to scope by)",
+    ),
+  });
   const staleThreshold = new Date(Date.now() - STALE_TIMEOUT_MS).toISOString();
 
   const { data: rows } = await db
