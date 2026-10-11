@@ -1,6 +1,6 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/src/lib/supabase/service-role";
+import { createServiceRoleClient, grantServiceRoleCapability } from "@/src/lib/supabase/service-role";
 
 /**
  * POST /api/debug/migrate-engine-state
@@ -21,7 +21,12 @@ export async function POST(): Promise<NextResponse> {
   const debugAuthError = await requireDebugAccess();
   if (debugAuthError) return debugAuthError;
 
-  const db = createServiceRoleClient({ allowServiceRole: true });
+  const db = createServiceRoleClient({
+    allowServiceRole: true,
+    capability: grantServiceRoleCapability(
+      "requireDebugAccess()-gated schema/DDL maintenance (not conversation-scoped)",
+    ),
+  });
   const results: string[] = [];
 
   // Add cursor column

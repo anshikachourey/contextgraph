@@ -55,3 +55,13 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # BLOCKING bundled-server regression test (Feature:
+      # google-oauth-authentication). Runs a real `next build` and drives the
+      # BUILT server (.next/server/chunks/*) with the cutover flag false against
+      # an old-schema-compatible mock, authenticates via the legacy login, and
+      # asserts GET /api/conversations returns 200. This reproduces the 260ec8b
+      # incident class (the service-role guard rejecting an opaque bundled chunk
+      # caller) that the mocked unit suite cannot catch. Gated by RUN_BUILD_IT=1.
+      - name: Bundled-server regression test (blocking)
+        run: npm run test:build-it

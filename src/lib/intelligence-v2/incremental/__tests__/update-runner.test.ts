@@ -58,6 +58,7 @@ vi.mock("@/src/lib/supabase/legacy-service-role", () => ({
 
 vi.mock("@/src/lib/supabase/service-role", () => ({
   createServiceRoleClient: () => makeFakeClient(),
+  grantServiceRoleCapability: (reason: string) => ({ reason }),
 }));
 
 vi.mock("@/src/lib/ai", () => ({

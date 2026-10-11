@@ -40,6 +40,7 @@ function stubClient() {
 
 vi.mock("@/src/lib/supabase/service-role", () => ({
   createServiceRoleClient: vi.fn(() => stubClient()),
+  grantServiceRoleCapability: vi.fn((reason: string) => ({ reason })),
 }));
 
 import { runOwnerUuidMigration, assertSchemaPreflight } from "../uuid-migration";

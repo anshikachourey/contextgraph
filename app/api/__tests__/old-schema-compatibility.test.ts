@@ -289,7 +289,7 @@ describe("old-schema compatibility (flag false, un-migrated production schema)",
 
   it("GET /api/graph-workspaces lists via production schema only", async () => {
     const { GET } = await import("@/app/api/graph-workspaces/route");
-    const res = await GET(new NextRequest(new URL("http://t/api/graph-workspaces")));
+    const res = await GET();
     expect([200, 404]).toContain(res.status);
   });
 

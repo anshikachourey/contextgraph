@@ -33,7 +33,7 @@
  * Requirements: 10.3, 10.5, 12.1
  */
 
-import { createServiceRoleClient } from "./service-role";
+import { createServiceRoleClient, grantServiceRoleCapability } from "./service-role";
 import { isSupabaseCutoverEnabled } from "@/src/lib/config/cutover";
 
 /**
@@ -69,5 +69,10 @@ export function createServerSupabaseClient() {
         "injected user-scoped client (resolveRequestDbClient / resolveDbClient).",
     );
   }
-  return createServiceRoleClient({ allowServiceRole: true });
+  return createServiceRoleClient({
+    allowServiceRole: true,
+    capability: grantServiceRoleCapability(
+      "legacy pre-cutover compatibility bridge (flag-false request DB path)",
+    ),
+  });
 }
