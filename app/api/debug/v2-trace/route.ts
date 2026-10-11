@@ -1,6 +1,6 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 import { buildUtterances } from "@/src/lib/intelligence-v2/utterances";
 import { extractPropositions } from "@/src/lib/intelligence-v2/propositions";
 import { formThreads } from "@/src/lib/intelligence-v2/threads";
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const timings: Record<string, number> = {};
     const pipelineStart = Date.now();
 
-    const db = createServerSupabaseClient();
+    const db = await resolveRequestDbClient();
 
     // ─── Messages ───────────────────────────────────────────────────────
     const { data: msgData, error: dbError } = await db

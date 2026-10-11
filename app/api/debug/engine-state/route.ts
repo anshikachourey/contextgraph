@@ -1,6 +1,6 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 
 export async function GET(
   request: NextRequest,
@@ -18,7 +18,7 @@ export async function GET(
     );
   }
 
-  const db = createServerSupabaseClient();
+  const db = await resolveRequestDbClient();
 
   // Query ALL rows for this conversation (detect duplicates)
   const { data: allRows, error: allError } = await db

@@ -1,18 +1,27 @@
 import { requireDebugAccess } from "@/src/lib/auth/debug";
 import { NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { createServiceRoleClient } from "@/src/lib/supabase/service-role";
 
 /**
  * POST /api/debug/migrate-engine-state
  *
  * Adds the v2 engine state columns (cursor, open_segment) to conversation_engine_state.
  * Safe to run multiple times — uses IF NOT EXISTS semantics via individual column adds.
+ *
+ * GROUP (d) — PRIVILEGED, RLS-BYPASSING. This is a schema/DDL maintenance
+ * diagnostic (ALTER TABLE / exec_sql + a global zero-UUID probe row); it is NOT
+ * conversation-scoped and must bypass RLS. It is therefore gated by
+ * requireDebugAccess() AND explicitly placed on the service-role allowlist
+ * (src/lib/supabase/service-role-allowlist.ts + eslint.config.mjs), constructing
+ * the service-role client with the conspicuous opt-in marker. Google OAuth
+ * design — Debug routes note: "any genuinely cross-workspace diagnostic that
+ * must bypass RLS is explicitly allowlisted as a group (d) privileged operation."
  */
 export async function POST(): Promise<NextResponse> {
   const debugAuthError = await requireDebugAccess();
   if (debugAuthError) return debugAuthError;
 
-  const db = createServerSupabaseClient();
+  const db = createServiceRoleClient({ allowServiceRole: true });
   const results: string[] = [];
 
   // Add cursor column

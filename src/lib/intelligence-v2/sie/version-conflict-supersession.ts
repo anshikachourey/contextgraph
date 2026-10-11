@@ -18,6 +18,7 @@
 
 import { retrieveGraphState } from "./graph-state-retriever";
 import { commitSIEResult, computePayloadFingerprint } from "./commit-manager";
+import type { DbClient } from "@/src/lib/db/client";
 import type {
   CommitResult,
   ProcessResult,
@@ -161,7 +162,8 @@ export async function handleVersionConflictSupersession(
   originalRequest: ProcessRequest,
   invokePython: PythonInvoker,
   supersedeRequest: SupersedeRequestFn,
-  config: SupersessionConfig
+  config: SupersessionConfig,
+  client?: DbClient
 ): Promise<SupersessionOutcome> {
   const startTime = Date.now();
   const semanticCreationKey = deriveSemanticCreationKey(
@@ -195,7 +197,7 @@ export async function handleVersionConflictSupersession(
     // ─── Step 1: Reload fresh graph state ─────────────────────────────────
     let freshGraphState;
     try {
-      freshGraphState = await retrieveGraphState(conversationId);
+      freshGraphState = await retrieveGraphState(conversationId, client);
     } catch (err) {
       return {
         status: "failed",

@@ -27,7 +27,7 @@ import {
 const mockFrom = vi.fn();
 const mockRpc = vi.fn();
 
-vi.mock("@/src/lib/supabase/server", () => ({
+vi.mock("@/src/lib/supabase/legacy-service-role", () => ({
   createServerSupabaseClient: () => ({
     from: mockFrom,
     rpc: mockRpc,

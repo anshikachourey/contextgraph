@@ -30,7 +30,7 @@ let mockUpdateResult: { data: unknown; error: unknown };
 let mockInsertResult: { data: unknown; error: unknown };
 let tableAccesses: string[];
 
-vi.mock("@/src/lib/supabase/server", () => ({
+vi.mock("@/src/lib/supabase/legacy-service-role", () => ({
   createServerSupabaseClient: () => ({
     from: (table: string) => {
       tableAccesses.push(table);

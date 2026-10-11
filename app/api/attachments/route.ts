@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { resolveRequestDbClient } from "@/src/lib/db/request-client";
 import { requireSession, requireConversationAccess, isAuthError } from "@/src/lib/auth";
 
 const BUCKET = "chat-attachments";
@@ -24,7 +24,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const session = await requireSession();
   if (isAuthError(session)) return session;
 
-  const db = createServerSupabaseClient();
+  // Flag-aware client: service-role (behavior-neutral) while disabled,
+  // user-scoped (Storage RLS / per-object policies) once enabled.
+  const db = await resolveRequestDbClient();
 
   let formData: FormData;
   try {
@@ -73,7 +75,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
   const storagePath = `${conversationId}/${uuid}-${safeName}`;
 
-  // Upload via service role (bypasses RLS)
+  // Upload through the flag-aware client (service-role pre-cutover; user-scoped
+  // with Storage RLS post-cutover — scoped to the verified conversation).
   const buffer = Buffer.from(await file.arrayBuffer());
   const { error: uploadErr } = await db.storage
     .from(BUCKET)
@@ -138,7 +141,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (isAuthError(access)) return access;
   }
 
-  const db = createServerSupabaseClient();
+  // Flag-aware client: service-role (behavior-neutral) while disabled,
+  // user-scoped (Storage RLS) once enabled.
+  const db = await resolveRequestDbClient();
 
   const { data, error } = await db.storage
     .from(BUCKET)

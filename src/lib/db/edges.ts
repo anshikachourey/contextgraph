@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/src/lib/supabase/server";
+import { resolveDbClient, type DbClient } from "./client";
 import type { SuggestedEdge, SemanticEdge } from "@/src/types/edge";
 import type { DbEdge } from "@/src/types/db";
 
@@ -23,8 +23,9 @@ function canonicalPair(idA: string, idB: string): [string, string] {
 export async function persistEdges(
   conversationId: string,
   suggestions: SuggestedEdge[],
+  client?: DbClient,
 ): Promise<number> {
-  const db = createServerSupabaseClient();
+  const db = resolveDbClient(client);
 
   // Step 1: Clear stale suggested edges — confirmed/rejected edges are untouched
   const { error: deleteError } = await db
@@ -63,8 +64,11 @@ export async function persistEdges(
  * Load all persisted edges for a conversation.
  * Returns UI-typed SemanticEdge objects.
  */
-export async function loadEdges(conversationId: string): Promise<SemanticEdge[]> {
-  const db = createServerSupabaseClient();
+export async function loadEdges(
+  conversationId: string,
+  client?: DbClient,
+): Promise<SemanticEdge[]> {
+  const db = resolveDbClient(client);
 
   const { data, error } = await db
     .from("edges")

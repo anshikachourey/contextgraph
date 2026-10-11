@@ -18,8 +18,12 @@ const db = {
   staleRows: [] as Array<{ conversation_id: string }>,
 };
 
-vi.mock("@/src/lib/supabase/server", () => ({
-  createServerSupabaseClient: () => ({
+// The request-triggered path resolves its client via resolveDbClient (legacy
+// bridge when no client injected); the BACKGROUND recovery sweep now constructs
+// the GUARDED factory directly. Both resolve to the same fake table below, so
+// we point BOTH provider mocks at one shared client factory.
+function makeFakeClient() {
+  return {
     from: (table: string) => {
       if (table === "v2_update_state") return {
         select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { last_processed_message_seq: db.cursor, update_version: db.version }, error: null }) }), or: () => Promise.resolve({ data: db.staleRows, error: null }) }),
@@ -45,7 +49,15 @@ vi.mock("@/src/lib/supabase/server", () => ({
       db.status = "idle";
       return Promise.resolve({ error: null });
     },
-  }),
+  };
+}
+
+vi.mock("@/src/lib/supabase/legacy-service-role", () => ({
+  createServerSupabaseClient: () => makeFakeClient(),
+}));
+
+vi.mock("@/src/lib/supabase/service-role", () => ({
+  createServiceRoleClient: () => makeFakeClient(),
 }));
 
 vi.mock("@/src/lib/ai", () => ({
